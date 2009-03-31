@@ -1,0 +1,182 @@
+Name
+    CatalystX::Usul - A base class for Catalyst MVC components
+
+Version
+    0.1.$Revision: 417 $
+
+Synopsis
+       use base qw(CatalystX::Usul);
+
+Description
+    These modules provide a set of base classes for a Catalyst web
+    application. Features include:
+
+    Targeted at intranet applications
+       The identity model supports multiple backend authentication stores
+       including the underlying operating system accounts
+
+    Thin controllers
+       Most controllers make a single call to the model and so comprise of
+       only a few lines of code. The model stashes data used by the view to
+       render the page
+
+    No further view programing required
+       A single Template::Toolkit template is used to render all pages as
+       either HTML or XHTML. The template forms one component of the "skin",
+       the other components are: a Javascript file containing the use cases
+       for the Javascript libraries, a primary CSS file with support for
+       alternative CSS files, and a set of image files
+
+       Designers can create new skins with different layout, presentation
+       and behaviour for the whole application. They can do this for the
+       example application, App::Munchies, whilst the programmers write the
+       "real" application in parallel with the designers work
+
+    Agile development methodology
+       These base classes are used by an example application, App::Munchies,
+       which can be deployed to staging and production servers at the
+       beginning of the project. Setting up the example application allows
+       issues regarding the software technology to be resolved whilst the
+       "real" application is being written. The example application can be
+       deleted leaving these base classes for the "real" application to use
+
+Configuration and Environment
+    Catalyst will set the $config argument passed to the constructor to the
+    section of the configuration appropriate for the component being
+    initialised
+
+Subroutines/Methods
+    This module provides methods common to "CatalystX::Usul::Controller" and
+    "CatalystX::Usul::Model" which both inherit from this class. This means
+    that you should probably inherit from one of them instead
+
+  new
+       $self = CatalystX::Usul->new( $app, $config );
+
+    This class inherits from Catalyst::Component and CatalystX::Usul::Base.
+    The Catalyst application context is $app and $config is a hash ref whose
+    contents are copied to the created object. Defines the following
+    accessors:
+
+    content_type
+       The content type of any markup produced by the Text::Markdown module.
+       Defaults to *text/html*
+
+    debug
+       The application context debug is used to set this. Defaults to false
+
+    encoding
+       The config supplies the encoding for the "query_array", "query_value"
+       and log methods. Defaults to *UTF-8*
+
+    lock
+       An IPC::SRLock object which is used to single thread the application
+       where required. This is a singleton object
+
+    log
+       The application context log. Defaults to a Class::Null object
+
+    messages
+       A hash ref of messages in the currently selected language. Used by
+       "localize"
+
+    prefix
+       The prefix applied to executable programs in the *bin* directory.
+       This is extracted from the *suid* key in the config hash
+
+    secret
+       This applications secret key as set by the administrators in the
+       configuration. It is used to perturb the encryption methods. Defaults
+       to the *prefix* attribute value
+
+    suid
+       Supplied by the config hash, it is the name of the setuid root
+       program in the *bin* directory. Defaults to the null string
+
+    tabstop
+       Supplied by the config hash, it is the number of spaces to expand the
+       tab character to in the call to markdown made by "localize". Defaults
+       to 3
+
+    tempdir
+       Supplied by the config hash, it is the location of any temporary
+       files created by the application. Defaults to the File::Spec tempdir
+
+  build_subcomponents
+       __PACKAGE__->build_subcomponents( $base_class );
+
+    Class method that allows us to define components that inherit from the
+    base class at runtime
+
+  get_action
+       $action = $self->get_action( $c, $action_path );
+
+    Provide defaults for the get_action method. Return the action object if
+    one exists
+
+  loc
+  localize
+       $local_text = $self->localize( $message, $args );
+
+    Localizes the message. Optionally calls "markdown" on the text
+
+  setup_plugins
+       @plugins = $self->setup_plugins( $class, $config_ref );
+
+    Load the given list of plugins and have the supplies class inherit from
+    them. Returns an array ref of available plugins
+
+  uri_for
+       $uri = $self->uri_for( $c, $action_path, @args );
+
+    Provide defaults for the uri_for method. Search for the uri with
+    increasing numbers of capture args
+
+  _lock_obj
+       $self->_lock_obj( $args );
+
+    Provides defaults for and returns a new IPC::SRLock object. The keys of
+    the $args hash are:
+
+    debug
+       Debug status. Defaults to "$usul_obj->debug"
+
+    log
+       Logging object. Defaults to "$usul_obj->log"
+
+    tempdir
+       Directory used to store the lock file and lock table if the "fcntl"
+       backend is used. Defaults to "$usul_obj->tempdir"
+
+Diagnostics
+    Setting the *debug* attribute to true causes messages to be logged at
+    the debug level
+
+Dependencies
+    Catalyst::Component
+    CatalystX::Usul::Base
+    Class::Null
+    IPC::SRLock
+    Module::Pluggable::Object
+    Text::Markdown
+
+Incompatibilities
+    There are no known incompatibilities in this module
+
+Bugs and Limitations
+    There are no known bugs in this module. Please report problems to the
+    address below. Patches are welcome
+
+Author
+    Peter Flanigan, "<Support at RoxSoft.co.uk>"
+
+License and Copyright
+    Copyright (c) 2008 Peter Flanigan. All rights reserved
+
+    This program is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself. See perlartistic
+
+    This program is distributed in the hope that it will be useful, but
+    WITHOUT WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE
+

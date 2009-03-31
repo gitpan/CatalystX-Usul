@@ -1,0 +1,10 @@
+<config>
+  <credentials>
+    <name>library</name>
+    <driver>mysql</driver>
+    <host>localhost</host>
+    <password>test</password>
+    <port>3306</port>
+    <user>root</user>
+  </credentials>
+</config>
