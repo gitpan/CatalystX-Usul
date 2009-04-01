@@ -1,6 +1,6 @@
 package CatalystX::Usul::Model::Identity::Users;
 
-# @(#)$Id: Users.pm 418 2009-03-31 01:17:43Z pjf $
+# @(#)$Id: Users.pm 424 2009-04-01 12:11:02Z pjf $
 
 use strict;
 use warnings;
@@ -15,7 +15,7 @@ use Scalar::Util qw(weaken);
 use Sys::Hostname;
 use XML::Simple;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 418 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 424 $ =~ /\d+/gmx );
 
 my $NUL    = q();
 my $SEP    = q(/);
@@ -1080,7 +1080,7 @@ CatalystX::Usul::Model::Identity::Users - Manager user data stores
 
 =head1 Version
 
-0.1.$Revision: 418 $
+0.1.$Revision: 424 $
 
 =head1 Synopsis
 
@@ -1206,7 +1206,7 @@ returns the value of the required field
 
 =head2 get_new_user_id
 
-Implements the algorithmn that derives the username from the users first
+Implements the algorithm that derives the username from the users first
 name and surname. The supplied prefix from the user profile is prepended
 to the generated value. If the prefix contains unique domain information
 then the generated username will be globally unique to the organisation

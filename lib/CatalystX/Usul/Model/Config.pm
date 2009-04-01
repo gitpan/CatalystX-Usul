@@ -1,6 +1,6 @@
 package CatalystX::Usul::Model::Config;
 
-# @(#)$Id: Config.pm 409 2009-03-30 19:29:29Z pjf $
+# @(#)$Id: Config.pm 424 2009-04-01 12:11:02Z pjf $
 
 use strict;
 use warnings;
@@ -9,7 +9,7 @@ use CatalystX::Usul::File;
 use CatalystX::Usul::Table;
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 409 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 424 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( default_level => q(default) );
 
@@ -225,10 +225,11 @@ sub delete {
 }
 
 sub find {
-   my ($self, $file, $name) = @_;
+   my ($self, $file, $name) = @_; my $path;
 
-   my $args = { file => $file, name => $name,
-                path => $self->_get_path( $file ) };
+   return unless ($file and $path = $self->_get_path( $file ));
+
+   my $args = { file => $file, name => $name || $NUL, path => $path };
 
    $args->{lang} = $self->lang if ($self->lang);
 
@@ -236,10 +237,11 @@ sub find {
 }
 
 sub get_list {
-   my ($self, $file, $name) = @_;
+   my ($self, $file, $name) = @_; my $path;
 
-   my $args = { file => $file, name => $name,
-                path => $self->_get_path( $file ) };
+   return unless ($file and $path = $self->_get_path( $file ));
+
+   my $args = { file => $file, name => $name || $NUL, path => $path };
 
    $args->{lang} = $self->lang if ($self->lang);
 
@@ -326,7 +328,7 @@ CatalystX::Usul::Model::Config - Read and write configuration files
 
 =head1 Version
 
-0.1.$Revision: 409 $
+0.1.$Revision: 424 $
 
 =head1 Synopsis
 

@@ -1,6 +1,6 @@
 package CatalystX::Usul::Utils;
 
-# @(#)$Id: Usul.pm 32 2008-03-20 13:56:43Z pjf $
+# @(#)$Id: Utils.pm 425 2009-04-01 15:52:23Z pjf $
 
 use strict;
 use warnings;
@@ -18,7 +18,7 @@ use POSIX qw(:signal_h :errno_h :sys_wait_h);
 use Proc::ProcessTable;
 use Template;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 32 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
 
 my ($ERROR, $WAITEDPID);
 
@@ -302,7 +302,7 @@ CatalystX::Usul::Utils - Base class utility methods for models and programs
 
 =head1 Version
 
-0.1.$Revision: 32 $
+0.1.$Revision: 425 $
 
 =head1 Synopsis
 

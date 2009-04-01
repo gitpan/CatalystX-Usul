@@ -1,6 +1,6 @@
 package CatalystX::Usul::Base;
 
-# @(#)$Id: Base.pm 402 2009-03-28 03:09:07Z pjf $
+# @(#)$Id: Base.pm 424 2009-04-01 12:11:02Z pjf $
 
 use strict;
 use warnings;
@@ -17,7 +17,7 @@ use File::Spec;
 use List::Util qw(first);
 use Path::Class::Dir;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 424 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_log_methods();
 
@@ -73,7 +73,7 @@ sub create_token {
          last if ($digest = eval { Digest->new( $candidate ) });
       }
 
-      $self->throw( q(eNoDigestAlgorithmn) ) unless ($digest);
+      $self->throw( q(eNoDigestAlgorithm) ) unless ($digest);
 
       __PACKAGE__->set_inherited( q(digest), $candidate );
    }
@@ -283,7 +283,7 @@ CatalystX::Usul::Base - Base class utility methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 424 $
 
 =head1 Synopsis
 
@@ -370,7 +370,7 @@ C<App/Munchies.pm>
    $random_hex = $self->create_token( $seed );
 
 Create a random string token using the first available L<Digest>
-algorithmn. If C<$seed> is defined then add that to the digest,
+algorithm. If C<$seed> is defined then add that to the digest,
 otherwise add some random data. Returns a hexadecimal string
 
 =head2 delete_tmp_files

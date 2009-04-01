@@ -1,6 +1,6 @@
 package CatalystX::Usul;
 
-# @(#)$Id: Usul.pm 417 2009-03-31 00:47:30Z pjf $
+# @(#)$Id: Usul.pm 426 2009-04-01 15:53:30Z pjf $
 
 use strict;
 use warnings;
@@ -12,7 +12,7 @@ use IPC::SRLock;
 use Module::Pluggable::Object;
 use Text::Markdown qw(markdown);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 417 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 426 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_accessors( qw(content_type debug encoding lock log
                               messages prefix redirect_to secret suid
@@ -234,7 +234,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-0.1.$Revision: 417 $
+0.1.$Revision: 426 $
 
 =head1 Synopsis
 
@@ -462,7 +462,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2009 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>
@@ -477,4 +477,3 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
 # mode: perl
 # tab-width: 3
 # End:
-

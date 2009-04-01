@@ -1,6 +1,6 @@
 ---
 name: CatalystX-Usul
-version: 0.1.417
+version: 0.1.426
 author:
   - 'Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>'
 abstract: A base class for Catalyst MVC components
@@ -99,7 +99,7 @@ recommends:
 provides:
   CatalystX::Usul:
     file: lib/CatalystX/Usul.pm
-    version: 0.1.417
+    version: 0.1.426
   CatalystX::Usul::Action:
     file: lib/CatalystX/Usul/Action.pm
     version: 0.1.416
@@ -108,7 +108,7 @@ provides:
     version: 0.1.402
   CatalystX::Usul::Base:
     file: lib/CatalystX/Usul/Base.pm
-    version: 0.1.402
+    version: 0.1.424
   CatalystX::Usul::Build:
     file: lib/CatalystX/Usul/Build.pm
     version: 0.1.402
@@ -198,7 +198,7 @@ provides:
     version: 0.1.402
   CatalystX::Usul::Model::Config:
     file: lib/CatalystX/Usul/Model/Config.pm
-    version: 0.1.409
+    version: 0.1.424
   CatalystX::Usul::Model::Config::Buttons:
     file: lib/CatalystX/Usul/Model/Config/Buttons.pm
     version: 0.1.401
@@ -243,13 +243,13 @@ provides:
     version: 0.1.402
   CatalystX::Usul::Model::Identity::Roles::Unix:
     file: lib/CatalystX/Usul/Model/Identity/Roles/Unix.pm
-    version: 0.1.0
+    version: 0.1.425
   CatalystX::Usul::Model::Identity::Suid:
     file: lib/CatalystX/Usul/Model/Identity/Suid.pm
     version: 0.1.402
   CatalystX::Usul::Model::Identity::Users:
     file: lib/CatalystX/Usul/Model/Identity/Users.pm
-    version: 0.1.418
+    version: 0.1.424
   CatalystX::Usul::Model::Identity::Users::DBIC:
     file: lib/CatalystX/Usul/Model/Identity/Users/DBIC.pm
     version: 0.1.402
@@ -285,10 +285,10 @@ provides:
     version: 0.1.403
   CatalystX::Usul::Plugin::Controller::Cookies:
     file: lib/CatalystX/Usul/Plugin/Controller/Cookies.pm
-    version: 0.1.380
+    version: 0.1.425
   CatalystX::Usul::Plugin::Controller::ModelHelper:
     file: lib/CatalystX/Usul/Plugin/Controller/ModelHelper.pm
-    version: 0.1.403
+    version: 0.1.425
   CatalystX::Usul::Plugin::Controller::TokenValidation:
     file: lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
     version: 0.1.403
@@ -324,7 +324,7 @@ provides:
     version: 0.1.347
   CatalystX::Usul::Utils:
     file: lib/CatalystX/Usul/Utils.pm
-    version: 0.1.32
+    version: 0.1.425
   CatalystX::Usul::View:
     file: lib/CatalystX/Usul/View.pm
     version: 0.1.404

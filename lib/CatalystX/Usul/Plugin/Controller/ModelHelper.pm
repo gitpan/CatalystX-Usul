@@ -1,12 +1,12 @@
 package CatalystX::Usul::Plugin::Controller::ModelHelper;
 
-# @(#)$Id: ModelHelper.pm 403 2009-03-28 04:09:04Z pjf $
+# @(#)$Id: ModelHelper.pm 425 2009-04-01 15:52:23Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
 
 my $SEP = q(/);
 
@@ -211,11 +211,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::ModelHelper - Convenience methods for common model calls
+CatalystX::Usul::Plugin::Controller::ModelHelper - Convenience methods for common model calls
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 425 $
 
 =head1 Synopsis
 

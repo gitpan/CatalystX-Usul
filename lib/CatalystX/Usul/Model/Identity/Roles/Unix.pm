@@ -1,13 +1,13 @@
 package CatalystX::Usul::Model::Identity::Roles::Unix;
 
-# @(#)$Id: Unix.pm 380 2009-03-11 18:22:46Z pjf $
+# @(#)$Id: Unix.pm 425 2009-04-01 15:52:23Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul::Model::Identity::Roles);
 use Unix::GroupFile;
 
-our $VERSION = do { sprintf '0.1.%d', 0, 1, q$Revision: 380 $ =~ /\d+/gmx };
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( backup_extn => q(.bak),
                      baseid      => 100,
@@ -188,7 +188,7 @@ CatalystX::Usul::Model::Identity::Roles::Unix - Group management for the Unix OS
 
 =head1 Version
 
-0.1.$Revision: 380 $
+0.1.$Revision: 425 $
 
 =head1 Synopsis
 
