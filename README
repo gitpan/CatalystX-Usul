@@ -2,7 +2,7 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    0.1.$Revision: 426 $
+    0.1.$Revision: 437 $
 
 Synopsis
        use base qw(CatalystX::Usul);
@@ -129,8 +129,9 @@ Subroutines/Methods
   uri_for
        $uri = $self->uri_for( $c, $action_path, @args );
 
-    Provide defaults for the uri_for method. Search for the uri with
-    increasing numbers of capture args
+    Turns the action path into an action object by calling "get_action".
+    Calculates the number of capture args by introspecting the dispatcher
+    spilts them of from passed args and then calls uri_for
 
   _lock_obj
        $self->_lock_obj( $args );

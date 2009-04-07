@@ -1,5 +1,12 @@
 Revision history for CatalystX::Usul
 
+0.1.437  07/04/2009
+         - Added more tests
+
+0.1.428  05/04/2009
+         - More CPAN testing crap
+         - Fixed context sensitive help
+
 0.1.426  01/04/2009
          - Fixed documentation typos
 

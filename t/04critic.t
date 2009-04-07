@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# @(#)$Id: 04critic.t 344 2009-01-17 12:31:02Z pjf $
+# @(#)$Id: 04critic.t 430 2009-04-06 20:00:20Z pjf $
 
 use strict;
 use warnings;
@@ -8,8 +8,10 @@ use File::Spec::Functions;
 use FindBin  qw( $Bin );
 use Test::More;
 
-if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
-   plan skip_all => 'Critic test only for developers';
+BEGIN {
+   if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
+      plan skip_all => 'Critic test only for developers';
+   }
 }
 
 eval { require Test::Perl::Critic };

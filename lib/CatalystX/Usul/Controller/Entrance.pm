@@ -1,13 +1,13 @@
 package CatalystX::Usul::Controller::Entrance;
 
-# @(#)$Id: Entrance.pm 406 2009-03-30 01:53:50Z pjf $
+# @(#)$Id: Entrance.pm 431 2009-04-07 00:27:52Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul::Controller);
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 406 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 431 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( docs_uri       => q(/html/index.html),
                      realm_class    => q(IdentityUnix),
@@ -54,6 +54,9 @@ sub authentication_login : ActionFor(authentication.login) {
 
    my $s     = $c->stash;
    my $model = $c->model( q(Base) );
+
+   $model->scrubbing( 1 );
+
    my $realm = $model->query_value( q(realm)  );
    my $user  = $model->query_value( q(user)   );
    my $pass  = $model->query_value( q(passwd) );
@@ -219,7 +222,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 406 $
+$Revision: 431 $
 
 =head1 Synopsis
 

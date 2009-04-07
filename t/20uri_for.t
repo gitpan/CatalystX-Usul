@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# @(#)$Id: 20uri_for.t 421 2009-03-31 09:22:07Z pjf $
+# @(#)$Id: 20uri_for.t 433 2009-04-07 19:06:09Z pjf $
 
 use strict;
 use warnings;

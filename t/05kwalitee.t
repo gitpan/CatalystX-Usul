@@ -8,8 +8,10 @@ use File::Spec::Functions;
 use FindBin  qw( $Bin );
 use Test::More;
 
-if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
-   plan skip_all => 'Kwalitee test only for developers';
+BEGIN {
+   if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
+      plan skip_all => 'Kwalitee test only for developers';
+   }
 }
 
 eval { require Test::Kwalitee; };

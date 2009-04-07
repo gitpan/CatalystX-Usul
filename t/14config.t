@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# @(#)$Id: 14config.t 421 2009-03-31 09:22:07Z pjf $
+# @(#)$Id: 14config.t 434 2009-04-07 19:11:38Z pjf $
 
 use strict;
 use warnings;
@@ -59,7 +59,7 @@ ok( ref $cfg->{levels}->{entrance}->{acl} eq q(ARRAY), 'Detects arrays' );
 
 eval { $model->create_or_update }; my $e = $model->catch;
 
-ok( $e->as_string eq q(eNoPath), 'Detects misssin path parameter' );
+ok( $e->as_string eq q(eNoFile), 'Detects misssin file parameter' );
 
 my $args = {}; $args->{file} = q(t/default.xml);
 

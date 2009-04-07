@@ -1,6 +1,6 @@
 ---
 name: CatalystX-Usul
-version: 0.1.426
+version: 0.1.437
 author:
   - 'Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>'
 abstract: A base class for Catalyst MVC components
@@ -11,7 +11,7 @@ configure_requires:
   ExtUtils::MakeMaker: 6.42
   version: 0.74
 requires:
-  CPAN: 1.9301
+  CPAN: 1.9205
   Cache::FastMmap: 1.09
   Carp: 1.04
   Catalyst: 5.71
@@ -93,16 +93,17 @@ build_requires:
   Test::Harness: 2.64
   Test::More: 0.74
   Test::Pod: 1.14
+  Test::Pod::Coverage: 1.08
 recommends:
   Catalyst::Engine::HTTP::Prefork: 0.01
   Syntax::Highlight::Perl: 1
 provides:
   CatalystX::Usul:
     file: lib/CatalystX/Usul.pm
-    version: 0.1.426
+    version: 0.1.437
   CatalystX::Usul::Action:
     file: lib/CatalystX/Usul/Action.pm
-    version: 0.1.416
+    version: 0.1.435
   CatalystX::Usul::Authentication:
     file: lib/CatalystX/Usul/Authentication.pm
     version: 0.1.402
@@ -141,7 +142,7 @@ provides:
     version: 0.1.406
   CatalystX::Usul::Controller::Entrance:
     file: lib/CatalystX/Usul/Controller/Entrance.pm
-    version: 0.1.406
+    version: 0.1.431
   CatalystX::Usul::Controller::Root:
     file: lib/CatalystX/Usul/Controller/Root.pm
     version: 0.1.402
@@ -195,10 +196,10 @@ provides:
     version: 0.1.372
   CatalystX::Usul::Model:
     file: lib/CatalystX/Usul/Model.pm
-    version: 0.1.402
+    version: 0.1.432
   CatalystX::Usul::Model::Config:
     file: lib/CatalystX/Usul/Model/Config.pm
-    version: 0.1.424
+    version: 0.1.428
   CatalystX::Usul::Model::Config::Buttons:
     file: lib/CatalystX/Usul/Model/Config/Buttons.pm
     version: 0.1.401
@@ -231,7 +232,7 @@ provides:
     version: 0.1.402
   CatalystX::Usul::Model::Help:
     file: lib/CatalystX/Usul/Model/Help.pm
-    version: 0.1.402
+    version: 0.1.428
   CatalystX::Usul::Model::Identity:
     file: lib/CatalystX/Usul/Model/Identity.pm
     version: 0.1.402
@@ -291,7 +292,7 @@ provides:
     version: 0.1.425
   CatalystX::Usul::Plugin::Controller::TokenValidation:
     file: lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
-    version: 0.1.403
+    version: 0.1.436
   CatalystX::Usul::Plugin::Model::StashHelper:
     file: lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
     version: 0.1.406

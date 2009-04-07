@@ -1,18 +1,18 @@
 package CatalystX::Usul::Plugin::Controller::TokenValidation;
 
-# @(#)$Id: TokenValidation.pm 403 2009-03-28 04:09:04Z pjf $
+# @(#)$Id: TokenValidation.pm 436 2009-04-07 19:54:11Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 436 $ =~ /\d+/gmx );
 
 my $NUL = q();
 
 sub add_token {
    # Add the CSRF token to the form
-   my ($self, $c) = @_; my ($minted, $mtoken, $seed, $token);
+   my ($self, $c) = @_; my ($mtoken, $token);
 
    my $s       = $c->stash;
    my $name    = $s->{token};
@@ -21,10 +21,10 @@ sub add_token {
    # There are two implementations differentiated by $max_age < 0
    if ($max_age > 0) {
       # This method does not use the session store so it's browser tab safe
-      $minted = $self->stamp;
-      $seed   = $minted.q(_).$s->{form}->{action}.q(_).$s->{user};
-      $token  = $self->create_token( $self->secret.$seed );
-      $mtoken = $minted.q(_).$token;
+      my $minted = $self->stamp;
+      my $seed   = $minted.q(_).$self->secret.q(_).$s->{user};
+
+      $token  = $self->create_token( $seed ); $mtoken = $minted.q(_).$token;
    }
    else { $token = $mtoken = $c->session->{ $name } = $self->create_token }
 
@@ -62,14 +62,14 @@ sub validate_token {
       my $now    = time;
       my $minted = (split m{ _ }mx, $request)[0] || $NUL;
       my $then   = $minted ? $self->str2time( $minted ) : $now;
-      my $seed   = $minted.q(_).$s->{form}->{action}.q(_).$s->{user};
+      my $seed   = $minted.q(_).$self->secret.q(_).$s->{user};
 
       if ($now - $then > $max_age) {
-         $self->log_info( "Token too old $seed" );
+         $self->log_info( "Token too old $minted" );
          return 0;
       }
 
-      $token = $minted.q(_).$self->create_token( $self->secret.$seed );
+      $token = $minted.q(_).$self->create_token( $seed );
    }
    else { $token = $c->session->{ $name } }
 
@@ -97,7 +97,7 @@ CatalystX::Usul::Plugin::Controller::TokenValidation - CSRF form tokens
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 436 $
 
 =head1 Synopsis
 

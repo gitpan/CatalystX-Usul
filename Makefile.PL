@@ -13,7 +13,7 @@ WriteMakefile
           'NAME' => 'CatalystX::Usul',
           'VERSION_FROM' => 'lib/CatalystX/Usul.pm',
           'PREREQ_PM' => {
-                           'CPAN' => '1.9301',
+                           'CPAN' => '1.9205',
                            'Cache::FastMmap' => '1.09',
                            'Carp' => '1.04',
                            'Catalyst' => '5.71',
@@ -81,6 +81,7 @@ WriteMakefile
                            'Test::Harness' => '2.64',
                            'Test::More' => '0.74',
                            'Test::Pod' => '1.14',
+                           'Test::Pod::Coverage' => '1.08',
                            'Text::Autoformat' => '1.13',
                            'Text::Markdown' => '1.0.20',
                            'Text::Tabs' => '2005.0824',

@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# @(#)$Id: 10base.t 411 2009-03-30 23:05:17Z pjf $
+# @(#)$Id: 10base.t 433 2009-04-07 19:06:09Z pjf $
 
 use strict;
 use warnings;
@@ -18,14 +18,66 @@ BEGIN {
 #      plan skip_all => q(CPAN Testing stopped);
 #   }
 
-   plan tests => 18;
+   plan tests => 29;
 }
 
 use_ok q(CatalystX::Usul);
 
 my $ref = CatalystX::Usul->new();
 
+ok( $ref->app_prefix( q(Test::Application) ) eq q(test_application),
+    q(app_prefix) );
+
+my $list = $ref->arg_list( 'key1' => 'value1', 'key2' => 'value2' );
+
+ok( $ref->basename( catfile( qw(fake root dummy) ) ) eq q(dummy),
+    q(basename) );
+
+ok( $list->{key2} eq q(value2), q(arg_list) );
+
+eval { $ref->throw( error => q(eNoMessage) ) };
+
+my $e = $ref->catch();
+
+ok( $e->as_string eq q(eNoMessage), q(try/throw/catch) );
+
+ok( $ref->catdir( q(dir1), q(dir2) ) =~ m{ dir1 . dir2 }mx, q(catdir) );
+
+ok( $ref->catfile( q(dir1), q(file1) ) =~ m{ dir1 . file1 }mx, q(catfile) );
+
+ok( $ref->class2appdir( q(App::Munchies) ) eq q(app-munchies),
+    q(class2appdir) );
+
+ok( $ref->classfile( q(App::Munchies) ) eq catfile( qw(App Munchies.pm) ),
+    q(classfile) );
+
+ok( $ref->create_token( q(test) )
+    eq q(a94a8fe5ccb19ba61c4c0873d391e987982fbbd3), q(create_token) );
+
+ok( $ref->dirname( catfile( qw(dir1 file1) ) ) eq q(dir1), q(dirname) );
+
+ok( $ref->env_prefix( q(App::Munchies) ) eq q(APP_MUNCHIES), q(env_prefix) );
+
+ok( $ref->unescape_TT( $ref->escape_TT( q([% test %]) ) ) eq q([% test %]),
+    q(escape_TT/unscape_TT));
+
+ok( $ref->home2appl( catdir( qw(opt myapp v0.1 lib MyApp) ) )
+    eq catdir( qw(opt myapp v0.1) ), q(home2appl) );
+
+my $io = $ref->io( q(t) ); my $entry;
+
+while (defined ($entry = $io->next)) {
+   last if ($entry->filename eq q(10base.t));
+}
+
+ok( (defined $entry and $entry->filename eq q(10base.t)), q(IO::next) );
+
 ok( $ref->is_member( 2, 1, 2, 3 ), q(is_member) );
+
+ok( $ref->stamp( 0 ) eq q(1970-01-01 01:00), q(stamp) );
+
+ok( q().$ref->str2date_time( q(11/9/2007 14:12) )
+    eq q(2007-09-11T13:12:00), q(str2date_time) );
 
 ok( $ref->str2time( q(2007-07-30 01:05:32), q(BST) )
     eq q(1185753932), q(str2time/1) );
@@ -41,26 +93,7 @@ ok( $ref->str2time( q(2007.07.30), q(BST) ) eq q(1185750000),
 
 ok( $ref->str2time( q(1970/01/01), q(GMT) ) eq q(0), q(str2time/epoch) );
 
-ok( $ref->time2str( q(%Y-%m-%d), 0 ) eq q(1970-01-01), q(time2str/1) );
-
-ok( $ref->time2str( q(%Y-%m-%d %H:%M:%S), 1185753932 )
-    eq q(2007-07-30 01:05:32), q(time2str/2) );
-
-ok( q().$ref->str2date_time( q(11/9/2007 14:12) )
-    eq q(2007-09-11T13:12:00), q(str2date_time) );
-
-my $prefix = $ref->app_prefix( q(Test::Application) );
-
-ok( $prefix eq q(test_application), q(app_prefix) );
-
-eval { $ref->throw( error => q(eNoMessage) ) };
-my $e = $ref->catch();
-
-ok( $e->as_string eq q(eNoMessage), q(try/throw/catch) );
-
-my $appl = $ref->home2appl( q(/opt/myapp/v0.1/lib/MyApp) );
-
-ok( $appl eq q(/opt/myapp/v0.1), q(home2appl) );
+ok( $ref->strip_leader( q(test: dummy) ) eq q(dummy), q(strip_leader) );
 
 my $tempfile = $ref->tempfile;
 
@@ -74,16 +107,10 @@ $ref->delete_tmp_files;
 
 ok( ! -f $tempfile->pathname, q(delete_tmp_files) );
 
-ok( $ref->unescape_TT( $ref->escape_TT( q([% test %]) ) ) eq q([% test %]),
-    q(escape_TT/unscape_TT));
+ok( $ref->time2str( q(%Y-%m-%d), 0 ) eq q(1970-01-01), q(time2str/1) );
 
-my $io = $ref->io( q(t) ); my $entry;
-
-while (defined ($entry = $io->next)) {
-   last if ($entry->filename eq q(10base.t));
-}
-
-ok( (defined $entry and $entry->filename eq q(10base.t)), q(IO::next) );
+ok( $ref->time2str( q(%Y-%m-%d %H:%M:%S), 1185753932 )
+    eq q(2007-07-30 01:05:32), q(time2str/2) );
 
 # Local Variables:
 # mode: perl

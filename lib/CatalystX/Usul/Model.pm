@@ -1,6 +1,6 @@
 package CatalystX::Usul::Model;
 
-# @(#)$Id: Model.pm 402 2009-03-28 03:09:07Z pjf $
+# @(#)$Id: Model.pm 432 2009-04-07 14:53:57Z pjf $
 
 use strict;
 use warnings;
@@ -9,10 +9,10 @@ use Class::C3;
 use Data::Validation;
 use Scalar::Util qw(blessed refaddr weaken);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 432 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( screensaver => q(xdg-screensaver lock),
-                     scrub_chars => q([\'\"/\\;:]) );
+                     scrub_chars => q([\'\"/\:]) );
 
 __PACKAGE__->mk_encoding_methods( qw(_get_req_array _get_req_value) );
 
@@ -26,7 +26,7 @@ sub new {
    my $new      = $self->next::method( $app, @rest );
    my $app_conf = $app->config || {};
 
-   $new->scrubbing( $new->scrubbing || $app_conf->{scrubbing} || 0 );
+   $new->scrubbing( $app_conf->{scrubbing} || $new->scrubbing || 0 );
 
    return $new;
 }
@@ -113,7 +113,11 @@ sub query_value {
 }
 
 sub scrub {
-   my ($self, $value) = @_; my $pattern = $self->scrub_chars;
+   my ($self, $value) = @_;
+
+   return unless (defined $value);
+
+   my $pattern = $self->scrub_chars;
 
    $value =~ s{ $pattern }{}gmx;
 
@@ -189,7 +193,7 @@ CatalystX::Usul::Model - Application independent common model methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 432 $
 
 =head1 Synopsis
 

@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# @(#)$Id: 12schema.t 411 2009-03-30 23:05:17Z pjf $
+# @(#)$Id: 12schema.t 433 2009-04-07 19:06:09Z pjf $
 
 use strict;
 use warnings;

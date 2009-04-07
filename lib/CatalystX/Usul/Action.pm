@@ -1,13 +1,13 @@
 package CatalystX::Usul::Action;
 
-# @(#)$Id: Action.pm 416 2009-03-31 00:47:12Z pjf $
+# @(#)$Id: Action.pm 435 2009-04-07 19:54:06Z pjf $
 
 use strict;
 use warnings;
 use parent qw(Catalyst::Action);
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 416 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 435 $ =~ /\d+/gmx );
 
 my $BRK = q(: );
 my $SEP = q(/);
@@ -152,7 +152,7 @@ sub _not_implemented {
    my $msg  = __loc( @rest, $self->reverse, q(eNotImplemented) );
    my $view = $c->view( $c->{current_view} );
 
-   $controller->log_error( (ucfirst $self->reverse).q(: ).(ucfirst $msg) );
+   $controller->log_error( (ucfirst $self->reverse).$BRK.(ucfirst $msg) );
    $c->res->header( 'Allow' => $self->_get_allowed_methods( $c ) );
 
    return $view->not_implemented( $c, $msg, $controller, $verb );
@@ -205,7 +205,7 @@ CatalystX::Usul::Action - A generic action class
 
 =head1 Version
 
-0.1.$Revision: 416 $
+0.1.$Revision: 435 $
 
 =head1 Synopsis
 

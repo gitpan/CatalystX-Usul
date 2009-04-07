@@ -1,6 +1,6 @@
 package CatalystX::Usul::Model::Config;
 
-# @(#)$Id: Config.pm 424 2009-04-01 12:11:02Z pjf $
+# @(#)$Id: Config.pm 428 2009-04-05 17:44:30Z pjf $
 
 use strict;
 use warnings;
@@ -9,7 +9,7 @@ use CatalystX::Usul::File;
 use CatalystX::Usul::Table;
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 424 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 428 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( default_level => q(default) );
 
@@ -45,9 +45,10 @@ sub build_per_context_instance {
 sub add_to_attribute_list {
    my ($self, $args) = @_;
 
-   $args->{lang } = $self->lang if ($self->lang);
-   $args->{items} = $self->query_array( $args->{field} );
    $args->{path } = $self->_get_path( $args->{file} );
+   $args->{items} = $self->query_array( $args->{field} );
+
+   $args->{lang } = $self->lang if ($self->lang);
 
    my $added    = $self->file_model->add_to_attribute_list( $args );
    my $aname    = $args->{file}.q( / ).$args->{name};
@@ -157,9 +158,10 @@ sub config_form {
 sub create {
    my ($self, $args) = @_;
 
-   $args->{lang  } = $self->lang  if ($self->lang);
-   $args->{fields} = $self->check_form( $args->{fields} || {} );
    $args->{path  } = $self->_get_path( $args->{file} );
+   $args->{fields} = $self->check_form( $args->{fields} || {} );
+
+   $args->{lang  } = $self->lang  if ($self->lang);
 
    my $name = $self->file_model->create( $args );
 
@@ -215,8 +217,9 @@ sub create_or_update {
 sub delete {
    my ($self, $args) = @_;
 
-   $args->{lang} = $self->lang if ($self->lang);
    $args->{path} = $self->_get_path( $args->{file} );
+
+   $args->{lang} = $self->lang if ($self->lang);
 
    my $name = $self->file_model->delete( $args );
 
@@ -225,11 +228,11 @@ sub delete {
 }
 
 sub find {
-   my ($self, $file, $name) = @_; my $path;
+   my ($self, $file, $name) = @_;
 
-   return unless ($file and $path = $self->_get_path( $file ));
-
-   my $args = { file => $file, name => $name || $NUL, path => $path };
+   my $args = { file => $file,
+                name => $name,
+                path => $self->_get_path( $file ) };
 
    $args->{lang} = $self->lang if ($self->lang);
 
@@ -237,11 +240,11 @@ sub find {
 }
 
 sub get_list {
-   my ($self, $file, $name) = @_; my $path;
+   my ($self, $file, $name) = @_;
 
-   return unless ($file and $path = $self->_get_path( $file ));
-
-   my $args = { file => $file, name => $name || $NUL, path => $path };
+   my $args = { file => $file,
+                name => $name || $NUL,
+                path => $self->_get_path( $file ) };
 
    $args->{lang} = $self->lang if ($self->lang);
 
@@ -259,9 +262,10 @@ sub load_files {
 sub remove_from_attribute_list {
    my ($self, $args) = @_;
 
-   $args->{lang } = $self->lang if ($self->lang);
-   $args->{items} = $self->query_array( $args->{field} );
    $args->{path } = $self->_get_path( $args->{file} );
+   $args->{items} = $self->query_array( $args->{field} );
+
+   $args->{lang } = $self->lang if ($self->lang);
 
    my $removed  = $self->file_model->remove_from_attribute_list( $args );
    my $aname    = $args->{file}.q( / ).$args->{name};
@@ -285,9 +289,10 @@ sub search {
 sub update {
    my ($self, $args) = @_;
 
-   $args->{lang  } = $self->lang if ($self->lang);
-   $args->{fields} = $self->check_form( $args->{fields} || {} );
    $args->{path  } = $self->_get_path( $args->{file} );
+   $args->{fields} = $self->check_form( $args->{fields} || {} );
+
+   $args->{lang  } = $self->lang if ($self->lang);
 
    my $name = $self->file_model->update( $args );
 
@@ -300,7 +305,7 @@ sub update {
 sub _get_path {
    my ($self, $file, $args) = @_; $args ||= {};
 
-   return unless ($file);
+   $self->throw( q(eNoFile) ) unless ($file);
 
    return $file if (ref $file);
 
@@ -328,7 +333,7 @@ CatalystX::Usul::Model::Config - Read and write configuration files
 
 =head1 Version
 
-0.1.$Revision: 424 $
+0.1.$Revision: 428 $
 
 =head1 Synopsis
 

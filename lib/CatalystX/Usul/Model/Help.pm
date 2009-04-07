@@ -1,6 +1,6 @@
 package CatalystX::Usul::Model::Help;
 
-# @(#)$Id: Help.pm 402 2009-03-28 03:09:07Z pjf $
+# @(#)$Id: Help.pm 428 2009-04-05 17:44:30Z pjf $
 
 use strict;
 use warnings;
@@ -10,9 +10,8 @@ use Class::C3;
 use File::Spec;
 use Pod::Html;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 428 $ =~ /\d+/gmx );
 
-my $HASH = chr 35;
 my $NUL  = q();
 my $SEP  = q(/);
 my $SPC  = q( );
@@ -79,7 +78,7 @@ sub get_help {
 
    return unless ($args[ 0 ]);
 
-   my $controller = ucfirst ((split m{ $HASH }mx, $args[ 0 ])[ 0 ]);
+   my $controller = ucfirst ((split m{ \# }mx, $args[ 0 ])[ 0 ]);
    my $title      = $self->loc( q(helpTitle), $controller );
 
    $self->clear_form( { title => $title } );
@@ -223,7 +222,7 @@ CatalystX::Usul::Model::Help - Create HTML from POD
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 428 $
 
 =head1 Synopsis
 
