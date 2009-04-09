@@ -1,47 +1,14 @@
 package CatalystX::Usul::Plugin::Controller::ModelHelper;
 
-# @(#)$Id: ModelHelper.pm 425 2009-04-01 15:52:23Z pjf $
+# @(#)$Id: ModelHelper.pm 440 2009-04-09 20:17:47Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 my $SEP = q(/);
-
-sub add_menu_back {
-   # Add a browser back link to the navigation menu
-   my ($self, $c) = @_; my $e;
-
-   eval { $c->model( q(Navigation) )->add_menu_back };
-
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   return;
-}
-
-sub add_menu_blank {
-   # Stash some padding to fill the gap where the nav. menu was
-   my ($self, $c) = @_; my $e;
-
-   eval { $c->model( q(Navigation) )->add_menu_blank };
-
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   return;
-}
-
-sub add_menu_close {
-   # Add a close window link to the navigation menu
-   my ($self, $c) = @_; my $e;
-
-   eval { $c->model( q(Navigation) )->add_menu_close };
-
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   return;
-}
 
 sub add_sidebar_panel {
    # Add an Ajax call to the side bar accordion widget
@@ -93,17 +60,14 @@ sub close_sidebar {
 
 sub common {
    # Most controllers will want to add these things to the stash
-   my ($self, $c, $base_model, $nav_model) = @_; my $e;
+   my ($self, $c, $footer_model, $header_model) = @_; my $e;
 
-   $base_model ||= $c->model( q(Base) );
-   $nav_model  ||= $c->model( q(Navigation) );
+   $footer_model ||= $c->model( q(Base) );
+   $header_model ||= $c->model( q(Navigation) );
 
    eval {
-      $base_model->add_header;
-      $base_model->add_footer;
-      $nav_model->add_quick_links;
-      $nav_model->add_main_menu;
-      $nav_model->add_tools_menu;
+      $header_model->add_header;
+      $footer_model->add_footer;
    };
 
    if ($e = $self->catch) {
@@ -120,13 +84,16 @@ sub default {
 
    return if ($c->res->redirect);
 
-   my $model = $c->model( q(Base) );
+   my $model = $c->model( q(Navigation) );
 
-   eval { $model->clear_controls; $model->simple_page( q(default) ) };
+   eval {
+      $model->clear_controls;
+      $model->add_menu_back;
+      $model->simple_page( q(default) );
+   };
 
    $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
 
-   $self->add_menu_back( $c );
    $s->{request_path} = $c->req->path;
    $c->action->reverse( q(default) );
    $c->res->status( 404 );
@@ -137,7 +104,12 @@ sub help {
    # Generate the context sensitive help from the POD in the code
    my ($self, $c, @args) = @_; my $e;
 
-   eval { $c->model( q(Help) )->get_help( @args ) };
+   my $model = $c->model( q(Help) );
+
+   eval {
+      $model->add_header;
+      $model->get_help( @args );
+   };
 
    $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
 
@@ -192,14 +164,16 @@ sub select_sidebar_panel {
 }
 
 sub set_popup {
-   my ($self, $c) = @_; my $e;
+   my ($self, $c, $args) = @_; my $model = $c->model( q(Navigation) ); my $e;
 
-   eval { $c->model( q(Base) )->clear_controls };
+   eval {
+      $model->clear_controls;
+      $model->add_menu_close( $args );
+   };
 
    $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
 
    $c->stash( is_popup => q(true) );
-   $self->add_menu_close( $c );
    return;
 }
 
@@ -215,7 +189,7 @@ CatalystX::Usul::Plugin::Controller::ModelHelper - Convenience methods for commo
 
 =head1 Version
 
-0.1.$Revision: 425 $
+0.1.$Revision: 440 $
 
 =head1 Synopsis
 
@@ -235,21 +209,6 @@ CatalystX::Usul::Plugin::Controller::ModelHelper - Convenience methods for commo
 Many convenience methods for common model calls
 
 =head1 Subroutines/Methods
-
-=head2 add_menu_back
-
-Added a link to the main navigation menu that goes back to the previous page
-Calls L<add_meun_item|CatalystX::Usul::Model::Navigation>
-
-=head2 add_menu_blank
-
-Adds some whitespace to the navigation menu so that the background does
-not show through
-
-=head2 add_menu_close
-
-Adds a link that will close the current window to the main navigation menu.
-Calls L<add_meun_item|CatalystX::Usul::Model::Navigation>
 
 =head2 add_result
 

@@ -1,6 +1,6 @@
 package CatalystX::Usul::Controller;
 
-# @(#)$Id: Controller.pm 402 2009-03-28 03:09:07Z pjf $
+# @(#)$Id: Controller.pm 440 2009-04-09 20:17:47Z pjf $
 
 use strict;
 use warnings;
@@ -11,7 +11,7 @@ use Config;
 use HTTP::Headers::Util qw(split_header_words);
 use List::Util qw(first);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_accessors( qw(namespace phase) );
 
@@ -234,17 +234,19 @@ sub error_page {
    # Display an error message
    my ($self, $c, @rest) = @_; my $s = $c->stash; my $e;
 
-   my $msg = $self->loc( @rest ); my $model = $c->model( q(Base) );
+   my $msg = $self->loc( @rest ); my $model = $c->model( q(Navigation) );
 
    $s->{subHeading} = ucfirst $msg;
    $self->log_error( (ref $self).$SPC.$msg );
    $c->action->reverse( q(error_page) );
 
-   eval { $model->clear_controls; $model->simple_page( q(error) ) };
+   eval {
+      $model->clear_controls;
+      $model->add_menu_back;
+      $model->simple_page( q(error) );
+   };
 
    $c->res->body( $msg.$TTS.$e->as_string ) if ($e = $self->catch);
-
-   $self->add_menu_back( $c ) if ($self->can( 'add_menu_back' ));
 
    # Must return false for auto
    return 0;
@@ -291,11 +293,12 @@ sub load_stash_from_user {
    if ($c->user) {
       if ($s->{elapsed} < $s->{expires}) {
          $c->session->{elapsed} = $now;
-         $s->{user     } = $c->user->username;
-         $s->{name     } = $c->user->first_name.$SPC.$c->user->last_name;
-         $s->{firstName} = $c->user->first_name;
-         $s->{lastName } = $c->user->last_name;
-         $s->{roles    } = $c->user->roles;
+         $s->{user      } = $c->user->username;
+         $s->{name      } = $c->user->first_name.$SPC.$c->user->last_name;
+         $s->{user_email} = $c->user->email_address;
+         $s->{firstName } = $c->user->first_name;
+         $s->{lastName  } = $c->user->last_name;
+         $s->{roles     } = $c->user->roles;
       }
       else {
          my $msg = (ucfirst ref $self).': Session expired for user ';
@@ -307,11 +310,12 @@ sub load_stash_from_user {
    }
 
    unless ($s->{user}) {
-      $s->{user     } = q(unknown);
-      $s->{name     } = $NUL;
-      $s->{firstName} = $NUL;
-      $s->{lastName } = $NUL;
-      $s->{roles    } = [];
+      $s->{user      } = q(unknown);
+      $s->{user_email} = $NUL;
+      $s->{name      } = $NUL;
+      $s->{firstName } = $NUL;
+      $s->{lastName  } = $NUL;
+      $s->{roles     } = [];
    }
 
    # Anyone in the administrators role gets access to all levels and rooms
@@ -497,7 +501,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 440 $
 
 =head1 Synopsis
 

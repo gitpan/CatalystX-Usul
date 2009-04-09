@@ -1,6 +1,6 @@
 package CatalystX::Usul::Model::Help;
 
-# @(#)$Id: Help.pm 428 2009-04-05 17:44:30Z pjf $
+# @(#)$Id: Help.pm 440 2009-04-09 20:17:47Z pjf $
 
 use strict;
 use warnings;
@@ -10,7 +10,7 @@ use Class::C3;
 use File::Spec;
 use Pod::Html;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 428 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 my $NUL  = q();
 my $SEP  = q(/);
@@ -47,6 +47,7 @@ sub feedback_form {
    $subject ||= $self->loc( $form.q(.subject), $self->name, join $SEP, @rest );
    ($s->{html_subject} = $subject) =~ s{ \s+ }{&nbsp;}gmx;
 
+   $self->add_header;
    $self->clear_form(  { firstfld => $form.q(.body),
                          title    => $self->loc( $form.q(.title) ) } );
    $self->add_field(   { id       => $form.q(.body) } );
@@ -62,7 +63,7 @@ sub feedback_send {
    my $args    = { attributes  => { charset      => $s->{encoding},
                                     content_type => q(text/html) },
                    body        => $self->query_value( q(body) ) || $NUL,
-                   from        => $s->{user}.q(@).$s->{host},
+                   from        => $s->{user_email},
                    mailer      => $s->{mailer},
                    mailer_host => $s->{mailer_host},
                    subject     => $subject,
@@ -92,15 +93,16 @@ sub get_help {
    if ($e = $self->catch) { $self->add_error( $e ) }
    else { $self->stash_content( $page, q(sdata) ) }
 
-   $self->context->stash( is_popup => q(true) );
    return;
 }
 
 sub module_docs {
-   my ($self, $module) = @_; my $s = $self->context->stash; my $e;
+   my ($self, $module) = @_; my $c = $self->context; my $s = $c->stash; my $e;
 
-   $s->{menus}->[0]->{selected}  = 2;
-   $s->{menus}->[2]->{href    } .= $SEP.$module;
+   my $model = $c->model( q(Navigation) );
+
+   $model->select_this( 0, 2 );
+   $model->append_to_selected( 0, $SEP.$module );
 
    my $title = $self->loc( q(helpTitle), $module );
 
@@ -222,7 +224,7 @@ CatalystX::Usul::Model::Help - Create HTML from POD
 
 =head1 Version
 
-0.1.$Revision: 428 $
+0.1.$Revision: 440 $
 
 =head1 Synopsis
 

@@ -1,13 +1,13 @@
 package CatalystX::Usul::Controller::Entrance;
 
-# @(#)$Id: Entrance.pm 431 2009-04-07 00:27:52Z pjf $
+# @(#)$Id: Entrance.pm 440 2009-04-09 20:17:47Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul::Controller);
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 431 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( docs_uri       => q(/html/index.html),
                      realm_class    => q(IdentityUnix),
@@ -18,11 +18,11 @@ __PACKAGE__->mk_accessors( qw(docs_uri realm_class register_class) );
 my $SEP = q(/);
 
 sub activate_account : Chained(register_base) Args(1) Public {
-   my ($self, $c, $key) = @_; my $e;
+   my ($self, $c, $key) = @_; my $model = $c->model( q(Navigation) );
 
+   $model->clear_menu;
+   $model->add_menu_blank;
    $c->stash->{register_model}->activate_account( $key );
-   $c->model( q(Base) )->clear_menu;
-   $c->model( q(Navigation) )->add_menu_blank;
    return;
 }
 
@@ -222,7 +222,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 431 $
+$Revision: 440 $
 
 =head1 Synopsis
 

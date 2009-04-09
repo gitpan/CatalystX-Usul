@@ -54,7 +54,7 @@ WriteMakefile
                            'File::Temp' => '0.2',
                            'Getopt::Mixed' => '1.008',
                            'HTML::Accessors' => '0.1.3',
-                           'HTML::FormWidgets' => '0.3.126',
+                           'HTML::FormWidgets' => '0.4.156',
                            'HTTP::Headers::Util' => '1.13',
                            'Hash::Merge' => '0.08',
                            'IO::Dir' => '1.06',

@@ -1,5 +1,9 @@
 Revision history for CatalystX::Usul
 
+0.1.443  09/04/2009
+         - Navigation model now uses the menu subclass from
+         HTML::FormWidgets
+
 0.1.437  07/04/2009
          - Added more tests
 

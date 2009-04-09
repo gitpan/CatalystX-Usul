@@ -1,6 +1,6 @@
 package CatalystX::Usul::View::HTML;
 
-# @(#)$Id: HTML.pm 403 2009-03-28 04:09:04Z pjf $
+# @(#)$Id: HTML.pm 440 2009-04-09 20:17:47Z pjf $
 
 use strict;
 use warnings;
@@ -11,7 +11,7 @@ use English qw(-no_match_vars);
 use File::Find;
 use Template::Stash;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( CATALYST_VAR       => q(c),
                      COMPILE_EXT        => q(.ttc),
@@ -21,7 +21,7 @@ __PACKAGE__->config( CATALYST_VAR       => q(c),
                      default_template   => q(layout),
                      form_sources       =>
                         [ qw(append bbar footer header hidden
-                             menus quick_links sdata tools) ],
+                             menus quick_links sdata) ],
                      jscript            => q(behaviour),
                      jscript_path       => q(static/jscript),
                      target             => q(top),
@@ -260,7 +260,7 @@ CatalystX::Usul::View::HTML - Render a page of HTML or XHTML
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 440 $
 
 =head1 Synopsis
 

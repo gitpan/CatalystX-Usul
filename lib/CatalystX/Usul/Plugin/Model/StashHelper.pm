@@ -1,6 +1,6 @@
 package CatalystX::Usul::Plugin::Model::StashHelper;
 
-# @(#)$Id: StashHelper.pm 406 2009-03-30 01:53:50Z pjf $
+# @(#)$Id: StashHelper.pm 443 2009-04-09 21:57:57Z pjf $
 
 use strict;
 use warnings;
@@ -9,7 +9,7 @@ use Data::Pageset;
 use Lingua::Flags;
 use Time::Elapsed qw(elapsed);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 406 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 443 $ =~ /\d+/gmx );
 
 my $DOTS = chr 8230;
 my $NUL  = q();
@@ -308,8 +308,8 @@ sub clear_hidden {
    my ($self, $args) = @_; $self->_clear_by_id( q(hidden), $args ); return;
 }
 
-sub clear_menu {
-   my $self = shift; $self->context->stash( menus => [] ); return;
+sub clear_menus {
+   my $self = shift; $self->_clear_by_id( q(menus) ); return;
 }
 
 sub clear_quick_links {
@@ -329,10 +329,6 @@ sub clear_sidebar {
    my $self = shift; $self->context->stash( sidebar => 0 ); return;
 }
 
-sub clear_tools {
-   my $self = shift; $self->context->stash( tools => 0 ); return;
-}
-
 # Curried stash content methods
 
 sub add_buttons {
@@ -346,44 +342,44 @@ sub add_buttons {
 }
 
 sub add_chooser {
-   my ($self, $args) = @_; my ($item, @items, $jscript, $param, $tip);
+   my ($self, $args) = @_; my ($jscript, $param);
 
-   my $s      = $self->context->stash;
    my $attr   = $args->{attr};
-   my $fld    = $args->{field};
+   my $field  = $args->{field};
    my $form   = $args->{form};
    my $method = $args->{method};
    my $val    = $args->{value};
    my $w_fld  = $args->{where_fld};
    my $w_val  = $args->{where_val};
 
-   delete $s->{token};
-   $s->{logo    } = $NUL;
-   $s->{is_popup} = q(true); # Stop JS from caching window size
-   $s->{title   } = ucfirst $args->{title};
-   $s->{header  } = { subtitle => $NUL, title => $s->{title} };
-
    $param->{ $w_fld } = $w_val if ($w_fld);
-   $param->{ $fld   } = { like => $val ? $val : q(%) };
-   @items             = $self->$method( $param );
+   $param->{ $field } = { like => $val ? $val : q(%) };
+
+   my @items  = $self->$method( $param );
 
    unless ($items[0]) {
-      $self->add_field( { text => 'Nothing selected', type => q(label) } );
+      $self->add_field( { text => $self->loc( 'Nothing selected' ),
+                          type => q(label) } );
       return;
    }
 
-   for $item (@items) {
+   for my $item (@items) {
       $jscript  = "behaviour.submit.returnValue('";
-      $jscript .= "${form}', '${fld}', '".$item->$attr()."') ";
+      $jscript .= "${form}', '${field}', '".$item->$attr()."') ";
       $self->add_field( { class   => $args->{class},
                           clear   => q(left),
                           href    => '#top',
                           onclick => $jscript,
                           text    => $item->$attr(),
-                          tip     => 'Click to select',
+                          tip     => $self->loc( 'Click to select' ),
                           type    => q(anchor) } );
    }
 
+   my $s = $self->context->stash;
+
+   $s->{is_popup} = q(true); # Stop JS from caching window size
+   $s->{header  }->{title} = $self->loc( 'Select Item' );
+   delete $s->{token};
    return;
 }
 
@@ -634,10 +630,9 @@ sub clear_controls {
    my $self = shift;
 
    $self->clear_footer;
-   $self->clear_menu;
+   $self->clear_menus;
    $self->clear_quick_links;
    $self->clear_sidebar;
-   $self->clear_tools;
    return;
 }
 
@@ -752,7 +747,7 @@ CatalystX::Usul::Plugin::Model::StashHelper - Convenience methods for stuffing t
 
 =head1 Version
 
-0.1.$Revision: 406 $
+0.1.$Revision: 443 $
 
 =head1 Synopsis
 
@@ -874,9 +869,9 @@ first use
 
 Clears the hidden fields from the form
 
-=head2 clear_menu
+=head2 clear_menus
 
-Clears the stash of the main navigation menu data
+Clears the stash of the main navigation and tools menu data
 
 =head2 clear_quick_links
 
@@ -889,10 +884,6 @@ Clears the stash of messages from the output of actions
 =head2 clear_sidebar
 
 Clears the stash of the data used by the sidebar accordion widget
-
-=head2 clear_tools
-
-Clears the stash of the data used to create the tools menu
 
 =head2 _footer_line
 

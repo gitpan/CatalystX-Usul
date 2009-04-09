@@ -1,48 +1,45 @@
 package CatalystX::Usul::Controller::Root;
 
-# @(#)$Id: Root.pm 402 2009-03-28 03:09:07Z pjf $
+# @(#)$Id: Root.pm 440 2009-04-09 20:17:47Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul::Controller);
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 my $SEP = q(/);
 
 sub about : Chained(lang) Args(0) Public {
    # Display license and authorship information
-   my ($self, $c) = @_; my $e;
+   my ($self, $c) = @_;
 
-   eval { $c->model( q(Base) )->simple_page( q(about) ) };
+   my $model = $c->model( q(Base) );
 
-   return $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
+   $model->add_header;
+   $model->simple_page( q(about) );
    $self->set_popup( $c );
    return;
 }
 
 sub access_denied : Chained(lang) Args Public {
    # The auto method has decided not to allow access to the requested room
-   my ($self, $c, $ns, $name) = @_; my $s = $c->stash; my $e;
+   my ($self, $c, $ns, $name) = @_; my $s = $c->stash;
 
    unless ($s->{denied_level} = $ns and $s->{denied_room} = $name) {
       return $self->error_page( $c, q(eNoPath) );
    }
 
-   my $model = $c->model( q(Base) );
+   my $model = $c->model( q(Navigation) );
 
-   eval { $model->clear_controls; $model->simple_page( q(cracker) ) };
-
-   if ($e = $self->catch) {
-      return $self->error_page( $c, $e->as_string, $e->arg1 );
-   }
+   $model->clear_controls;
+   $model->add_menu_back;
+   $model->simple_page( q(cracker) );
 
    my $msg = 'Access denied to [_1] for [_2]';
 
    $self->log_warn( $self->loc( $msg, $ns.$SEP.$name, $s->{user} ) );
-   $self->add_menu_back( $c );
    $c->res->status( 403 );
    return 0;
 }
@@ -52,22 +49,17 @@ sub app_closed : Chained(lang) Args HasActions {
    my ($self, $c) = @_;
    my $s          = $c->stash;
    my $form       = $s->{form}->{name};
-   my $model      = $c->model( q(Base) );
-   my $e;
+   my $model      = $c->model( q(Navigation) );
 
-   eval {
-      $model->clear_controls;
-      $model->simple_page( $form );
-      $model->add_field(   { id => $form.q(.user)   } );
-      $model->add_field(   { id => $form.q(.passwd) } );
-      $model->add_hidden(  $form, 0 );
-      $model->add_buttons( q(Login) );
-   };
-
-   return $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
+   $model->clear_controls;
+   $model->add_menu_blank;
+   $model->simple_page( $form );
+   $model->add_field(   { id => $form.q(.user)   } );
+   $model->add_field(   { id => $form.q(.passwd) } );
+   $model->add_hidden(  $form, 0 );
+   $model->add_buttons( q(Login) );
 
    $s->{token} = $c->config->{token};
-   $self->add_menu_blank( $c );
    return 0;
 }
 
@@ -104,7 +96,11 @@ sub company : Chained(lang) Args(0) Public {
    # And now a short message from our sponsor
    my ($self, $c) = @_;
 
-   $c->model( q(Base) )->simple_page( q(company) ); $self->set_popup( $c );
+   my $model = $c->model( q(Base) );
+
+   $model->add_header;
+   $model->simple_page( q(company) );
+   $self->set_popup( $c );
    return;
 }
 
@@ -116,7 +112,8 @@ sub feedback : Chained(lang) Args HasActions {
    # Form to send an email to the site administrators
    my ($self, $c, @rest) = @_;
 
-   $c->model( q(Help) )->form( @rest ); $self->set_popup( $c );
+   $c->model( q(Help) )->form( @rest );
+   $self->set_popup( $c );
    return;
 }
 
@@ -190,16 +187,12 @@ sub room_closed : Chained(lang) Args Public {
       return $self->error_page( $c, q(eNoPath) );
    }
 
-   my $model = $c->model( q(Base) );
+   my $model = $c->model( q(Navigation) );
 
-   eval { $model->clear_controls; $model->simple_page( q(closed) ) };
-
-   return $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   my $msg = 'Action [_1]/[_2] closed';
-
-   $self->log_warn( $self->loc( $msg, $ns, $name ) );
-   $self->add_menu_back( $c );
+   $model->clear_controls;
+   $model->add_menu_back;
+   $model->simple_page( q(closed) );
+   $self->log_warn( $self->loc( 'Action [_1]/[_2] closed', $ns, $name ) );
    return;
 }
 
@@ -213,13 +206,16 @@ sub view_source : Chained(lang) Args Public {
 
    return $self->error_page( $c, q(eNoModuleName) ) unless ($module);
 
-   my $model = $c->model( q(FileSystem) ); $self->common( $c );
+   my $model = $c->model( q(Navigation) ); $self->common( $c );
 
-   eval { $model->clear_controls; $model->view_file( q(source), $module ) };
+   eval {
+      $model->clear_controls;
+      $model->add_menu_back;
+      $c->model( q(FileSystem) )->view_file( q(source), $module );
+   };
 
    $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
 
-   $self->add_menu_back( $c );
    return;
 }
 
@@ -235,7 +231,7 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-0.1$Revision: 402 $
+0.1$Revision: 440 $
 
 =head1 Synopsis
 

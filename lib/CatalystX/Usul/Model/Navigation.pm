@@ -1,13 +1,13 @@
 package CatalystX::Usul::Model::Navigation;
 
-# @(#)$Id: Navigation.pm 402 2009-03-28 03:09:07Z pjf $
+# @(#)$Id: Navigation.pm 443 2009-04-09 21:57:57Z pjf $
 
 use strict;
 use warnings;
 use parent qw(CatalystX::Usul::Model);
 use CatalystX::Usul::Table;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 443 $ =~ /\d+/gmx );
 
 my $DOTS = chr 8230;
 my $GT   = q(&gt;);
@@ -145,179 +145,22 @@ sub access_control_form {
    return;
 }
 
-sub add_main_menu {
-   my $self = shift;
+sub add_header {
+   my $self = shift; my $s = $self->context->stash;
 
-   my ($class, $content, $first, $i, $is_link, $is_ref, $item, $level, $menu);
-   my ($namespace, $path, $query, $room, $r_ord, @r_parts, $s_ord);
-   my (@s_parts, $selected, $text, $tip);
+   $self->next::method();
 
-   my $name    = q(menus);
-   my $c       = $self->context;
-   my $req     = $c->req;
-   my $s       = $c->stash;
-   my $menus   = $s->{ $name } = [];
-   my $myname  = $c->action->name;
-   my $myspace = $c->action->namespace;
-   my $base    = $self->uri_for( $myspace, $s->{lang} ) || $NUL;
-   my $title   = $self->loc( q(navigationTitle) );
-
-   $self->push_menu_item( $name, 0, {
-      class     => q(menuTitleFade),
-      container => 0,
-      href      => $base,
-      text      => ucfirst $myspace,
-      tip       => $NUL,
-      type      => q(anchor),
-      widget    => 1 }, { namespace => $myspace } );
-
-   unless ($selected = $s->{form}->{action}) { $selected = $myname }
-   else { $selected =~ s{ \A $base $SEP }{}mx }
-
-   $s->{menusSep} = $GT;
-   $s->{menuPath} = $myname ? $selected : $NUL; # Used by releases model
-   $s_ord    = () = $selected =~ m{ $SEP }gmx;
-   @s_parts  = split m{ $SEP }mx, $selected;
-
-   # TODO: This seem to work better than blindly preserving the query. Need to
-   # work out condition for retaining query
-   #$query    = q(?);
-   #for (keys %{ $req->query_parameters }) {
-   #   $query .= q(&) if ($query !~ m{ \? \z }msx);
-   #   $query .= $_.q(=).($req->query_parameters->{ $_ } || $NUL);
-   #}
-   #$query = $NUL if ($query eq q(?));
-   $query = $NUL;
-
-   while (($namespace, $level) = each %{ $s->{levels} }) {
-      next unless ($level and not $level->{state});
-      next unless ($self->allowed( q(levels), $namespace ));
-
-      if ($namespace eq $myspace) {
-         # This is the currently selected controller on the navigation tool
-         $content         = $menus->[0]->{items}->[0]->{content};
-         $content->{text} = $level->{text} || ucfirst $namespace;
-         $content->{tip } = $title.$TTS.($level->{tip} || $NUL);
-      }
-      else {
-         # Just another registered controller
-         $self->push_menu_item( $name, 0, {
-            class     => q(menuLinkFade),
-            container => 0,
-            href      => $self->uri_for( $namespace, $s->{lang} ),
-            text      => $level->{text} || ucfirst $namespace,
-            tip       => $title.$TTS.($level->{tip} || $NUL),
-            type      => q(anchor),
-            widget    => 1 }, { namespace => $namespace } );
-      }
-   }
-
-   while (($name, $room) = each %{ $s->{rooms} }) {
-      next unless ($room and not $room->{state});
-      next unless ($self->allowed( q(rooms), $name ));
-
-      if ($path = $self->uri_for( $myspace.$SEP.$name, $s->{lang} )) {
-         $path =~ s{ \A $base $SEP }{}mx;
-      }
-      else { $path = $name };
-
-      $text    = $room->{text} || ucfirst $name;
-      $tip     = $room->{tip } || $NUL;
-      $r_ord   = () = $path =~ m{ $SEP }gmx;
-      $is_ref  = 0;
-      $is_link = 0;
-
-   TRY: {
-      if ($path eq $selected) {
-         $menus->[0]->{selected} = $s_ord + 1;
-         $is_ref = 1;
-         last TRY;
-      }
-
-      if ($r_ord < $s_ord) {
-         if ($path.$SEP eq (substr $selected, 0, length $path).$SEP) {
-            $is_ref = 1;
-            last TRY;
-         }
-
-         if ($r_ord == 0) { $is_link = 1; last TRY }
-
-         @r_parts = split m{ $SEP }mx, $path;
-         $is_link = 1;
-
-         for $i (0 .. $r_ord - 1) {
-            $is_link = 0 if ($r_parts[ $i ] ne $s_parts[ $i ]);
-         }
-
-         last TRY;
-      }
-
-      if ($r_ord > $s_ord) {
-         if ($r_ord == $s_ord + 1
-             && (substr $path, 0, length $selected) eq $selected) {
-            $is_ref = 1;
-         }
-
-         last TRY;
-      }
-
-      if ($r_ord == 0) { $is_link = 1; last TRY }
-
-      @r_parts = split m{ $SEP }mx, $path;
-      $is_link = 1;
-
-      for $i (0 .. $r_ord - 1) {
-         $is_link = 0 if ($r_parts[ $i ] ne $s_parts[ $i ]);
-      }
-      }  # TRY
-
-      if (($is_ref || $is_link) && !defined $menus->[ $r_ord + 1 ]) {
-         $menus->[ $r_ord + 1 ] = { items => [] };
-      }
-
-      if ($menu = $menus->[ $r_ord + 1 ]) {
-         $class = $is_ref && $r_ord == $s_ord ? q(menuSelectedFade)
-                : $is_ref                     ? q(menuTitleFade)
-                                              : q(menuLinkFade);
-         $item  = { namespace => $myspace,
-                    content   => { class     => $class,
-                                   container => 0,
-                                   href      => $base.$SEP.$path.$query,
-                                   text      => $text,
-                                   tip       => $title.$TTS.$tip,
-                                   type      => q(anchor),
-                                   widget    => 1 } };
-
-         if ($is_ref) {
-            if ($menu->{items}->[ 0 ]) {
-               $menu->{items}->[ 0 ]->{content}->{class} = q(menuLinkFade);
-            }
-
-            unshift @{ $menu->{items} }, $item;
-         }
-         elsif ($is_link) { push @{ $menu->{items} }, $item }
-      }
-   }
-
-   for $menu (@{ $menus }) {
-      if ($menu->{items}->[0]) {
-         $first = shift @{ $menu->{items} };
-
-         @{ $menu->{items} } =
-            sort { lc $a->{content}->{text} cmp lc $b->{content}->{text} }
-            @{ $menu->{items} };
-
-         unshift @{ $menu->{items} }, $first;
-      }
-   }
-
+   $self->stash_content( $self->get_main_menu,  q(menus) );
+   $self->stash_content( $self->get_tools_menu, q(menus) );
+   $self->add_quick_links;
    return;
 }
 
 sub add_menu_back {
    # Add a browser back link to the navigation menu
-   my ($self, $args, $name, $ord) = @_;
+   my ($self, $args) = @_; $args ||= {};
 
+   my $menu    = [];
    my $title   = $self->loc( q(navigationTitle) );
    my $tip     = $self->loc( 'Go back to the previous page' );
    my $content = { class     => q(menuTitleFade),
@@ -329,14 +172,17 @@ sub add_menu_back {
                    type      => q(anchor),
                    widget    => 1 };
 
-   $self->push_menu_item( $name || q(menus), $ord || 0, $content );
+   $self->push_menu_item( $menu, 0, $content );
+   $content = { data => $menu, id => q(menu), type => q(menu), widget => 1 };
+   $self->stash_content( $content,  q(menus) );
    return;
 }
 
 sub add_menu_blank {
    # Stash some padding to fill the gap where the nav. menu was
-   my ($self, $args, $name, $ord) = @_;
+   my ($self, $args) = @_; $args ||= {};
 
+   my $menu    = [];
    my $content = { class     => q(menuTitleFade),
                    container => 0,
                    href      => '#top',
@@ -344,14 +190,17 @@ sub add_menu_blank {
                    type      => q(anchor),
                    widget    => 1 };
 
-   $self->push_menu_item( $name || q(menus), $ord || 0, $content );
+   $self->push_menu_item( $menu, 0, $content );
+   $content = { data => $menu, id => q(menu), type => q(menu), widget => 1 };
+   $self->stash_content( $content,  q(menus) );
    return;
 }
 
 sub add_menu_close {
    # Add a close window link to the navigation menu
-   my ($self, $args, $name, $ord) = @_; $args ||= {};
+   my ($self, $args) = @_; $args ||= {};
 
+   my $menu    = [];
    my $title   = $self->loc( q(navigationTitle) );
    my $onclick = $args->{onclick} || 'window.close()';
    my $tip     = $self->loc( $args->{tip} || 'Close this window' );
@@ -364,7 +213,9 @@ sub add_menu_close {
                    type      => q(anchor),
                    widget    => 1 };
 
-   $self->push_menu_item( $name || q(menus), $ord || 0, $content );
+   $self->push_menu_item( $menu, 0, $content );
+   $content = { data => $menu, id => q(menu), type => q(menu), widget => 1 };
+   $self->stash_content( $content,  q(menus) );
    return;
 }
 
@@ -408,18 +259,207 @@ sub add_quick_links {
    return;
 }
 
-sub add_tools_menu {
+sub allowed {
+   # Negate the logic of the access_check method
+   my ($self, @rest) = @_; return !$self->access_check( @rest );
+}
+
+sub append_to_selected {
+   my ($self, $mitem, $args) = @_; my $s = $self->context->stash;
+
+   my $menu = $s->{menus}->{items}->[ $mitem ]->{content}->{data};
+   my $ord  = $menu->[ 0 ]->{selected};
+
+   $menu->[ $ord ]->{items}->[ 0 ]->{content}->{href} .= $args;
+   return;
+}
+
+sub get_main_menu {
+   my $self = shift;
+
+   my ($class, $content, $first, $i, $is_link, $is_ref, $item, $level, $menu);
+   my ($name, $namespace, $path, $query, $room, $r_ord, @r_parts, $s_ord);
+   my (@s_parts, $selected, $text, $tip);
+
+   my $c       = $self->context;
+   my $req     = $c->req;
+   my $s       = $c->stash;
+   my $myname  = $c->action->name;
+   my $myspace = $c->action->namespace;
+   my $base    = $self->uri_for( $myspace, $s->{lang} ) || $NUL;
+   my $title   = $self->loc( q(navigationTitle) );
+   my @menus   = ();
+
+   $self->push_menu_item( \@menus, 0, {
+      class     => q(menuTitleFade),
+      container => 0,
+      href      => $base,
+      text      => ucfirst $myspace,
+      tip       => $NUL,
+      type      => q(anchor),
+      widget    => 1 }, { namespace => $myspace } );
+
+   unless ($selected = $s->{form}->{action}) { $selected = $myname }
+   else { $selected =~ s{ \A $base $SEP }{}mx }
+
+   $s->{menuPath} = $myname ? $selected : $NUL; # Used by releases model
+   $s_ord    = () = $selected =~ m{ $SEP }gmx;
+   @s_parts  = split m{ $SEP }mx, $selected;
+
+   # TODO: This seem to work better than blindly preserving the query. Need to
+   # work out condition for retaining query
+   #$query    = q(?);
+   #for (keys %{ $req->query_parameters }) {
+   #   $query .= q(&) if ($query !~ m{ \? \z }msx);
+   #   $query .= $_.q(=).($req->query_parameters->{ $_ } || $NUL);
+   #}
+   #$query = $NUL if ($query eq q(?));
+   $query = $NUL;
+
+   while (($namespace, $level) = each %{ $s->{levels} }) {
+      next unless ($level and not $level->{state});
+      next unless ($self->allowed( q(levels), $namespace ));
+
+      if ($namespace eq $myspace) {
+         # This is the currently selected controller on the navigation tool
+         $content         = $menus[ 0 ]->{items}->[ 0 ]->{content};
+         $content->{text} = $level->{text} || ucfirst $namespace;
+         $content->{tip } = $title.$TTS.($level->{tip} || $NUL);
+      }
+      else {
+         # Just another registered controller
+         $self->push_menu_item( \@menus, 0, {
+            class     => q(menuLinkFade),
+            container => 0,
+            href      => $self->uri_for( $namespace, $s->{lang} ),
+            text      => $level->{text} || ucfirst $namespace,
+            tip       => $title.$TTS.($level->{tip} || $NUL),
+            type      => q(anchor),
+            widget    => 1 }, { namespace => $namespace } );
+      }
+   }
+
+   while (($name, $room) = each %{ $s->{rooms} }) {
+      next unless ($room and not $room->{state});
+      next unless ($self->allowed( q(rooms), $name ));
+
+      if ($path = $self->uri_for( $myspace.$SEP.$name, $s->{lang} )) {
+         $path =~ s{ \A $base $SEP }{}mx;
+      }
+      else { $path = $name };
+
+      $text    = $room->{text} || ucfirst $name;
+      $tip     = $room->{tip } || $NUL;
+      $r_ord   = () = $path =~ m{ $SEP }gmx;
+      $is_ref  = 0;
+      $is_link = 0;
+
+   TRY: {
+      if ($path eq $selected) {
+         $menus[ 0 ]->{selected} = $s_ord + 1;
+         $is_ref = 1;
+         last TRY;
+      }
+
+      if ($r_ord < $s_ord) {
+         if ($path.$SEP eq (substr $selected, 0, length $path).$SEP) {
+            $is_ref = 1;
+            last TRY;
+         }
+
+         if ($r_ord == 0) { $is_link = 1; last TRY }
+
+         @r_parts = split m{ $SEP }mx, $path;
+         $is_link = 1;
+
+         for $i (0 .. $r_ord - 1) {
+            $is_link = 0 if ($r_parts[ $i ] ne $s_parts[ $i ]);
+         }
+
+         last TRY;
+      }
+
+      if ($r_ord > $s_ord) {
+         if ($r_ord == $s_ord + 1
+             && (substr $path, 0, length $selected) eq $selected) {
+            $is_ref = 1;
+         }
+
+         last TRY;
+      }
+
+      if ($r_ord == 0) { $is_link = 1; last TRY }
+
+      @r_parts = split m{ $SEP }mx, $path;
+      $is_link = 1;
+
+      for $i (0 .. $r_ord - 1) {
+         $is_link = 0 if ($r_parts[ $i ] ne $s_parts[ $i ]);
+      }
+      }  # TRY
+
+      if (($is_ref || $is_link) && !defined $menus[ $r_ord + 1 ]) {
+         $menus[ $r_ord + 1 ] = { items => [] };
+      }
+
+      if ($menu = $menus[ $r_ord + 1 ]) {
+         $class = $is_ref && $r_ord == $s_ord ? q(menuSelectedFade)
+                : $is_ref                     ? q(menuTitleFade)
+                                              : q(menuLinkFade);
+         $item  = { namespace => $myspace,
+                    content   => { class     => $class,
+                                   container => 0,
+                                   href      => $base.$SEP.$path.$query,
+                                   text      => $text,
+                                   tip       => $title.$TTS.$tip,
+                                   type      => q(anchor),
+                                   widget    => 1 } };
+
+         if ($is_ref) {
+            if ($menu->{items}->[ 0 ]) {
+               $menu->{items}->[ 0 ]->{content}->{class} = q(menuLinkFade);
+            }
+
+            unshift @{ $menu->{items} }, $item;
+         }
+         elsif ($is_link) { push @{ $menu->{items} }, $item }
+      }
+   }
+
+   for $menu (@menus) {
+      if ($menu->{items}->[ 0 ]) {
+         $first = shift @{ $menu->{items} };
+
+         @{ $menu->{items} } =
+            sort { lc $a->{content}->{text} cmp lc $b->{content}->{text} }
+            @{ $menu->{items} };
+
+         unshift @{ $menu->{items} }, $first;
+      }
+   }
+
+   $content = { data   => \@menus,
+                id     => q(menu),
+                select => 1,
+                spacer => $GT,
+                type   => q(menu),
+                widget => 1 };
+
+   return $content;
+}
+
+sub get_tools_menu {
    my $self    = shift; my ($alt, $jscript, $text);
    my $menu    = 0;
    my $item    = 0;
    my $name    = q(tools);
    my $c       = $self->context;
    my $s       = $c->stash;
-   my $tools   = $s->{ $name } = [];
    my $default = $c->config->{default_skin};
    my $title   = $self->loc( q(displayOptionsTip) );
+   my @tools   = ();
 
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(TitleFade),
       container => 0,
       fhelp     => 'Tools',
@@ -447,7 +487,7 @@ sub add_tools_menu {
          $jscript .= "'debug', '$alt', '$text')";
       }
 
-      $self->push_menu_item( $name, $menu, {
+      $self->push_menu_item( \@tools, $menu, {
          class     => $name.q(LinkFade),
          container => 0,
          href      => '#top',
@@ -473,7 +513,7 @@ sub add_tools_menu {
       $jscript .= "'footer', '$alt', '$text')";
    }
 
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(LinkFade),
       container => 0,
       href      => '#top',
@@ -487,7 +527,7 @@ sub add_tools_menu {
    # Select the default skin
    $jscript     = "behaviour.submit.refresh('skin', '${default}')";
 
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(LinkFade),
       container => 0,
       href      => '#top',
@@ -504,7 +544,7 @@ sub add_tools_menu {
       next if ($skin eq $default);
 
       $jscript = "behaviour.submit.refresh('skin', '${skin}')";
-      $self->push_menu_item( $name, $menu, {
+      $self->push_menu_item( \@tools, $menu, {
          class     => $name.q(LinkFade),
          container => 0,
          href      => '#top',
@@ -520,7 +560,7 @@ sub add_tools_menu {
 
    # Help options
    $title = $self->loc( q(helpOptionTip) );
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(TitleFade),
       container => 0,
       fhelp     => 'Help',
@@ -534,7 +574,7 @@ sub add_tools_menu {
       widget    => 1 } ); $item++;
 
    # Context senitive help page generated from pod in the controller
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(LinkFade),
       container => 0,
       href      => '#top',
@@ -548,7 +588,7 @@ sub add_tools_menu {
 
    # Display window with copyright and distribution information
    $text = $self->uri_for( q(root).$SEP.q(about), $s->{lang} );
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(LinkFade),
       container => 0,
       href      => '#top',
@@ -563,7 +603,7 @@ sub add_tools_menu {
    if ($s->{user} ne q(unknown)) {
       $text = $self->uri_for( q(root).$SEP.q(feedback), $s->{lang},
                               $c->action->namespace, $c->action->name );
-      $self->push_menu_item( $name, $menu, {
+      $self->push_menu_item( \@tools, $menu, {
          class     => $name.q(LinkFade),
          container => 0,
          href      => '#top',
@@ -581,7 +621,7 @@ sub add_tools_menu {
    $menu++; $item = 0;
 
    # Logout option drops current identity
-   $self->push_menu_item( $name, $menu, {
+   $self->push_menu_item( \@tools, $menu, {
       class     => $name.q(TitleFade),
       container => 0,
       fhelp     => 'Exit',
@@ -600,7 +640,7 @@ sub add_tools_menu {
    if ($s->{is_administrator}) {
       my $url   = $self->uri_for( q(root).$SEP.q(lock_display), $s->{lang} );
       my $data  = q(display=:0);
-      $self->push_menu_item( $name, $menu, {
+      $self->push_menu_item( \@tools, $menu, {
          class     => $name.q(TitleFade),
          container => 0,
          fhelp     => 'Lock',
@@ -615,24 +655,24 @@ sub add_tools_menu {
          widget    => 1 } ); $item++;
    }
 
-   $s->{toolsSep} = $NUL;
-   return;
-}
+   my $content = { data   => \@tools,
+                   id     => q(tools),
+                   select => 0,
+                   type   => q(menu),
+                   widget => 1 };
 
-sub allowed {
-   # Negate the logic of the access_check method
-   my ($self, @rest) = @_; return !$self->access_check( @rest );
+   return $content;
 }
 
 sub push_menu_item {
    # Add a link to the navigation menu
-   my ($self, $menu, $ord, $ref, $opts) = @_; my $s = $self->context->stash;
+   my ($self, $menu, $ord, $ref, $opts) = @_;
 
-   $s->{ $menu } ||= []; $ord ||= 0; $ref = $ref ? { content => $ref } : {};
+   $menu ||= []; $ord ||= 0; $ref = $ref ? { content => $ref } : {};
 
    if ($opts) { $ref->{ $_ } = $opts->{ $_ } for (keys %{ $opts }) }
 
-   push @{ $s->{ $menu }->[ $ord ]->{items} }, $ref;
+   push @{ $menu->[ $ord ]->{items} }, $ref;
    return;
 }
 
@@ -804,6 +844,23 @@ sub room_manager_form {
    return;
 }
 
+sub select_this {
+   my ($self, $mitem, $ord, $widget) = @_; my $s = $self->context->stash;
+
+   my $menu = $s->{menus}->{items}->[ $mitem ]->{content}->{data};
+
+   $menu->[ 0 ]->{selected} = $ord;
+
+   return unless ($widget);
+
+   $widget->{class    } ||= q(menuSelectedFade);
+   $widget->{container} ||= 0;
+   $widget->{type     } ||= q(anchor);
+   $widget->{widget   } ||= 1;
+   $self->unshift_menu_item( $menu, $ord, $widget );
+   return;
+}
+
 sub sitemap {
    my $self = shift; my $e;
 
@@ -813,6 +870,17 @@ sub sitemap {
 
    $self->clear_form( { heading => $self->loc( q(sitemapHeading) ) } );
    $self->add_field(  { data    => $data, type => q(table) } );
+   return;
+}
+
+sub unshift_menu_item {
+   my ($self, $menu, $ord, $ref, $opts) = @_;
+
+   $menu ||= []; $ord ||= 0; $ref = $ref ? { content => $ref } : {};
+
+   if ($opts) { $ref->{ $_ } = $opts->{ $_ } for (keys %{ $opts }) }
+
+   unshift @{ $menu->[ $ord ]->{items} }, $ref;
    return;
 }
 
@@ -838,7 +906,7 @@ CatalystX::Usul::Model::Navigation - Navigation links and access control
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 443 $
 
 =head1 Synopsis
 
@@ -870,7 +938,7 @@ level/room's ACL did not contain the value I<any> which would permit
 anonymous access. It returns 3 if the current user is explicitly
 denied access to the selected level/room
 
-This method is called from C</add_main_menu> (via the C</allowed>
+This method is called from C</get_main_menu> (via the C</allowed>
 method which negates the result) to determine which levels the current
 user has access to. It is also called by B</auto> to determine if
 access to the requested endpoint is permitted
@@ -885,29 +953,27 @@ the display logic to display content based on the users identity
 Stuffs the stash with the data for the form that controls access to
 levels and rooms
 
-=head2 add_main_menu
+=head2 add_header
 
-   $c->model( q(Navigation) )->add_main_menu;
+   $c->model( q(Navigation) )->add_header;
 
-Adds data to the stash to generate the main navigation menu. The menu uses
-a Cone Trees layout which has been flattened to produce a visual trail
-of breadcrumbs effect, i.e. Home > Reception > Tutorial
+Calls parent method. Adds main and tools menu data. Adds quick link data
 
 =head2 add_menu_back
 
-   $c->model( q(Navigation) )->add_menu_back( $args, $menu, $ord );
+   $c->model( q(Navigation) )->add_menu_back( $args );
 
 Adds a history back link to the main navigation menu
 
 =head2 add_menu_blank
 
-   $c->model( q(Navigation) )->add_menu_blank( $args, $menu, $ord );
+   $c->model( q(Navigation) )->add_menu_blank( $args );
 
 Adds some filler to the main navigation menu
 
 =head2 add_menu_close
 
-   $c->model( q(Navigation) )->add_menu_close( $args, $menu, $ord );
+   $c->model( q(Navigation) )->add_menu_close( $args );
 
 Adds a window close link to the main navigation menu
 
@@ -921,22 +987,37 @@ endpoint. They are identified in the configuration by adding a
 I<quick_link> attribute to the I<rooms> element. The I<quick_link>
 attribute value is an integer which determines the display order
 
-=head2 add_tools_menu
-
-   $c->model( q(Navigation) )->add_tools_menu;
-
-Adds the stash data for the tools menu. This contains a selection of
-utility options including: toggle runtime debugging, toggle footer,
-skin switching, context sensitive help, about popup, email feedback
-and logout option
-
 =head2 allowed
 
    $bool = $c->model( q(Navigation) )->allowed( @args );
 
 Negates the result returned by L</access_check>. Called from
-L</add_main_menu> to determine if a page is accessible to a user. If
+L</get_main_menu> to determine if a page is accessible to a user. If
 the user does not have access then do not display a link to it
+
+=head2 append_to_selected
+
+   $c->model( q(Navigation) )->append_to_selected( $menu_num, $string );
+
+Concats additional string onto the end of the currently selected menu
+item's href
+
+=head2 get_main_menu
+
+   $c->model( q(Navigation) )->get_main_menu;
+
+Adds data to the stash to generate the main navigation menu. The menu uses
+a Cone Trees layout which has been flattened to produce a visual trail
+of breadcrumbs effect, i.e. Home > Reception > Tutorial
+
+=head2 get_tools_menu
+
+   $c->model( q(Navigation) )->get_tools_menu;
+
+Adds the stash data for the tools menu. This contains a selection of
+utility options including: toggle runtime debugging, toggle footer,
+skin switching, context sensitive help, about popup, email feedback
+and logout option
 
 =head2 push_menu_item
 
@@ -958,11 +1039,23 @@ L<HTML::FormWidgets>
 Allows for editing of the level and room definition elements in the
 configuration files
 
+=head2 select_this
+
+   $c->model( q(Navigation) )->select_this( $menu_num, $order, $widget );
+
+Make the widget the selected menu item
+
 =head2 sitemap
 
    $c->model( q(Navigation) )->sitemap;
 
 Displays a table of all the pages on the site
+
+=head2 unshift_menu_item
+
+   $c->model( q(Navigation) )->unshift_menu_item( $name, $order, $widget );
+
+Unshift an anchor widget onto a menu structure
 
 =head1 Diagnostics
 

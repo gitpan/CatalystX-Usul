@@ -1,6 +1,6 @@
 ---
 name: CatalystX-Usul
-version: 0.1.437
+version: 0.1.443
 author:
   - 'Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>'
 abstract: A base class for Catalyst MVC components
@@ -52,7 +52,7 @@ requires:
   File::Temp: 0.2
   Getopt::Mixed: 1.008
   HTML::Accessors: 0.1.3
-  HTML::FormWidgets: 0.3.126
+  HTML::FormWidgets: 0.4.156
   HTTP::Headers::Util: 1.13
   Hash::Merge: 0.08
   IO::Dir: 1.06
@@ -100,7 +100,7 @@ recommends:
 provides:
   CatalystX::Usul:
     file: lib/CatalystX/Usul.pm
-    version: 0.1.437
+    version: 0.1.443
   CatalystX::Usul::Action:
     file: lib/CatalystX/Usul/Action.pm
     version: 0.1.435
@@ -115,7 +115,7 @@ provides:
     version: 0.1.402
   CatalystX::Usul::Controller:
     file: lib/CatalystX/Usul/Controller.pm
-    version: 0.1.402
+    version: 0.1.440
   CatalystX::Usul::Controller::Admin:
     file: lib/CatalystX/Usul/Controller/Admin.pm
     version: 0.1.402
@@ -142,10 +142,10 @@ provides:
     version: 0.1.406
   CatalystX::Usul::Controller::Entrance:
     file: lib/CatalystX/Usul/Controller/Entrance.pm
-    version: 0.1.431
+    version: 0.1.440
   CatalystX::Usul::Controller::Root:
     file: lib/CatalystX/Usul/Controller/Root.pm
-    version: 0.1.402
+    version: 0.1.440
   CatalystX::Usul::Encoding:
     file: lib/CatalystX/Usul/Encoding.pm
     version: 0.1.402
@@ -232,7 +232,7 @@ provides:
     version: 0.1.402
   CatalystX::Usul::Model::Help:
     file: lib/CatalystX/Usul/Model/Help.pm
-    version: 0.1.428
+    version: 0.1.440
   CatalystX::Usul::Model::Identity:
     file: lib/CatalystX/Usul/Model/Identity.pm
     version: 0.1.402
@@ -265,7 +265,7 @@ provides:
     version: 0.1.395
   CatalystX::Usul::Model::Navigation:
     file: lib/CatalystX/Usul/Model/Navigation.pm
-    version: 0.1.402
+    version: 0.1.443
   CatalystX::Usul::Model::Process:
     file: lib/CatalystX/Usul/Model/Process.pm
     version: 0.1.402
@@ -289,13 +289,13 @@ provides:
     version: 0.1.425
   CatalystX::Usul::Plugin::Controller::ModelHelper:
     file: lib/CatalystX/Usul/Plugin/Controller/ModelHelper.pm
-    version: 0.1.425
+    version: 0.1.440
   CatalystX::Usul::Plugin::Controller::TokenValidation:
     file: lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
     version: 0.1.436
   CatalystX::Usul::Plugin::Model::StashHelper:
     file: lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
-    version: 0.1.406
+    version: 0.1.443
   CatalystX::Usul::Process:
     file: lib/CatalystX/Usul/Process.pm
     version: 0.1.403
@@ -331,7 +331,7 @@ provides:
     version: 0.1.404
   CatalystX::Usul::View::HTML:
     file: lib/CatalystX/Usul/View/HTML.pm
-    version: 0.1.403
+    version: 0.1.440
   CatalystX::Usul::View::JSON:
     file: lib/CatalystX/Usul/View/JSON.pm
     version: 0.1.330
