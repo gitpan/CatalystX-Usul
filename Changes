@@ -1,5 +1,8 @@
 Revision history for CatalystX::Usul
 
+0.1.450  12/04/2009
+         - More CPAN testing crap
+
 0.1.443  09/04/2009
          - Navigation model now uses the menu subclass from
          HTML::FormWidgets

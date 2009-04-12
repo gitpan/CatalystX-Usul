@@ -85,6 +85,7 @@ Makefile.PL
 MANIFEST			This list of files
 META.yml
 README
+t/01always_pass.t
 t/02pod.t
 t/03podcoverage.t
 t/04critic.t

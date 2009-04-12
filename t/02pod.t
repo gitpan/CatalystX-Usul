@@ -1,10 +1,17 @@
-#!/usr/bin/perl
-
-# @(#)$Id: 02pod.t 334 2008-12-20 02:50:09Z pjf $
+# @(#)$Id: 02pod.t 447 2009-04-12 14:24:08Z pjf $
 
 use strict;
 use warnings;
+use File::Spec::Functions;
+use FindBin ();
+use lib catfile( $FindBin::Bin, updir, q(lib) );
 use Test::More;
+
+BEGIN {
+   if (!-e catfile( $FindBin::Bin, updir, q(MANIFEST.SKIP) )) {
+      plan skip_all => 'POD test only for developers';
+   }
+}
 
 eval { use Test::Pod 1.14; };
 

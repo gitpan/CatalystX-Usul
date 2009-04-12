@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# @(#)$Id: 12schema.t 433 2009-04-07 19:06:09Z pjf $
+# @(#)$Id: 12schema.t 446 2009-04-11 02:53:16Z pjf $
 
 use strict;
 use warnings;
@@ -10,11 +10,11 @@ use lib (catdir( $Bin, updir, q(lib) ));
 use Test::More;
 
 BEGIN {
-#   if ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
-#       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx
-#       || ($ENV{PERL5_CPANPLUS_IS_RUNNING} && $ENV{PERL5_CPAN_IS_RUNNING})) {
-#      plan skip_all => q(CPAN Testing stopped);
-#   }
+   if ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
+       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx
+       || ($ENV{PERL5_CPANPLUS_IS_RUNNING} && $ENV{PERL5_CPAN_IS_RUNNING})) {
+      plan skip_all => q(CPAN Testing stopped);
+   }
 
    plan tests => 3;
 }

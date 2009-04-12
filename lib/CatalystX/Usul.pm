@@ -1,6 +1,6 @@
 package CatalystX::Usul;
 
-# @(#)$Id: Usul.pm 443 2009-04-09 21:57:57Z pjf $
+# @(#)$Id: Usul.pm 450 2009-04-12 17:40:41Z pjf $
 
 use strict;
 use warnings;
@@ -12,7 +12,7 @@ use IPC::SRLock;
 use Module::Pluggable::Object;
 use Text::Markdown qw(markdown);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 443 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 450 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_accessors( qw(content_type debug encoding lock log
                               messages prefix redirect_to secret suid
@@ -234,7 +234,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-0.1.$Revision: 443 $
+0.1.$Revision: 450 $
 
 =head1 Synopsis
 
@@ -479,4 +479,3 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
 # mode: perl
 # tab-width: 3
 # End:
-

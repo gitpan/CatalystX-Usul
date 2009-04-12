@@ -1,6 +1,6 @@
 ---
 name: CatalystX-Usul
-version: 0.1.443
+version: 0.1.450
 author:
   - 'Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>'
 abstract: A base class for Catalyst MVC components
@@ -90,17 +90,14 @@ requires:
   version: 0.74
 build_requires:
   Exception::Class: 1.23
-  Test::Harness: 2.64
   Test::More: 0.74
-  Test::Pod: 1.14
-  Test::Pod::Coverage: 1.08
 recommends:
   Catalyst::Engine::HTTP::Prefork: 0.01
   Syntax::Highlight::Perl: 1
 provides:
   CatalystX::Usul:
     file: lib/CatalystX/Usul.pm
-    version: 0.1.443
+    version: 0.1.450
   CatalystX::Usul::Action:
     file: lib/CatalystX/Usul/Action.pm
     version: 0.1.435
