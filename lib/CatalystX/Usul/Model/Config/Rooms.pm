@@ -1,24 +1,24 @@
-package CatalystX::Usul::Model::Config::Rooms;
+# @(#)$Id: Rooms.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Rooms.pm 406 2009-03-30 01:53:50Z pjf $
+package CatalystX::Usul::Model::Config::Rooms;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
+
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 406 $ =~ /\d+/gmx );
-
 __PACKAGE__->config
-   ( create_msg_key    => q(createdRoom),
-     delete_msg_key    => q(deletedRoom),
+   ( create_msg_key    => 'Action [_1] / [_2] created',
+     delete_msg_key    => 'Action [_1] / [_2] deleted',
      keys_attr         => q(room),
      schema_attributes => {
         attributes     => [ qw(acl keywords quick_link state text tip) ],
         defaults       => { acl => [ q(any) ], state => 0, text => q() },
         element        => q(rooms),
         lang_dep       => { qw(keywords 1 text 1 tip 1) } },
-     update_msg_key    => q(updatedRoom), );
+     update_msg_key    => 'Action [_1] / [_2] updated', );
 
 __PACKAGE__->mk_accessors( qw(rooms) );
 
@@ -56,7 +56,7 @@ CatalystX::Usul::Model::Config::Rooms - Class definition for the room configurat
 
 =head1 Version
 
-0.1.$Revision: 406 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

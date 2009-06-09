@@ -1,50 +1,33 @@
-package CatalystX::Usul::Model::Identity;
+# @(#)$Id: Identity.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Identity.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Model::Identity;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
-use CatalystX::Usul::Model::MailAliases;
-use CatalystX::Usul::Model::UserProfiles;
+
+use CatalystX::Usul::Model::Roles;
+use CatalystX::Usul::Model::Users;
 use Class::C3;
 use Scalar::Util qw(weaken);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
-
-__PACKAGE__->mk_accessors( qw(aliases auth_comp profiles role_class
-                              roles shells user_class users
-                              _auth_realms _default_realm ) );
+__PACKAGE__->mk_accessors( qw(auth_comp role_class roles user_class
+                              users _auth_realms _default_realm ) );
 
 sub new {
    my ($self, $app, @rest) = @_;
 
    my $new = $self->next::method( $app, @rest );
 
-   my $auth_realms   = $new->auth_realms  ( $app, $new->auth_comp );
-   my $default_realm = $new->default_realm( $app, $new->auth_comp );
-
-   $new->aliases( CatalystX::Usul::Model::MailAliases->new( $app, @rest ) );
-
-   my $profile_class = q(CatalystX::Usul::Model::UserProfiles);
-
-   $new->profiles( $profile_class->new( $app, @rest ) );
-
-   my $role_class = __PACKAGE__.q(::).$new->role_class;
-
-   $new->ensure_class_loaded( $role_class                     );
-   $new->roles              ( $role_class->new( $app, @rest ) );
-   $new->roles->auth_realms ( $auth_realms                    );
-
-   my $user_class = __PACKAGE__.q(::).$new->user_class;
-
-   $new->ensure_class_loaded( $user_class                     );
-   $new->users              ( $user_class->new( $app, @rest ) );
-   $new->users->auth_realms ( $auth_realms                    );
-
-   $new->_init;
+   $new->auth_realms  ( $app, $new->auth_comp );
+   $new->default_realm( $app, $new->auth_comp );
 
    return $new;
+}
+
+sub aliases {
+   return shift->users->aliases;
 }
 
 sub auth_realms {
@@ -56,6 +39,7 @@ sub auth_realms {
    my $realms = $app->config->{ $component }->{realms};
    my %auths  = map   { $_ => $realms->{ $_ }->{store}->{model_class} }
                 keys %{ $realms };
+
    return $self->_auth_realms( \%auths );
 }
 
@@ -64,12 +48,24 @@ sub build_per_context_instance {
 
    my $new = $self->next::method( $c, @rest );
 
-   $new->aliases ( $new->aliases->build_per_context_instance ( $c, @rest ) );
-   $new->profiles( $new->profiles->build_per_context_instance( $c, @rest ) );
-   $new->roles   ( $new->roles->build_per_context_instance   ( $c, @rest ) );
-   $new->users   ( $new->users->build_per_context_instance   ( $c, @rest ) );
+   $new->roles( $c->model( $new->role_class ) );
+   $new->users( $c->model( $new->user_class ) );
 
-   $new->_init;
+   $new->roles->auth_realms( $new->auth_realms );
+   $new->users->auth_realms( $new->auth_realms );
+
+   $new->roles->users( $new->users ); weaken( $new->roles->{users} );
+   $new->users->roles( $new->roles ); weaken( $new->users->{roles} );
+
+   $new->roles->role_domain->user_domain( $new->users->user_domain );
+   $new->users->user_domain->role_domain( $new->roles->role_domain );
+
+   weaken( $new->roles->role_domain->{user_domain} );
+   weaken( $new->users->user_domain->{role_domain} );
+
+   $new->users->profiles->roles( $new->roles );
+
+   weaken( $new->users->profiles->{roles} );
 
    return $new;
 }
@@ -81,6 +77,7 @@ sub default_realm {
    return                       unless ($app and $component);
 
    $self->_default_realm( $app->config->{ $component }->{default_realm} );
+
    return $self->_default_realm;
 }
 
@@ -88,23 +85,8 @@ sub find_user {
    my ($self, @rest) = @_; return $self->users->find_user( @rest );
 }
 
-# Private methods
-
-sub _init {
-   my $self = shift;
-
-   $self->profiles->roles_model( $self->roles    );
-   $self->roles->users_obj     ( $self->users    );
-   $self->users->aliases_ref   ( $self->aliases  );
-   $self->users->profiles_ref  ( $self->profiles );
-   $self->users->roles_obj     ( $self->roles    );
-
-   weaken( $self->profiles->{roles_model} );
-   weaken( $self->roles->{users_obj}      );
-   weaken( $self->users->{aliases_ref}    );
-   weaken( $self->users->{profiles_ref}   );
-   weaken( $self->users->{roles_obj}      );
-   return;
+sub profiles {
+   return shift->users->profiles;
 }
 
 1;
@@ -119,7 +101,7 @@ CatalystX::Usul::Model::Identity - Identity model with multiple backend stores
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -143,6 +125,10 @@ and account activation
 Constructor creates instances of the subclasses. The I<roles> and I<users>
 subclasses a loaded at runtime since the backend store is a config option
 
+=head2 aliases
+
+Returns instance of I<MailAliases> class
+
 =head2 auth_realms
 
 Returns a hash ref whose keys are the realm names and whose values are
@@ -162,6 +148,10 @@ Returns the name of the default realm
 Calls and returns the value from the C<find_user> method on the I<users>
 subclass
 
+=head2 profiles
+
+Returns instance of I<UserProfiles> class
+
 =head1 Diagnostics
 
 None
@@ -178,7 +168,11 @@ None
 
 =item L<CatalystX::Usul::Model::MailAliases>
 
+=item L<CatalystX::Usul::Model::Roles>
+
 =item L<CatalystX::Usul::Model::UserProfiles>
+
+=item L<CatalystX::Usul::Model::Users>
 
 =item L<Scalar::Util>
 

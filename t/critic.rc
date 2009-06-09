@@ -37,6 +37,7 @@ allow = for if unless
 # Declare scope at start of subroutine
 [-Variables::RequireLexicalLoopIterators]
 [-ValuesAndExpressions::RequireInterpolationOfMetachars]
+[-CodeLayout::RequireTidyCode]
 
 # For all other Policies, I accept the default severity,
 # so no additional configuration is required for them.

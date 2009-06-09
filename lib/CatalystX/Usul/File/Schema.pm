@@ -1,49 +1,36 @@
-package CatalystX::Usul::File::Schema;
+# @(#)$Id: Schema.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Schema.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::Schema;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-use CatalystX::Usul::File::ResultSet;
+
 use CatalystX::Usul::File::Storage;
 use Class::C3;
 use Scalar::Util qw(weaken);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
-
 __PACKAGE__->config
-   ( attributes           => [],
-     defaults             => {},
-     element              => q(unknown),
-     resultset_attributes => {},
-     resultset_class      => q(CatalystX::Usul::File::ResultSet),
-     storage_class        => q(CatalystX::Usul::File::Storage), );
+   ( attributes    => [],
+     defaults      => {},
+     element       => q(unknown),
+     storage_class => q(CatalystX::Usul::File::Storage), );
 
 __PACKAGE__->mk_accessors( qw(attributes defaults element label_attr
-                              lang_dep resultset_attributes
-                              resultset_class source storage
-                              storage_class) );
+                              lang_dep source storage storage_class) );
 
 sub new {
    my ($self, $app, $attrs) = @_;
 
    my $new = $self->next::method( $app, $attrs );
 
+   weaken( $new->{source} );
+
    $attrs  = { %{ $attrs->{storage_attributes} || {} }, schema => $new };
    $new->storage( $new->storage_class->new( $app, $attrs ) );
 
-   weaken( $new->storage->{schema} );
    return $new;
-}
-
-sub resultset {
-   my $self  = shift;
-   my $attrs = { %{ $self->resultset_attributes }, schema => $self };
-   my $rs    = $self->resultset_class->new( $attrs );
-
-   weaken( $rs->{schema} );
-   return $rs;
 }
 
 1;
@@ -58,7 +45,7 @@ CatalystX::Usul::File::Schema - Base class for schema definitions
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -98,11 +85,6 @@ inherit from this
 
 Creates a new instance of the storage class which defaults to
 L<CatalystX::Usul::File::Storage>
-
-=head2 resultset
-
-Creates a new instance of the result set class which defaults to
-L<CatalystX::Usul::File::ResultSet>
 
 =head1 Diagnostics
 

@@ -1,13 +1,13 @@
-package CatalystX::Usul::File::Storage::XML::Simple;
+# @(#)$Id: Simple.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Simple.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::Storage::XML::Simple;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::File::Storage::XML);
-use XML::Simple;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use XML::Simple;
 
 # Private methods
 
@@ -28,7 +28,8 @@ sub _write_file {
    my ($self, $path, $data) = @_;
 
    unless (-f $path->pathname) {
-      $self->throw( error => q(eNotFound), arg1 => $path->pathname );
+      $self->throw( error => 'File [_1] not found',
+                    args  => [ $path->pathname ] );
    }
 
    my $method = sub {
@@ -55,7 +56,7 @@ CatalystX::Usul::File::Storage::XML::Simple - Read/write XML data storage model
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

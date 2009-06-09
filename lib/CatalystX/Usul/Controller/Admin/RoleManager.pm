@@ -1,18 +1,17 @@
-package CatalystX::Usul::Controller::Admin::RoleManager;
+# @(#)$Id: RoleManager.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: RoleManager.pm 401 2009-03-27 00:17:37Z pjf $
+package CatalystX::Usul::Controller::Admin::RoleManager;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 401 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( namespace => q(admin), realm_class => q(IdentityUnix) );
 
 __PACKAGE__->mk_accessors( qw(realm_class) );
 
-sub roles_base : Chained(common) PathPart('') CaptureArgs(0) {
+sub roles_base : Chained(common) PathPart(users) CaptureArgs(0) {
    my ($self, $c) = @_; my $s = $c->stash;
 
    my $model = $c->model( $self->realm_class );
@@ -75,7 +74,7 @@ CatalystX::Usul::Controller::Admin::RoleManager - Maintains role membership
 
 =head1 Version
 
-0.1.$Revision: 401 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

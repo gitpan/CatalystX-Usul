@@ -1,17 +1,17 @@
-package CatalystX::Usul::Model::Config::Levels;
+# @(#)$Id: Levels.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Levels.pm 401 2009-03-27 00:17:37Z pjf $
+package CatalystX::Usul::Model::Config::Levels;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
+
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 401 $ =~ /\d+/gmx );
-
 __PACKAGE__->config
-   ( create_msg_key    => q(createdLevel),
-     delete_msg_key    => q(deletedLevel),
+   ( create_msg_key    => 'Namespace [_2] created',
+     delete_msg_key    => 'Namespace [_2] deleted',
      file              => q(default),
      keys_attr         => q(level),
      schema_attributes => {
@@ -19,7 +19,7 @@ __PACKAGE__->config
         defaults       => { acl => [ q(any) ], state => 0, text => q() },
         element        => q(levels),
         lang_dep       => { qw(text 1 tip 1) }, },
-     update_msg_key    => q(updatedLevel), );
+     update_msg_key    => 'Namespace [_2] updated', );
 
 __PACKAGE__->mk_accessors( qw(file) );
 
@@ -58,7 +58,7 @@ CatalystX::Usul::Model::Config::Levels - Class definition for the levels configu
 
 =head1 Version
 
-0.1.$Revision: 401 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

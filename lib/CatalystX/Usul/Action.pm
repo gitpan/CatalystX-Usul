@@ -1,82 +1,86 @@
-package CatalystX::Usul::Action;
+# @(#)$Id: Action.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Action.pm 435 2009-04-07 19:54:06Z pjf $
+package CatalystX::Usul::Action;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Action);
-use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 435 $ =~ /\d+/gmx );
+use Class::C3;
 
 my $BRK = q(: );
 my $SEP = q(/);
 
 sub execute {
    # Action class for controllers that have buttons
-   my ($self, @rest) = @_; my ($action_path, $res, $text, $verb);
+   my ($self, @rest) = @_; my ($controller, $c) = @rest;
 
-   my ($controller, $c) = @rest; my $s = $c->stash;
+   my $s = $c->stash; my ($action_path, $res, $verb);
 
+   # Must have a verb in order to search for an action to forward to
    unless (defined $s->{verb} and $verb = $s->{verb} and $verb ne q(get)) {
       return $self->next::method( @rest );
    }
 
    return $self->_return_options( $c ) if ($verb eq q(options));
 
-   my @args = ($controller, $c, $verb);
-
    # Search for the action whose ActionFor attribute matches this verb
-   unless ($action_path = $self->_get_action_path( @args )) {
-      return $self->_not_implemented( @args )
+   unless ($action_path = $self->_get_action_path( @rest, $verb )) {
+      return $self->_not_implemented( @rest, $verb )
          ? $self->next::method( @rest ) : undef;
    }
 
    # Test the validity of the request token if we are using it
    if ($controller->can( q(validate_token) ) && __should_validate( $c )) {
       unless ($controller->validate_token( $c )) {
-         return $self->_invalid_token( @args )
+         return $self->_invalid_token( @rest, $verb )
             ? $self->next::method( @rest ) : undef;
       }
 
       $controller->remove_token( $c );
    }
 
-   if ($c->forward( $action_path )) {
-      # The action completed successfully. Log any result message
-      if ($res = $s->{result} and $res->{items}->[ 0 ]) {
-         my $leader = $action_path; $leader =~ s{ \A $SEP }{}mx;
-
-         for my $line (map { chomp; ucfirst $_ }
-                       map { $_->{content} } @{ $res->{items} }) {
-            $controller->log_info( (ucfirst $leader).$BRK.$line );
-         }
-      }
-
-      return $self->next::method( @rest );
+   # Forward to the selected action
+   unless ($c->forward( $action_path )) {
+      return $self->_error( @rest, $verb, $action_path )
+         ? $self->next::method( @rest ) : undef;
    }
 
-   # Handle the error
-   return $self->_error( @args, $action_path )
-      ? $self->next::method( @rest ) : undef;
+   # The action completed successfully. Log any result message
+   if ($res = $s->{result} and $res->{items}->[ 0 ]) {
+      my $leader = $action_path; $leader =~ s{ \A $SEP }{}mx;
+
+      for my $line (map { chomp; (ucfirst $leader).$BRK.(ucfirst $_) }
+                    map { $_->{content} } @{ $res->{items} }) {
+         $controller->log_info( $line );
+      }
+   }
+
+   return $self->next::method( @rest );
 }
 
 # Private methods
 
 sub _bad_request {
-   my ($self, @rest) = @_; my ($controller, $c, $verb) = @rest;
+   my ($self, $controller, $c, $verb, $action_path, $key, $args) = @_;
 
-   my $view = $c->view( $c->{current_view} ); my $msg = __loc( @rest );
+   unless ($args) {
+      if ($action_path) { $args = [ $action_path, $verb ] }
+      else { $args = [ $verb ] }
+   }
+
+   my $msg = $controller->loc( $c, $key, @{ $args } );
 
    $controller->log_error( (ucfirst $self->reverse).$BRK.(ucfirst $msg) );
 
-   return $view->bad_request( $c, $msg, $controller, $verb );
+   return $c->view( $c->{current_view} )->bad_request( $c, $verb, $msg );
 }
 
 sub _error {
-   my ($self, @rest) = @_; my ($e, $nm);
+   my ($self, @rest) = @_; my ($controller, $c) = @rest;
 
-   my (undef, $c) = @rest; my $s = $c->stash;
+   my $s = $c->stash; my $nm;
 
    # The stash override parameter triggers a call to FillInForm
    # in the HTML view which will preserve the contents of the form
@@ -87,18 +91,16 @@ sub _error {
    $c->error( [ $c->error ] ) unless (ref $c->error eq q(ARRAY));
 
    if ($c->error->[ 0 ]) {
-      for $e (@{ $c->error }) {
-         if (ref $e eq q(CatalystX::Usul::Exception)) {
+      for my $e (@{ $c->error }) {
+         if (ref $e eq $controller->exception_class) {
             $nm = $self->_bad_request( @rest,
                                        $e->as_string( $s->{debug} ? 2 : 1 ),
-                                       [ $e->arg1, $e->arg2 ] );
+                                       $e->args );
          }
          else { $nm = $self->_bad_request( @rest, $e ) }
       }
    }
-   else { # An unknown error occurred
-      $nm = $self->_bad_request( @rest, q(eUnknownForward) );
-   }
+   else { $nm = $self->_bad_request( @rest, 'Unknown error' ) }
 
    $c->clear_errors;
    return $nm;
@@ -143,19 +145,19 @@ sub _get_allowed_methods {
 sub _invalid_token {
    my ($self, @rest) = @_;
 
-   return $self->_bad_request( @rest, $self->reverse, q(eBadToken) );
+   return $self->_bad_request( @rest, $self->reverse, 'Invalid token' );
 }
 
 sub _not_implemented {
-   my ($self, @rest) = @_; my ($controller, $c, $verb) = @rest;
+   my ($self, $controller, $c, $verb) = @_;
 
-   my $msg  = __loc( @rest, $self->reverse, q(eNotImplemented) );
-   my $view = $c->view( $c->{current_view} );
-
-   $controller->log_error( (ucfirst $self->reverse).$BRK.(ucfirst $msg) );
    $c->res->header( 'Allow' => $self->_get_allowed_methods( $c ) );
 
-   return $view->not_implemented( $c, $msg, $controller, $verb );
+   my $msg = $controller->loc( $c, 'Not implemented', $self->reverse, $verb );
+
+   $controller->log_error( (ucfirst $self->reverse).$BRK.(ucfirst $msg) );
+
+   return $c->view( $c->{current_view} )->not_implemented( $c, $verb, $msg );
 }
 
 sub _return_options {
@@ -168,22 +170,6 @@ sub _return_options {
 }
 
 # Private subroutines
-
-sub __loc {
-   my ($controller, $c, $verb, $action_path, $key, $args) = @_;
-
-   unless ($args) {
-      if ($action_path) { $args = [ $action_path, $verb ] }
-      else { $args = [ $verb ] }
-   }
-
-   my $s = $c->stash;
-
-   $controller->content_type( $s->{content_type} );
-   $controller->messages( $s->{messages} );
-
-   return $controller->loc( $key, $args );
-}
 
 sub __should_validate {
    my $c = shift; my $method = lc $c->req->method;
@@ -205,7 +191,7 @@ CatalystX::Usul::Action - A generic action class
 
 =head1 Version
 
-0.1.$Revision: 435 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

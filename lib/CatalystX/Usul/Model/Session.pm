@@ -1,13 +1,13 @@
-package CatalystX::Usul::Model::Session;
+# @(#)$Id: Session.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Session.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Model::Session;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
-use CatalystX::Usul::Table;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use CatalystX::Usul::Table;
 
 sub list_sessions {
    my $self = shift; my $c = $self->context; my $s = $c->stash; my $e;
@@ -63,7 +63,7 @@ sub list_sessions {
 sub list_TTY_sessions {
    my $self = shift; my $s = $self->context->stash; my $e;
 
-   my $data = eval { $self->_list_TTY_sessions( $s->{user_model} ) };
+   my $data = eval { $self->_list_TTY_sessions( $s->{identity_model}->users )};
 
    $self->add_error( $e ) if ($e = $self->catch);
 
@@ -126,7 +126,7 @@ CatalystX::Usul::Model::Session - Current session information
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

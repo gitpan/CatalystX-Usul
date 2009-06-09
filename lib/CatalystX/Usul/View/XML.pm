@@ -1,14 +1,14 @@
-package CatalystX::Usul::View::XML;
+# @(#)$Id: XML.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: XML.pm 334 2008-12-20 02:50:09Z pjf $
+package CatalystX::Usul::View::XML;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::View);
+
 use Class::C3;
 use XML::Simple;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 334 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( deserialize_attrs => { ForceArray => 0 } );
 
@@ -38,7 +38,7 @@ CatalystX::Usul::View::XML - Render XML response to an XMLHttpRequest
 
 =head1 Version
 
-0.1.$Revision: 334 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

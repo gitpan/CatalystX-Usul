@@ -1,12 +1,11 @@
-package CatalystX::Usul::Shells;
+# @(#)$Id: Shells.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Shells.pm 367 2009-02-28 03:10:43Z pjf $
+package CatalystX::Usul::Shells;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 367 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( default => q(/bin/ksh), path => q(/etc/shells), );
 
@@ -40,7 +39,7 @@ CatalystX::Usul::Shells - Access the available shells list
 
 =head1 Version
 
-0.1.$Revision: 367 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

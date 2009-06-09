@@ -1,12 +1,11 @@
-package CatalystX::Usul::Controller::Admin::Locks;
+# @(#)$Id: Locks.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Locks.pm 395 2009-03-24 17:55:55Z pjf $
+package CatalystX::Usul::Controller::Admin::Locks;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 395 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( namespace => q(admin) );
 
@@ -28,7 +27,7 @@ sub lock_table_delete : ActionFor(lock_table.delete) {
    my $s = $c->stash; my $model = $c->model( q(Base) );
 
    unless ($nrows = $model->query_value( q(table_nrows) )) {
-      $self->throw( q(eNoLocks) );
+      $self->throw( 'Lock table empty' );
    }
 
    for $r_no (0 .. $nrows) {
@@ -54,7 +53,7 @@ CatalystX::Usul::Controller::Admin::Locks - Manipulate the lock table
 
 =head1 Version
 
-0.1.$Revision: 395 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

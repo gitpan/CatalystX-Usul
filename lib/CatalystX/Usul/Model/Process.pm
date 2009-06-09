@@ -1,13 +1,15 @@
-package CatalystX::Usul::Model::Process;
+# @(#)$Id: Process.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Process.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Model::Process;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use CatalystX::Usul::Process;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+my $NUL = q();
 
 __PACKAGE__->config( fs_class   => q(FileSystem),
                      user_class => q(IdentityUnix) );
@@ -15,16 +17,14 @@ __PACKAGE__->config( fs_class   => q(FileSystem),
 __PACKAGE__->mk_accessors( qw(fs_class fs_model processes user_class
                               user_model) );
 
-my $NUL = q();
-
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_;
 
    my $new = $self->next::method( $c, @rest );
 
-   $new->processes ( CatalystX::Usul::Process->new( $c )   );
-   $new->fs_model  ( $c->model( $self->fs_class )          );
-   $new->user_model( $c->model( $self->user_class )->users );
+   $new->processes ( CatalystX::Usul::Process->new( $c, {} ) );
+   $new->fs_model  ( $c->model( $self->fs_class )            );
+   $new->user_model( $c->model( $self->user_class )->users   );
 
    return $new;
 }
@@ -149,7 +149,7 @@ sub signal_process {
    my $self = shift; my $pids = []; my ($nrows, $pid);
 
    unless ($nrows = $self->query_value( q(table_nrows) )) {
-      $self->throw( q(eNoProcesses) );
+      $self->throw( 'No processes specified' );
    }
 
    for my $row (0 .. $nrows) {
@@ -158,7 +158,7 @@ sub signal_process {
       }
    }
 
-   $self->throw( q(eNoProcesses) ) unless ($pids->[0]);
+   $self->throw( 'No processes specified' ) unless ($pids->[0]);
 
    my $ref  = { Abort => q(ABRT), Kill => q(KILL), Terminate => q(TERM) };
    my $sig  = $ref->{ $self->context->stash->{_method} || q(Terminate) };
@@ -181,7 +181,7 @@ CatalystX::Usul::Model::Process - View and signal processes
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

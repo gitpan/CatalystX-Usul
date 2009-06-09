@@ -1,14 +1,14 @@
-#!/usr/bin/perl
-
-# @(#)$Id: 11utils.t 446 2009-04-11 02:53:16Z pjf $
+# @(#)$Id: 11utils.t 485 2009-05-21 22:49:51Z pjf $
 
 use strict;
 use warnings;
-use English qw(-no_match_vars);
-use Exception::Class ( q(TestException) => { fields => [ qw(arg1 arg2) ] } );
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 485 $ =~ /\d+/gmx );
 use File::Spec::Functions;
-use FindBin  qw( $Bin );
-use lib (catdir( $Bin, updir, q(lib) ));
+use FindBin qw( $Bin );
+use lib catdir( $Bin, updir, q(lib) );
+
+use Exception::Class ( q(TestException) => { fields => [ qw(arg1 arg2) ] } );
+use English qw( -no_match_vars );
 use Test::More;
 
 BEGIN {

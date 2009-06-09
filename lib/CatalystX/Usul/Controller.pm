@@ -1,17 +1,17 @@
-package CatalystX::Usul::Controller;
+# @(#)$Id: Controller.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Controller.pm 440 2009-04-09 20:17:47Z pjf $
+package CatalystX::Usul::Controller;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul Catalyst::Controller);
+
 use CatalystX::Usul::PersistentState;
 use Class::C3;
 use Config;
 use HTTP::Headers::Util qw(split_header_words);
 use List::Util qw(first);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_accessors( qw(namespace phase) );
 
@@ -107,9 +107,9 @@ sub auto {
    return 1 if (exists $c->action->attributes->{ q(Public) });
 
    # Must have an authentication page configured
-   $path = $cfg->{authenticate};
-
-   return $self->error_page( $c, q(eNoAuthenicatePage) ) unless ($path);
+   unless ($path = $cfg->{authenticate}) {
+      return $self->error_page( $c, 'Authentication page not specified' );
+   }
 
    my $model = $c->model( q(Navigation) );
 
@@ -118,7 +118,9 @@ sub auto {
 
    if ($rv == 1) {
       # Err on the side of caution and deny access if no access list is found
-      return $self->error_page( $c, q(eNoACL), $c->action->reverse );
+      my $msg = 'Action [_1] has no ACL';
+
+      return $self->error_page( $c, $msg, $c->action->reverse );
    }
 
    if ($rv == 2) {
@@ -147,7 +149,7 @@ sub begin {
    # Stash the content type from the request. Default from config
    my $content_type = $self->preferred_content_type( $cfg, $req );
 
-   $s->{content_type} = $self->content_type( $content_type );
+   $s->{content_type} = $content_type;
 
    # Select the view from the content type
    $s->{current_view} = $cfg->{content_map}->{ $content_type };
@@ -226,6 +228,15 @@ sub end {
    my ($self, $c) = @_;
 
    $self->maybe::next::method( $c );
+
+   if (scalar @{ $c->error }) {
+      my $model = $c->model( q(Base) );
+
+      $model->add_error_msg( $_ ) for (@{ $c->error });
+
+      $c->clear_errors;
+   }
+
    $c->forward( q(render) );
    return;
 }
@@ -234,7 +245,8 @@ sub error_page {
    # Display an error message
    my ($self, $c, @rest) = @_; my $s = $c->stash; my $e;
 
-   my $msg = $self->loc( @rest ); my $model = $c->model( q(Navigation) );
+   my $model = $c->model( q(Navigation) );
+   my $msg   = $self->loc( $c, @rest );
 
    $s->{subHeading} = ucfirst $msg;
    $self->log_error( (ref $self).$SPC.$msg );
@@ -267,9 +279,9 @@ sub get_language {
 
    return $candidate if (__is_language( $candidate, \@languages ));
 
-   my @candidates = map    { lc ((split m{ ; }mx, $_)[ 0 ]) }
+   my @candidates = map    { (split m{ ; }mx, $_)[ 0 ] }
                     split m{ , }mx,
-                    $req->headers->{ 'accept-language' } || $NUL;
+                    lc $req->headers->{ 'accept-language' } || $NUL;
    my $lang       = first  { __is_language( $_, \@languages ) } @candidates;
 
    return $lang || $cfg->{language} || q(en);
@@ -301,9 +313,9 @@ sub load_stash_from_user {
          $s->{roles     } = $c->user->roles;
       }
       else {
-         my $msg = (ucfirst ref $self).': Session expired for user ';
+         my $msg = 'User [_1] session expired';
 
-         $self->log_info( $msg.$c->user->username );
+         $self->log_info( $self->loc( $c, $msg, $c->user->username ) );
          $c->session_expire_key( __user => 0 );
          $c->logout;
       }
@@ -347,8 +359,6 @@ sub load_stash_per_request {
       while (my ($key, $value) = each %{ $config }) {
          $s->{ $key } = $value;
       }
-
-      $self->messages( $s->{messages} || {} );
 
       # Raise the "level" of the globals in the stash
       my $globals = delete $s->{globals};
@@ -403,14 +413,11 @@ sub preferred_content_type {
 
 sub redirect_to_page {
    # Redirects to a private action path via a config attribute
-   my ($self, $c, $page, $error) = @_;
+   my ($self, $c, $page) = @_; my $path;
 
-   my $path = $c->config->{ $page };
-
-   $error ||= q(eNo).(join $NUL, map    { ucfirst $_ }
-                                 split m{ _ }mx, $page).q(Page);
-
-   return $self->error_page( $c, $error ) unless ($path);
+   unless ($path = $c->config->{ $page }) {
+      return $self->error_page( $c, 'Page [_1] unknown', $page );
+   }
 
    my $namespace = $c->action->namespace;
    my $name      = $c->action->name || q(unknown);
@@ -501,7 +508,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-0.1.$Revision: 440 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

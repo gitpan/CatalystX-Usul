@@ -1,13 +1,13 @@
-package CatalystX::Usul::Model::Identity::Roles::Unix;
+# @(#)$Id: Unix.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Unix.pm 425 2009-04-01 15:52:23Z pjf $
+package CatalystX::Usul::Roles::Unix;
 
 use strict;
 use warnings;
-use parent qw(CatalystX::Usul::Model::Identity::Roles);
-use Unix::GroupFile;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Roles CatalystX::Usul::Utils);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
+use Unix::GroupFile;
 
 __PACKAGE__->config( backup_extn => q(.bak),
                      baseid      => 100,
@@ -19,7 +19,7 @@ __PACKAGE__->mk_accessors( qw(backup_extn baseid group_file inc _mtime) );
 
 # Factory methods
 
-sub f_add_user_to_role {
+sub add_user_to_role {
    my ($self, $role, $user) = @_; my $cmd;
 
    $cmd  = $self->suid.' -n -c roles_update -- add user "';
@@ -28,7 +28,7 @@ sub f_add_user_to_role {
    return;
 }
 
-sub f_create {
+sub create {
    my ($self, $role) = @_; my $cmd;
 
    $cmd = $self->suid.' -n -c roles_update -- add group "" "'.$role.'" ';
@@ -36,7 +36,7 @@ sub f_create {
    return;
 }
 
-sub f_delete {
+sub delete {
    my ($self, $role) = @_; my $cmd;
 
    $cmd = $self->suid.' -n -c roles_update -- delete group "" "'.$role.'" ';
@@ -44,7 +44,7 @@ sub f_delete {
    return;
 }
 
-sub f_remove_user_from_role {
+sub remove_user_from_role {
    my ($self, $role, $user) = @_; my $cmd;
 
    $cmd  = $self->suid.' -n -c roles_update -- delete user "';
@@ -59,18 +59,20 @@ sub roles_update {
    my ($self, $cmd, $fld, $user, $grp) = @_;
 
    unless ($cmd && ($cmd eq q(add) || $cmd eq q(delete))) {
-      $self->throw( error => q(eUnknownCommand), args1 => $cmd || q() );
+      $self->throw( error => 'Command [_1] unknown', args => [ $cmd || q() ] );
    }
 
    unless ($fld && ($fld eq q(group) || $fld eq q(user))) {
-      $self->throw( error => q(eUnknownField), args1 => $fld || q() );
+      $self->throw( error => 'Field [_1] unknown', args => [ $fld || q() ] );
    }
 
-   $self->throw( q(eNoUser) ) unless ($user || ($fld && $fld eq q(group)));
+   unless ($user || ($fld && $fld eq q(group))) {
+      $self->throw( 'No user specified' );
+   }
 
    unless (($cmd && $cmd eq q(add) && $fld && $fld eq q(group))
            || $self->is_role( $grp )) {
-      $self->throw( error => q(eUnknownRole), args1 => $grp || q() );
+      $self->throw( error => 'Role [_1] unknown', args => [ $grp || q() ] );
    }
 
    my $path = $self->_get_group_file;
@@ -101,7 +103,7 @@ sub _get_group_file {
    if ($path =~ m{ \A ([[:print:]]+) \z }mx) { $path = $1  } # now untainted
 
    unless ($path && -f $path) {
-      $self->throw( error => q(eNotFound), arg1 => $path );
+      $self->throw( error => 'File [_1] not found', args => [ $path ] );
    }
 
    return $path;
@@ -114,7 +116,8 @@ sub _get_group_obj {
       ( $path, locking => q(none), mode => $mode );
 
    unless ($group_obj) {
-      $self->lock->reset( k => $path ); $self->throw( q(eNoGroupFile) );
+      $self->lock->reset( k => $path );
+      $self->throw( 'Cannot create group file object' );
    }
 
    return $group_obj;
@@ -184,17 +187,17 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Identity::Roles::Unix - Group management for the Unix OS
+CatalystX::Usul::Roles::Unix - Group management for the Unix OS
 
 =head1 Version
 
-0.1.$Revision: 425 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Model::Identity::Roles::Unix;
+   use CatalystX::Usul::Roles::Unix;
 
-   my $class = CatalystX::Usul::Model::Identity::Roles::Unix;
+   my $class = CatalystX::Usul::Roles::Unix;
 
    my $role_obj = $class->new( $app, $config );
 
@@ -206,28 +209,28 @@ base class
 
 =head1 Subroutines/Methods
 
-=head2 f_add_user_to_role
+=head2 add_user_to_role
 
-   $role_obj->f_add_user_to_role( $group, $user );
+   $role_obj->add_user_to_role( $group, $user );
 
 Calls the suid root wrapper to add the specified user to the specified
 group
 
-=head2 f_create
+=head2 create
 
-   $role_obj->f_create( $group );
+   $role_obj->create( $group );
 
 Calls the suid root wrapper to create a new group
 
-=head2 f_delete
+=head2 delete
 
-   $role_obj->f_delete( $group );
+   $role_obj->delete( $group );
 
 Calls the suid root wrapper to delete an existing group
 
-=head2 f_remove_user_from_role
+=head2 remove_user_from_role
 
-   $role_obj->f_remove_user_to_role( $group, $user );
+   $role_obj->remove_user_to_role( $group, $user );
 
 Calls the suid root wrapper to remove the given user from the
 specified group
@@ -252,7 +255,7 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Model::Identity::Roles>
+=item L<CatalystX::Usul::Roles>
 
 =item L<Unix::GroupFile>
 

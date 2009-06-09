@@ -1,14 +1,14 @@
-package CatalystX::Usul::Model::UserProfiles;
+# @(#)$Id: UserProfiles.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: UserProfiles.pm 408 2009-03-30 19:24:09Z pjf $
+package CatalystX::Usul::Model::UserProfiles;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
+
 use CatalystX::Usul::Shells;
 use Class::C3;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 408 $ =~ /\d+/gmx );
 
 __PACKAGE__->config
    ( create_msg_key    => q(createdProfile),
@@ -25,14 +25,15 @@ __PACKAGE__->config
         lang_dep       => undef, },
      update_msg_key    => q(updatedProfile), );
 
-__PACKAGE__->mk_accessors( qw(file roles_model shells_model) );
+__PACKAGE__->mk_accessors( qw(file roles shells shells_attributes) );
 
 sub new {
-   my ($self, $app, @rest) = @_;
+   my ($self, $app, $config) = @_;
 
-   my $new = $self->next::method( $app, @rest );
+   my $new   = $self->next::method( $app, $config );
+   my $attrs = $new->shells_attributes || {};
 
-   $new->shells_model( CatalystX::Usul::Shells->new( $app, @rest ) );
+   $new->shells( CatalystX::Usul::Shells->new( $app, $attrs ) );
 
    return $new;
 }
@@ -43,10 +44,10 @@ sub create_or_update {
    my ($msg, $name); my $fields = {};
 
    unless ($name = $self->query_value( q(name) )) {
-      $self->throw( q(eNoProfileName) );
+      $self->throw( 'No profile name specified');
    }
 
-   for (@{ $self->file_model->result_source->schema->attributes }) {
+   for (@{ $self->domain_model->result_source->schema->attributes }) {
       $fields->{ $_ } = $self->query_value( $_ );
    }
 
@@ -67,7 +68,7 @@ sub delete {
    my $self = shift; my $name;
 
    unless ($name = $self->query_value( q(profile) )) {
-      $self->throw( q(eNoProfileName) );
+      $self->throw( 'No profile name specified' );
    }
 
    $self->lang( undef );
@@ -106,8 +107,8 @@ sub user_profiles_form {
       $profile_obj  = $profile_list->element;
       $profiles     = $profile_list->list;
       @{ $roles }   = grep { !$self->is_member( $_, @{ $profiles } ) }
-                              $self->roles_model->get_roles( q(all) );
-      $shells_obj   = $self->shells_model->retrieve;
+                              $self->roles->get_roles( q(all) );
+      $shells_obj   = $self->shells->retrieve;
       $def_shell    = $shells_obj->default;
       $shells       = $shells_obj->shells;
    };
@@ -216,15 +217,15 @@ CatalystX::Usul::Model::UserProfiles - CRUD methods for user account profiles
 
 =head1 Version
 
-0.1.$Revision: 408 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::Model::UserProfiles;
 
    $profile_obj = CatalystX::Usul::Model::UserProfiles->new( $app, $config ) );
-   $profile_obj->shells_model( $shells_obj );
-   $profile_obj->roles_model(  $roles_obj );
+   $profile_obj->shells( $shells_obj );
+   $profile_obj->roles ( $roles_obj );
 
 =head1 Description
 

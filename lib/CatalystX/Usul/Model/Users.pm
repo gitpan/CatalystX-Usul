@@ -1,220 +1,110 @@
-package CatalystX::Usul::Model::Identity::Users;
+# @(#)$Id: Users.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Users.pm 424 2009-04-01 12:11:02Z pjf $
+package CatalystX::Usul::Model::Users;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
-use CatalystX::Usul::FileSystem;
-use CatalystX::Usul::Shells;
+
 use Class::C3;
-use Class::Null;
 use Crypt::PassGen;
-use Crypt::PasswdMD5;
-use Scalar::Util qw(weaken);
-use Sys::Hostname;
 use XML::Simple;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 424 $ =~ /\d+/gmx );
+my $NUL = q();
+my $SEP = q(/);
+my $SPC = q( );
 
-my $NUL    = q();
-my $SEP    = q(/);
-my $SPC    = q( );
-my @CSET   = ( q(.), q(/), 0 .. 9, q(A) .. q(Z), q(a) .. q(z) );
-my %FIELDS =
-   ( active           => 0,             auth_realm       => undef,
-     crypted_password => $NUL,          email_address    => $NUL,
-     first_name       => $NUL,          homedir          => q(/tmp),
-     home_phone       => $NUL,          uid              => $NUL,
-     last_name        => $NUL,          location         => $NUL,
-     pgid             => $NUL,          project          => $NUL,
-     pwafter          => 0,             pwdisable        => 0,
-     pwlast           => 0,             pwnext           => 0,
-     pwwarn           => 0,             pwexpires        => 0,
-     shell            => q(/bin/false), username         => q(unknown),
-     work_phone       => $NUL, );
-
-__PACKAGE__->config( common_home        => q(/home/common),
-                     def_passwd         => q(*DISABLED*),
-                     email_content_type => q(text/html),
+__PACKAGE__->config( email_content_type => q(text/html),
                      email_template     => q(new_account.tt),
-                     host               => hostname,
                      mail_domain        => q(localhost),
-                     max_login_trys     => 3,
-                     max_pass_hist      => 10,
-                     min_fullname_len   => 6,
                      rprtdir            => q(root/reports),
-                     sessdir            => q(hist),
-                     user_pattern       => q(\A [a-zA-Z0-9]+),
-                     userid_len         => 3, );
+                     sessdir            => q(hist), );
 
-__PACKAGE__->mk_accessors( qw(app_name auth_realms aliases_ref
-                              common_home def_passwd
+__PACKAGE__->mk_accessors( qw(aliases app_name auth_realms
+                              domain_attributes domain_class
                               email_content_type email_template
-                              field_defaults fs_model host
-                              mail_domain max_login_trys max_pass_hist
-                              min_fullname_len profiles_ref
-                              register_queue_path roles_obj rprtdir
-                              sessdir shells_model user_list user_model
-                              user_pattern userid_len _cache
-                              _rid2users _uid2name) );
-
-__PACKAGE__->mk_accessors( keys %FIELDS );
+                              fs_model mail_domain profiles
+                              register_queue_path roles rprtdir
+                              sessdir user_domain) );
 
 sub new {
    my ($self, $app, @rest) = @_;
 
-   my $new      = $self->next::method( $app, @rest );
-   my $app_conf = $app->config || {};
-   my $rprt_dir = $self->catdir( $app_conf->{vardir}, $new->rprtdir );
-   my $sess_dir = $self->catdir( $app_conf->{vardir}, $new->sessdir );
+   my $new       = $self->next::method( $app, @rest );
+   my $app_conf  = $app->config || {};
+   my $rprt_dir  = $self->catdir( $app_conf->{vardir}, $new->rprtdir );
+   my $sess_dir  = $self->catdir( $app_conf->{vardir}, $new->sessdir );
 
-   $new->app_name(       $app_conf->{name} );
-   $new->field_defaults( \%FIELDS );
-   $new->fs_model(       CatalystX::Usul::FileSystem->new( $app, @rest ) );
-   $new->rprtdir(        $app_conf->{rprtdir} || $rprt_dir );
-   $new->sessdir(        $app_conf->{sessdir} || $sess_dir );
-   $new->shells_model(   CatalystX::Usul::Shells->new( $app, @rest ) );
+   $new->app_name( $app_conf->{name   }              );
+   $new->rprtdir ( $app_conf->{rprtdir} || $rprt_dir );
+   $new->sessdir ( $app_conf->{sessdir} || $sess_dir );
+
+   my $dom_attrs = $new->domain_attributes || {};
+
+   $dom_attrs->{sessdir} = $new->sessdir;
+
+   $new->domain_attributes( $dom_attrs );
+   $self->ensure_class_loaded( $new->domain_class );
+   $new->user_domain( $new->domain_class->new( $app, $dom_attrs ) );
+
    return $new;
 }
 
-# C::A::Store methods
+sub build_per_context_instance {
+   my ($self, $c, @rest) = @_;
 
-sub check_password {
-   my ($self, $password) = @_;
+   my $new = $self->next::method( $c, @rest );
 
-   return unless (my $model = $self->user_model);
+   $new->aliases ( $c->model( q(MailAliases)  ) );
+   $new->fs_model( $c->model( q(FileSystem)   ) );
+   $new->profiles( $c->model( q(UserProfiles) ) );
 
-   return if (not $self->username or $self->username eq q(unknown));
+   my $dom_attrs = $new->domain_attributes;
 
-   return $model->f_check_password( $self->username, $password );
-}
+   my $udm = $new->user_domain( $new->domain_class->new( $c, $dom_attrs ) );
 
-sub find_user {
-   my ($self, $user, $verbose) = @_;
+   $udm->alias_domain  ( $new->aliases->domain_model );
+   $udm->profile_domain( $new->profiles );
 
-   my $user_ref = $self->f_get_user( $user, $verbose );
-   my $new      = bless $user_ref, ref $self || $self;
+   if ($udm->can( q(dbic_user_class) )) {
+      my $class;
 
-   if ($new->username ne q(unknown) && $self->supports( qw(roles) )) {
-      $new->roles( [ $self->roles_obj->get_roles( $user, $new->pgid ) ] );
+      if ($class = $udm->dbic_user_class) {
+         $udm->dbic_user_model( $c->model( $class ) );
+      }
    }
-   else { $new->roles( [] ) }
-
-   $new->user_model( $self ); weaken( $new->{user_model} );
 
    return $new;
 }
 
-sub for_session {
-   my $self = shift; delete $self->{user_model}; return $self;
-}
-
-sub get {
-   my ($self, $field) = @_;
-
-   return $self->can( $field ) ? $self->$field() : undef;
-}
-
-sub get_object {
-   return shift;
-}
-
-sub id {
-   return shift->username;
-}
-
-# Base class methods
+# Object methods
 
 sub activate_account {
-   my ($self, $key) = @_; my ($path, $user);
+   my ($self, $key) = @_; my ($e, $user);
 
-   $path = $self->catfile( $self->sessdir, $key );
+   my $path = $self->catfile( $self->sessdir, $key );
 
-   return $self->add_error_msg( q(eNotFound), $path ) unless (-f $path);
+   unless (-f $path) {
+      return $self->add_error_msg( 'File [_1] not found', $path );
+   }
 
    unless ($user = $self->io( $path )->chomp->lock->getline) {
-      return $self->add_error_msg( q(eNoData), $path );
+      return $self->add_error_msg( 'File [_1] contained no data', $path );
    }
 
    unlink $path;
 
-   unless ($self->is_user( $user )) {
-      return $self->add_error_msg( q(eUnknownUser), $user );
-   }
+   eval { $self->user_domain->activate_account( $user ) };
 
-   $self->f_activate_account( $user );
-   $self->add_result_msg( q(accountActivated), $user );
+   if ($e = $self->catch) { $self->add_error( $e ) }
+   else { $self->add_result_msg( 'Account [_1] activated', $user ) }
+
    return;
 }
 
 sub authenticate {
-   my ($self, $flag, $user, $passwd) = @_;
-   my ($e, $n_trys, $path, $res, $user_obj, $wtr);
-
-   $self->throw( q(eNoUser) ) unless ($user);
-
-   $user_obj = $self->find_user( $user );
-
-   if ($user_obj->username eq q(unknown)) {
-      $self->throw( error => q(eUnknownUser), arg1 => $user );
-   }
-
-   unless ($user_obj->active) {
-      $self->throw( error => q(eAccountInactive), arg1 => $user );
-   }
-
-   if ($flag and $self->_is_password_expired( $user_obj )) {
-      $self->throw( error => q(ePasswordExpired), arg1 => $user );
-   }
-
-   if ($passwd eq q(stdin)) {
-      $passwd = <STDIN>; $passwd ||= q(); chomp $passwd;
-   }
-
-   if ($user_obj->crypted_password =~ m{ \A \$ 1 \$ }msx) {
-      $res = unix_md5_crypt( $passwd, $user_obj->crypted_password );
-   }
-   else { $res = crypt $passwd, $user_obj->crypted_password }
-
-   $path = $self->catfile( $self->sessdir, $user );
-   $self->lock->set( k => $path );
-
-   if ($res eq $user_obj->crypted_password) {
-      unlink $path if (-f $path);
-      $self->lock->reset( k => $path );
-      return $user_obj;
-   }
-
-   if (-f $path) {
-      $n_trys = eval { $self->io( $path )->chomp->getline };
-
-      if ($e = $self->catch) {
-         $self->lock->reset( k => $path ); $self->throw( $e );
-      }
-
-      $n_trys ||= 0; $n_trys++;
-   }
-   else { $n_trys = 1 }
-
-   if ($self->max_login_trys and $n_trys >= $self->max_login_trys) {
-      unlink $path if (-f $path);
-      $self->lock->reset( k => $path );
-      $self->update_password( 1, $user, q(), q(*DISABLED*), 1 );
-      $self->throw( error => q(eMaxLoginAttempts),
-                    arg1  => $user,
-                    arg2  => $self->max_login_trys );
-   }
-
-   eval { $self->io( $path )->println( $n_trys ) };
-
-   if ($e = $self->catch) {
-      $self->lock->reset( k => $path ); $self->throw( $e );
-   }
-
-   $self->lock->reset( k => $path );
-   $self->throw( error => q(eIncorrectPassword), arg1 => $user );
-   return;
+   my ($self, @rest) = @_; return $self->user_domain->authenticate( @rest );
 }
 
 sub authentication_form {
@@ -225,12 +115,12 @@ sub authentication_form {
 
    ($user ||= $s->{user}) =~ s{ \A unknown \z }{}msx;
 
-   $self->clear_form(  { firstfld   => $id,
+   $self->clear_form ( { firstfld   => $id,
                          heading    => $self->loc( $form.q(.header) ),
                          subHeading => { content => q(&nbsp;) } } );
-   $self->add_field(   { default    => $user, id => $id } );
-   $self->add_field(   { id         => $form.q(.passwd) } );
-   $self->add_field(   { id         => $form.q(.login_text) } );
+   $self->add_field  ( { default    => $user, id => $id } );
+   $self->add_field  ( { id         => $form.q(.passwd) } );
+   $self->add_field  ( { id         => $form.q(.login_text) } );
    $self->add_buttons( qw(Login) );
    return;
 }
@@ -255,11 +145,11 @@ sub change_password {
    $flds = $self->check_form( $flds );
 
    if ($flds->{newPass1} ne $flds->{newPass2}) {
-      $self->throw( q(ePasswordsNotSame) );
+      $self->throw( 'Passwords are not the same' );
    }
 
-   $self->f_change_password( $flds->{user},
-                             $flds->{oldPass}, $flds->{newPass1} );
+   $self->user_domain->change_password( $flds->{user},
+                                        $flds->{oldPass}, $flds->{newPass1} );
    $self->add_result_msg( q(passwordChanged), $flds->{user} );
    return;
 }
@@ -275,26 +165,26 @@ sub change_password_form {
 
    ($user ||= $s->{user}) =~ s{ unknown }{}mx;
 
-   $self->clear_form(   { firstfld => $form.q(.user) } );
-   $self->add_field(    { default  => $realm,
-                          id       => $form.q(.realm),
-                          stepno   => 0,
-                          values   => $values } ); $nitems++;
+   $self->clear_form( { firstfld => $form.q(.user) } );
+   $self->add_field ( { default  => $realm,
+                        id       => $form.q(.realm),
+                        stepno   => 0,
+                        values   => $values } );    $nitems++;
 
    if ($realm) {
-      $self->add_field( { ajaxid   => $form.q(.user),
-                          default  => $user,
-                          stepno   => 0 } ); $nitems++;
-      $self->add_field( { id       => $form.q(.oldPass),
-                          stepno   => $step++ } ); $nitems++;
-      $self->add_field( { ajaxid   => $form.q(.newPass1),
-                          stepno   => $step++ } ); $nitems++;
+      $self->add_field  ( { ajaxid  => $form.q(.user),
+                            default => $user,
+                            stepno  => 0 } );       $nitems++;
+      $self->add_field  ( { id      => $form.q(.oldPass),
+                            stepno  => $step++ } ); $nitems++;
+      $self->add_field  ( { ajaxid  => $form.q(.newPass1),
+                            stepno  => $step++ } ); $nitems++;
+      $self->add_buttons(  qw(Set) );
    }
 
    my $id = $form.($realm && $user ? q(.select) : q(.selectUnknown));
 
-   $self->group_fields( { id       => $id, nitems => $nitems } );
-   $self->add_buttons(  qw(Set) );
+   $self->group_fields( { id => $id, nitems => $nitems } );
    return;
 }
 
@@ -302,7 +192,7 @@ sub create_or_update {
    my $self = shift; my ($email_addr, $flds, $user);
 
    unless ($user = $self->query_value( q(username) )) {
-      $self->throw( q(eNoUser) );
+      $self->throw( 'No user specified' );
    }
 
    for ( qw(username profile first_name last_name location work_phone
@@ -325,14 +215,14 @@ sub create_or_update {
    $flds->{recipients} = [ $flds->{email_address} ];
    $flds->{owner     } = $ENV{LOGNAME};
    $flds->{comment   } = 'Local user';
-   $flds = $self->check_form( $flds );
+   $flds               = $self->check_form( $flds );
 
    if ($self->is_user( $user )) {
-      $self->f_update( $flds );
+      $self->user_domain->update( $flds );
       $self->add_result_msg( q(accountUpdated), $user );
    }
    else {
-      $self->f_create( $flds );
+      $self->user_domain->create( $flds );
       $self->add_result_msg( q(accountCreated), $user );
    }
 
@@ -342,92 +232,41 @@ sub create_or_update {
 sub delete {
    my $self = shift; my $user;
 
-   $self->throw( q(eNoUser) ) unless ($user = $self->query_value( q(user) ));
-
-   unless ($self->is_user( $user )) {
-      $self->throw( error => q(eUnknownUser), arg1 => $user );
+   unless ($user = $self->query_value( q(user) )) {
+      $self->throw( 'No user specified' );
    }
 
-   $self->f_delete( $user );
+   $self->user_domain->delete( $user );
    $self->add_result_msg( q(accountDeleted), $user );
    return;
 }
 
-sub get_new_user_id {
-   my ($self, $first_name, $last_name, $prefix) = @_;
-   my ($carry, @chars, $i, $lastp, $lid, $name_len, $ripple, @words);
-
-   my $name = (lc $last_name).(lc $first_name);
-
-   if ((length $name) < $self->min_fullname_len) {
-      $self->throw( error => q(eNameToShort),
-                    arg1  => $first_name.$SPC.$last_name,
-                    arg2  => $self->min_fullname_len );
-   }
-
-   $name_len  = $self->userid_len;
-   $prefix    = $NUL unless (defined $prefix);
-   $lastp     = length $name < $name_len ? length $name : $name_len;
-   @chars     = ();
-   $chars[$_] = $_ for (0 .. $lastp - 1);
-
-   while ($chars[ $lastp - 1 ] < length $name) {
-      $lid = $NUL; $i = 0;
-
-      while ($i < $lastp) { $lid .= substr $name, $chars[ $i++ ], 1 }
-
-      last unless ($self->is_user( $prefix.$lid ));
-
-      $i = $lastp - 1; $chars[ $i ] += 1;
-
-      while ($i >= 0 && $chars[ $i ] >= length $name) {
-         $ripple = $i - 1; $chars[ $ripple ] += 1;
-
-         while ($ripple < $lastp) {
-            $carry = $ripple + 1; $chars[ $carry ] = $chars[ $ripple++ ] + 1;
-         }
-
-         $i--;
-      }
-   }
-
-   if ($chars[ $lastp - 1 ] >= length $name) {
-      $self->throw( 'no user ids left for '.$first_name.$SPC.$last_name );
-   }
-
-   unless ($lid) {
-      $self->throw( 'account name generation failed for '.$name );
-   }
-
-   return ($prefix || $NUL).$lid;
+sub find_user {
+   my ($self, @rest) = @_; return $self->user_domain->find_user( @rest );
 }
 
 sub get_primary_rid {
-   my ($self, $user) = @_;
-
-   return defined $user ? $self->f_get_primary_rid( $user ) : undef;
+   my ($self, $user) = @_; return $self->user_domain->get_primary_rid( $user);
 }
 
 sub get_users_by_rid {
-   my ($self, $rid) = @_;
-
-   return defined $rid ? $self->f_get_users_by_rid( $rid ) : undef;
+   my ($self, $rid) = @_; return $self->user_domain->get_users_by_rid( $rid );
 }
 
 sub is_user {
-   my ($self, $user) = @_; return $user ? $self->f_is_user( $user ) : undef;
+   my ($self, $user) = @_; return  $self->user_domain->is_user( $user );
 }
 
 sub purge {
    my $self = shift; my ($nrows, $rno, $user);
 
    unless ($nrows = $self->query_value( q(_nrows) )) {
-      $self->throw( $self->loc( q(eNoAccount) ) );
+      $self->throw( 'No account specified' );
    }
 
    for $rno (0 .. $nrows - 1) {
       if ($user = $self->query_value( q(select).$rno )) {
-         $self->f_delete( $user );
+         $self->user_domain->delete( $user );
          $self->add_result_msg( q(accountDeleted), $user );
       }
    }
@@ -466,7 +305,7 @@ sub register {
 
    eval {
       $self->_register_validation( $flds );
-      $self->f_create( $flds );
+      $self->user_domain->create( $flds );
    };
 
    if ($e = $self->catch) {
@@ -485,7 +324,7 @@ sub register {
    $subject = $self->loc( q(accountVerification), $self->app_name );
    $args    = { attributes  => { charset      => $s->{encoding},
                                  content_type => $self->email_content_type },
-                from        => q(UserRegistration@).$s->{host},
+                from        => q(UserRegistration@).$s->{domain},
                 mailer      => $s->{mailer},
                 mailer_host => $s->{mailer_host},
                 stash       => { %{ $flds },
@@ -501,12 +340,15 @@ sub register {
 sub _register_read_queue {
    my ($self, $path) = @_; my ($e, $flds, $io, $xs);
 
-   $xs = XML::Simple->new( SuppressEmpty => undef );
-
    $self->lock->set( k => $path );
 
    eval {
-      $self->throw( error => q(eNotFound), arg1 => $path ) unless (-f $path);
+      $xs = XML::Simple->new( SuppressEmpty => undef );
+
+      unless (-f $path) {
+         $self->throw( error => 'File [_1] not found', args => [ $path ] );
+      }
+
       $io   = $self->io( $self->register_queue_path )->chomp->lock;
       $io->println( grep { !m{ \A $path \z }mx } $io->getlines );
       $flds = $xs->xml_in( $path );
@@ -522,15 +364,17 @@ sub _register_read_queue {
 }
 
 sub _register_write_queue {
-   my ($self, $flds) = @_; my ($e, $path, $xs);
+   my ($self, $flds) = @_; my $e;
 
-   $path = $self->tempname( $self->dirname( $self->register_queue_path ) );
-   $xs   = XML::Simple->new( NoAttr        => 1,
-                             SuppressEmpty => 1,
-                             RootName      => q(config) );
+   my $path = $self->tempname( $self->dirname( $self->register_queue_path ) );
+
    $self->lock->set( k => $path );
 
    eval {
+      my $xs = XML::Simple->new( NoAttr        => 1,
+                                 SuppressEmpty => 1,
+                                 RootName      => q(config) );
+
       $xs->xml_out( $flds, OutputFile => $path );
       $self->io( $self->register_queue_path )->lock->appendln( $path );
    };
@@ -546,14 +390,16 @@ sub _register_write_queue {
 sub _register_validation {
    my ($self, $flds) = @_;
 
-   my $prefix = $self->profiles_ref->find( $flds->{profile} )->prefix;
-   $flds->{username} = $self->get_new_user_id( $flds->{first_name},
-                                               $flds->{last_name},
-                                               $prefix );
+   my $prefix = $self->profiles->find( $flds->{profile} )->prefix;
+
+   $flds->{username}
+      = $self->user_domain->get_new_user_id( $flds->{first_name},
+                                             $flds->{last_name},
+                                             $prefix );
    $flds = $self->check_form( $flds );
 
    if ($flds->{newPass1} ne $flds->{newPass2}) {
-      $self->throw( q(ePasswordsNotSame) );
+      $self->throw( 'Passwords are not the same' );
    }
 
    delete $flds->{newPass1}; delete $flds->{newPass2};
@@ -595,18 +441,13 @@ sub register_form {
 }
 
 sub retrieve {
-   my ($self, $pattern, $user) = @_;
-
-   my $user_obj = $self->find_user( $user, 1 );
-
-   $user_obj->user_list( $self->f_list( $pattern || $self->user_pattern ) );
-   return $user_obj;
+   my ($self, @rest) = @_; return $self->user_domain->retrieve( @rest );
 }
 
 sub set_password {
    my ($self, $user) = @_; my ($encrypted, $password, $ptype);
 
-   $self->throw( q(eNoUser) ) unless ($user);
+   $self->throw( 'No user specified' ) unless ($user);
 
    $ptype = $self->query_value( q(p_type) );
 
@@ -616,12 +457,12 @@ sub set_password {
    elsif ($ptype && $ptype == 3) {
       unless ($self->query_value( q(p_word1) )
               && $self->query_value( q(p_word2) )) {
-         $self->throw( q(ePasswordMissing) );
+         $self->throw( 'Password not specified' );
       }
 
       unless ($self->query_value( q(p_word1) )
               eq $self->query_value( q(p_word2) )) {
-         $self->throw( q(ePasswordsNotSame) );
+         $self->throw( 'Passwords are not the same' );
       }
 
       $encrypted = 0; $password = $self->query_value( q(p_word1) );
@@ -634,67 +475,13 @@ sub set_password {
       $encrypted = 0; $password = $self->query_value( q(p_default) );
    }
 
-   $self->f_set_password( $user, $password, $encrypted );
+   $self->user_domain->set_password( $user, $password, $encrypted );
    $self->add_result_msg( q(passwordSet), $user );
    return;
 }
 
 sub update_password {
-   my ($self, $force, $user, $old_pass, $new_pass, $encrypted) = @_;
-   my ($e, $enc_pass, @flds, $i, $line, $path, $res, $text, $user_obj, $wtr);
-
-   $self->throw( q(eNoUser) ) unless ($user);
-
-   unless ($self->is_user( $user )) {
-      $self->throw( error => q(eUnknownUser), arg1 => $user );
-   }
-
-   unless ($force) {
-      $user_obj = $self->authenticate( 0, $user, $old_pass );
-
-      if (($res = $self->_can_change_password( $user_obj )) > 0) {
-         $text  = 'You cannot change your password for another '.$res.' days';
-         $self->throw( $text );
-      }
-   }
-
-   $path = $self->catfile( $self->sessdir, $user.'_history' );
-
-   unless ($encrypted) {
-      if (not $force
-          and -f $path
-          and $line = $self->io( $path )->chomp->lock->getline) {
-         @flds = split m{ , }mx, $line;
-
-         for $i (0 .. $#flds - 1) {
-            if ($self->passwd_type eq q(md5)) {
-               $enc_pass = unix_md5_crypt( $new_pass, $flds[ $i ] );
-            }
-            else { $enc_pass = crypt $new_pass, $flds[ $i ] }
-
-            $self->throw( q(ePasswordUsedBefore) ) if ($enc_pass eq $flds[$i]);
-         }
-      }
-
-      if ($self->passwd_type eq q(md5)) {
-         $enc_pass  = unix_md5_crypt( $new_pass );
-      }
-      else {
-         $enc_pass  = crypt $new_pass, join q(), @CSET[ rand 64, rand 64 ];
-      }
-   }
-   else { $enc_pass = $new_pass }
-
-   unless ($force) {
-      push @flds, $enc_pass;
-
-      while ($#flds > $self->max_pass_hist) { shift @flds }
-
-      $self->io( $path )->lock->println( join q(,), @flds );
-   }
-
-   $self->f_update_password( $user, $enc_pass, $force );
-   return;
+   my ($self, @rest) = @_; return $self->user_domain->update_password( @rest );
 }
 
 sub user_fill {
@@ -709,8 +496,8 @@ sub user_fill {
 
 sub user_manager_form {
    my ($self, $realm, $user, $profile_name) = @_;
-   my ($e, $fill, $labels, $profile, $profile_list, $profiles, $shell_def);
-   my ($shells_obj, $shells, $text, $user_obj, $users, $values);
+   my ($e, $fill, $labels, $profile, $profile_list, $profiles);
+   my ($shell_def, $shells_obj, $shells, $text, $user_obj, $users, $values);
 
    my $s          = $self->context->stash; $s->{pwidth} -= 10;
    my $form       = $s->{form}->{name};
@@ -734,13 +521,13 @@ sub user_manager_form {
       $users    = $user_obj->user_list;
       unshift @{ $users }, $NUL, $s->{newtag};
 
-      $profile_list = $self->profiles_ref->get_list( $profile_name );
+      $profile_list = $self->profiles->get_list( $profile_name );
       $profiles     = $profile_list->list; unshift @{ $profiles }, $NUL;
       $profile      = $profile_list->element;
       $labels       = $profile_list->labels;
 
       if ($self->supports( qw(fields shells) )) {
-         $shells_obj = $self->shells_model->retrieve();
+         $shells_obj = $self->profiles->shells->retrieve;
          $shell_def  = $shells_obj->default;
          $shells     = $shells_obj->shells;
       }
@@ -753,13 +540,13 @@ sub user_manager_form {
          $email      = $fill->{email};
          $first_name = $fill->{first_name};
          $last_name  = $fill->{last_name};
-         $name       = $self->get_new_user_id( $first_name,
-                                               $last_name,
-                                               $profile->prefix );
+         $name       = $self->user_domain->get_new_user_id( $first_name,
+                                                            $last_name,
+                                                            $profile->prefix );
 
          if ($name
              and $self->supports( qw(fields homedir) )
-             and $homedir ne $self->common_home) {
+             and $homedir ne $user_obj->common_home) {
             $homedir = $self->catdir( $homedir, $name );
          }
       }
@@ -778,7 +565,7 @@ sub user_manager_form {
       }
    };
 
-   $self->add_error( $e ) if ($e = $self->catch);
+   return $self->add_error( $e ) if ($e = $self->catch);
 
    # Add elements to form
    $self->clear_form( { firstfld => $form.'.realm' } );
@@ -868,7 +655,9 @@ sub user_manager_form {
                           id      => $form.'.homedir',
                           stepno  => $step++ } ); $nitems++;
 
-      if ($user eq $s->{newtag} && $homedir ne $self->common_home) {
+      if ($user eq $s->{newtag}
+          and $self->supports( qw(fields homedir) )
+          and $homedir ne $user_obj->common_home) {
          $self->add_field( { label  => $SPC,
                              id     => $form.'.populate',
                              stepno => $step++ } ); $nitems++;
@@ -886,15 +675,15 @@ sub user_manager_form {
    return;
 }
 
-sub user_report_execute {
+sub user_report {
    my ($self, $type) = @_;
    my $s     = $self->context->stash;
    my $stamp = $self->time2str( '%Y%m%d%H%M', time );
    my $path  = $self->catfile( $self->rprtdir, 'userReport_'.$stamp.'.csv' );
 
-   $self->add_result( $self->f_user_report( { debug => $s->{debug},
-                                              path  => $path,
-                                              type  => $type } ) );
+   $self->add_result( $self->user_domain->user_report( { debug => $s->{debug},
+                                                         path  => $path,
+                                                         type  => $type } ) );
    return;
 }
 
@@ -951,22 +740,22 @@ sub user_report_form {
 
 sub user_security_form {
    my ($self, $realm, $user) = @_;
-   my (@all_roles, $def, $e, $field, $form, $generated, $html, %labels);
-   my ($nitems, @opts, $passwd, $profile, $ref, $res, $role, @roles);
-   my ($s, $step, $user_obj, @users, $values);
+   my (@all_roles, $def, $e, $field, $generated, $html, %labels);
+   my ($nitems, @opts, $passwd, $profile, $profile_model, $ref, $res, $role);
+   my (@roles, $step, $user_obj, @users, $values);
 
-   $s      = $self->context->stash;
-   $form   = $s->{form}->{name};
+   my $s    = $self->context->stash;
+   my $form = $s->{form}->{name};
 
    eval {
-      $user_obj  = $self->retrieve( $NUL, $user );
-      @users     = @{ $user_obj->user_list }; unshift @users, $NUL;
-      @roles     = $user ? @{ $user_obj->roles } : ();
-      @all_roles = grep { !$self->is_member( $_, @roles ) }
-                   $self->roles_obj->get_roles( q(all) );
-      $profile   = $self->profiles_ref->find( $roles[0] );
-      $passwd    = $profile ? $profile->passwd : $NUL;
-      $generated = (Crypt::PassGen::passgen( NLETT => 6, NWORDS => 1 ))[ 0 ]
+      $user_obj      = $self->retrieve( $NUL, $user );
+      @users         = @{ $user_obj->user_list }; unshift @users, $NUL;
+      @roles         = $user ? @{ $user_obj->roles } : ();
+      @all_roles     = grep { !$self->is_member( $_, @roles ) }
+                       $self->roles->get_roles( q(all) );
+      $profile       = $self->profiles->find( $roles[0] );
+      $passwd        = $profile ? $profile->passwd : $NUL;
+      $generated     = (Crypt::PassGen::passgen( NLETT => 6, NWORDS => 1 ))[0]
          or $self->throw( $Crypt::PassGen::ERRSTR );
 
       shift @roles if ($user_obj->pgid);
@@ -996,19 +785,20 @@ sub user_security_form {
    return $self->add_error( $e ) if ($e = $self->catch);
 
    $s->{pwidth} -= 8;
-   $field  = $form.($realm ? q(.user) : q(.realm));
-   $self->clear_form(   { firstfld => $field } ); $nitems = 0;
+   $field        = $form.($realm ? q(.user) : q(.realm));
+   $values       = [ q(), sort keys %{ $self->auth_realms } ];
+
+   $self->clear_form(   { firstfld => $field } );   $nitems = 0;
    $self->add_hidden(   q(p_default), $passwd );
    $self->add_hidden(   q(p_generated), $generated );
-   $values = [ q(), sort keys %{ $self->auth_realms } ];
-   $self->add_field(    { default => $realm,
-                          id      => $form.'.realm',
-                          values  => $values } ); $nitems++;
+   $self->add_field(    { default  => $realm,
+                          id       => $form.'.realm',
+                          values   => $values } );  $nitems++;
 
    if ($realm) {
-      $self->add_field( { default => $user,
-                          id      => $form.'.user',
-                          values  => \@users } ); $nitems++;
+      $self->add_field( { default  => $user,
+                          id       => $form.'.user',
+                          values   => \@users } );  $nitems++;
    }
 
    $self->group_fields( { id => $form.'.select', nitems => $nitems } );
@@ -1017,55 +807,31 @@ sub user_security_form {
    return unless ($user and $user ne $s->{newtag});
 
    if ($passwd) {
-      $self->add_field( { id      => $form.'.p_default',
-                          prompt  => $opts[0] } ); $nitems++;
+      $self->add_field( { id       => $form.'.p_default',
+                          prompt   => $opts[0] } ); $nitems++;
    }
 
-   $self->add_field(    { id      => $form.'.p_generated',
-                          prompt  => $opts[3] } ); $nitems++;
    $def    = $self->query_value( q(p_value) ) || $NUL;
    $values = [ qw(disabled left nologin unused) ];
-   $self->add_field(    { default => $def,
-                          id      => $form.'.p_value',
-                          prompt  => $opts[1],
-                          values  => $values } ); $nitems++;
-   $self->add_field(    { id      => $form.'.p_word1',
-                          prompt  => $opts[2] } ); $nitems++;
-   $self->group_fields( { id      => $form.'.set_password',
-                          nitems  => $nitems } ); $nitems = 0;
-   $self->add_field(    { all     => \@all_roles,
-                          current => \@roles,
-                          id      => $form.'.groups',
-                          labels  => \%labels } ); $nitems++;
-   $self->group_fields( { id      => $form.'.secondary',
-                          nitems  => $nitems } ); $nitems = 0;
+
+   $self->add_field(    { id       => $form.'.p_generated',
+                          prompt   => $opts[3] } ); $nitems++;
+   $self->add_field(    { default  => $def,
+                          id       => $form.'.p_value',
+                          prompt   => $opts[1],
+                          values   => $values } );  $nitems++;
+   $self->add_field(    { id       => $form.'.p_word1',
+                          prompt   => $opts[2] } ); $nitems++;
+   $self->group_fields( { id       => $form.'.set_password',
+                          nitems   => $nitems } );  $nitems = 0;
+   $self->add_field(    { all      => \@all_roles,
+                          current  => \@roles,
+                          id       => $form.'.groups',
+                          labels   => \%labels } ); $nitems++;
+   $self->group_fields( { id       => $form.'.secondary',
+                          nitems   => $nitems } );  $nitems = 0;
    $self->add_buttons(  qw(Set Update) );
    return;
-}
-
-# Private methods
-
-sub _can_change_password {
-   my ($self, $user_obj) = @_;
-
-   return 0 unless ($user_obj->pwnext);
-
-   my $now        = int time / 86_400;
-   my $min_period = $user_obj->pwlast + $user_obj->pwnext;
-
-   return $now >= $min_period ? 0 : $min_period - $now;
-}
-
-sub _is_password_expired {
-   my ($self, $user_obj) = @_;
-   my $now     = int time / 86_400;
-   my $expires = $user_obj->pwlast && $user_obj->pwafter
-               ? $user_obj->pwlast +  $user_obj->pwafter : 0;
-
-   return 1 if (defined $user_obj->pwlast and $user_obj->pwlast == 0);
-   return 1 if ($expires and $now > $expires);
-   return 1 if ($user_obj->pwdisable and $now > $user_obj->pwdisable);
-   return 0;
 }
 
 1;
@@ -1076,23 +842,21 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Identity::Users - Manager user data stores
+CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-0.1.$Revision: 424 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Model::Identity::Users::DBIC;
+   use CatalystX::Usul::Model::Users;
 
-   my $class    = CatalystX::Usul::Model::Identity::Users::DBIC;
-   my $user_obj = $class->new( $app, $config );
+   my $user_obj = CatalystX::Usul::Model::Users->new( $app, $config );
 
 =head1 Description
 
-Implements the base class for user data stores. Each factory subclass
-should inherit from this and implement the required list of methods
+Forms and actions for user maintainence
 
 =head1 Subroutines/Methods
 
@@ -1108,15 +872,6 @@ Name of the application using this identity model. Prefixes the subject line
 of the account activation email sent to users who create an account via the
 registration method
 
-=item field_defaults
-
-A hashref of the user object attributes and their default values
-
-=item fs_model
-
-An instance of L<CatalystX::Usul::FileSystem> used by the
-L</user_report_form> method to list the available user reports
-
 =item mail_domain
 
 The default email domain used when users are created and a specific email
@@ -1131,6 +886,24 @@ Location in the filesystem of the user reports
 Location in the filesystem of used user passwords and account activation
 keys
 
+=item user_domain
+
+The user domain model. An instance of a subclass of
+L<CatalystX::Usul::Users>
+
+=back
+
+=head2 build_per_context_instance
+
+
+
+=over 3
+
+=item fs_model
+
+An clone of the I<FileSyste> model used by the L</user_report_form>
+method to list the available user reports
+
 =back
 
 =head2 activate_account
@@ -1141,12 +914,7 @@ accounts I<active> attribute is set to true, enabling the account
 
 =head2 authenticate
 
-Called by the L</check_password> method via the factory subclass. The
-supplied password is encrypted and compared to the one in storage.
-Failures are counted and when I<max_login_trys> are exceeded the
-account is disabled. Errors can be thrown for; unknown user, inactive
-account, expired password, maximum attempts exceeded and incorrect
-password
+Calls L<authenticate|CatalystX::Usul::Users/authenticate> in the domain model
 
 =head2 authentication_form
 
@@ -1167,12 +935,6 @@ constraint failures and if the passwords entered are not the same
 Adds field data to the stash for the change password screen. Allows users
 to change their own password
 
-=head2 check_password
-
-This method is required by the L<Catalyst::Authentication::Store> API. It
-calls the factory method in the subclass to check that the supplied
-password is the correct one
-
 =head2 create_or_update
 
 Method to create a new account or update an existing one. Throws exceptions
@@ -1185,36 +947,7 @@ Deletes the selected account
 
 =head2 find_user
 
-This method is required by the L<Catalyst::Authentication::Store> API. It
-returns a user object even if the user is unknown. If the user is known
-a list of roles that the user belongs to is also returned. A weakened
-copy of the self referential object is included in the returned object
-so that the L<Catalyst::Authentication> plugin can call the
-L</check_password> method
-
-=head2 for_session
-
-This method is required by the L<Catalyst::Authentication::Store> API.
-Removes the copy of the self referential object so that the user
-object can be serialized for the session store
-
-=head2 get
-
-This method is required by the L<Catalyst::Authentication::Store> API.
-Field accessor returns undef if the field does not exist, otherwise
-returns the value of the required field
-
-=head2 get_new_user_id
-
-Implements the algorithm that derives the username from the users first
-name and surname. The supplied prefix from the user profile is prepended
-to the generated value. If the prefix contains unique domain information
-then the generated username will be globally unique to the organisation
-
-=head2 get_object
-
-This method is required by the L<Catalyst::Authentication::Store> API.
-Returns the self referential object
+Calls L<find_user|CatalystX::Usul::Users/find_user> in the domain model
 
 =head2 get_primary_rid
 
@@ -1225,14 +958,9 @@ support primary_role ids
 
 Returns the list of users that share the given primary role id
 
-=head2 id
-
-This method is required by the L<Catalyst::Authentication::Store> API.
-Returns the username of the user object
-
 =head2 is_user
 
-Returns true if the given user exists, false otherwise
+Calls L<is_user|CatalystX::Usul::Users/is_user> in the domain model
 
 =head2 purge
 
@@ -1250,7 +978,8 @@ use this screen to create their own accounts
 
 =head2 retrieve
 
-Returns a user object for the selected user and a list of usernames
+Calls L<retrieveCatalystX::Usul::Users::Unix/retrieve>
+in the domain model
 
 =head2 set_password
 
@@ -1258,8 +987,8 @@ Sets the users password to a given value
 
 =head2 update_password
 
-Updates the users password only if the new one has not been used before or
-there is an administrative override
+Calls L<update_password|CatalystX::Usul::Users::Unix/update_password>
+in the domain model
 
 =head2 user_fill
 
@@ -1271,7 +1000,7 @@ auto fill button
 Adds fields to the stash for the user management screen. Adminstrators can
 create new accounts or modify the details of existing ones
 
-=head2 user_report_execute
+=head2 user_report
 
 Creates a report of the user accounts in this realm
 
@@ -1300,15 +1029,11 @@ None
 
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::Model::FileSystem>
+=item L<CatalystX::Usul::Users::DBIC>
 
-=item L<Class::Null>
+=item L<CatalystX::Usul::Users::Unix>
 
-=item L<Crypt::PasswdMD5>
-
-=item L<Scalar::Util>
-
-=item L<Sys::Hostname>
+=item L<Crypt::PassGen>
 
 =item L<XML::Simple>
 
@@ -1328,9 +1053,13 @@ Patches are welcome
 
 Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
+=head1 Acknowledgements
+
+Larry Wall - For the Perl programming language
+
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2009 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

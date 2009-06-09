@@ -1,56 +1,58 @@
-package CatalystX::Usul::Model::Imager;
+# @(#)$Id: Imager.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Imager.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Model::Imager;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use Imager;
 use MIME::Types;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+my @METHODS = qw(scale scaleX scaleY crop flip rotate convert map);
 
 __PACKAGE__->config( cache_depth => 2,
                      types       => MIME::Types->new( only_complete => 1 ) );
 
 __PACKAGE__->mk_accessors( qw(cache_depth cache_root doc_root types) );
 
-my @METHODS = qw(scale scaleX scaleY crop flip rotate convert map);
-
 sub new {
    my ($self, $app, @rest) = @_;
 
    my $new = $self->next::method( $app, @rest );
 
-   $new->cache_root( $self->catdir( $app->config->{tempdir},
-                                    q(imager_cache) ) );
-   $new->doc_root(   $app->config->{root} );
+   $new->cache_root( $new->catdir( $new->tempdir, q(imager_cache) ) );
+   $new->doc_root  ( $app->config->{root}                           );
+
    return $new;
 }
 
 sub transform {
    my ($self, $args, $query) = @_; my $data; $query ||= {};
 
-   $self->throw( q(eNoMethod) ) unless ($args->[ 0 ]);
+   $self->throw( 'No method specified' ) unless ($args->[ 0 ]);
 
    my $methods = shift @{ $args }; my @methods = split m{ \+ }mx, $methods;
 
    for my $method (@methods) {
       unless ($self->is_member( $method, @METHODS )) {
-         $self->throw( q(eUnknownMethod) );
+         $self->throw( error => 'Method [_1] unknown', args => [ $method ] );
       }
    }
 
-   $self->throw( q(eNoFile) ) unless ($args->[ 0 ]);
+   $self->throw( 'No file path specified' ) unless ($args->[ 0 ]);
 
    my $stat  = delete $query->{stat};
    my $force = delete $query->{force};
    my $path  = $self->catfile( @{ $args } );
    my $key   = $self->_make_key( $methods, $path, $query );
 
-   $path     = $self->catfile( $self->doc_root, $path );
+   $path = $self->catfile( $self->doc_root, $path );
 
-   $self->throw( error => q(eNotFound), arg1 => $path ) unless (-f $path);
+   unless (-f $path) {
+      $self->throw( error => 'File [_1] not found', args => [ $path ] );
+   }
 
    my $mtime = $stat ? $self->status_for( $path )->{mtime} : undef;
    my $type  = $self->types->mimeTypeOf( $self->basename( $path ) )->type;
@@ -130,7 +132,7 @@ CatalystX::Usul::Model::Imager - Manipulate images
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

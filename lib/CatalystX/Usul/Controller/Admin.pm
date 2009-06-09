@@ -1,19 +1,19 @@
-package CatalystX::Usul::Controller::Admin;
+# @(#)$Id: Admin.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Admin.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Controller::Admin;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
+
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+my $SEP = q(/);
 
 __PACKAGE__->config( security_logfile => q(suid.log), );
 
 __PACKAGE__->mk_accessors( qw(security_logfile) );
-
-my $SEP = q(/);
 
 sub base : Chained(lang) CaptureArgs(0) {
    # PathPart set in global configuration
@@ -95,7 +95,7 @@ CatalystX::Usul::Controller::Admin - Administration controller methods
 
 =head1 Version
 
-$Revision: 402 $
+$Revision: 562 $
 
 =head1 Synopsis
 

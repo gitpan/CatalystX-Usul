@@ -1,15 +1,15 @@
-package CatalystX::Usul::Model;
+# @(#)$Id: Model.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Model.pm 432 2009-04-07 14:53:57Z pjf $
+package CatalystX::Usul::Model;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+
 use Class::C3;
 use Data::Validation;
 use Scalar::Util qw(blessed refaddr weaken);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 432 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( screensaver => q(xdg-screensaver lock),
                      scrub_chars => q([\'\"/\:]) );
@@ -43,7 +43,7 @@ sub ACCEPT_CONTEXT {
 }
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_;
+   my ($self, $c, @rest) = @_; my $s = $c->stash;
 
    my $new = bless { %{ $self } }, ref $self;
 
@@ -55,7 +55,7 @@ sub build_per_context_instance {
 sub check_field {
    my ($self, @rest) = @_; my $s = $self->context->stash;
 
-   my $config = { exception   => q(CatalystX::Usul::Exception),
+   my $config = { exception   => $self->exception_class,
                   constraints => $s->{constraints} || {},
                   fields      => $s->{fields}      || {},
                   filters     => $s->{filters}     || {} };
@@ -67,7 +67,7 @@ sub check_field {
 sub check_form  {
    my ($self, @rest) = @_; my $s = $self->context->stash;
 
-   my $config = { exception   => q(CatalystX::Usul::Exception),
+   my $config = { exception   => $self->exception_class,
                   constraints => $s->{constraints} || {},
                   fields      => $s->{fields}      || {},
                   filters     => $s->{filters}     || {} };
@@ -88,10 +88,9 @@ sub form {
 *loc = \&localize;
 
 sub localize {
-   my ($self, @rest) = @_; my $s = $self->context->stash;
+   my ($self, @rest) = @_; my $c = $self->context; my $arg = $rest[ 0 ];
 
-   $self->content_type( $s->{content_type} || q(text/html) );
-   $self->messages(     $s->{messages    } || {} );
+   return $self->next::method( $c, @rest ) if (not $arg or not ref $arg);
 
    return $self->next::method( @rest );
 }
@@ -105,11 +104,15 @@ sub lock_display {
 }
 
 sub query_array {
-   return shift->_query_array_or_value( q(array), @_ );
+   my ($self, @rest) = @_;
+
+   return $self->_query_array_or_value( q(array), @rest );
 }
 
 sub query_value {
-   return shift->_query_array_or_value( q(value), @_ );
+   my ($self, @rest) = @_;
+
+   return $self->_query_array_or_value( q(value), @rest );
 }
 
 sub scrub {
@@ -125,7 +128,11 @@ sub scrub {
 }
 
 sub uri_for {
-   my ($self, @rest) = @_; return $self->next::method( $self->context, @rest );
+   my ($self, @rest) = @_; my $c = $self->context; my $arg = $rest[ 0 ];
+
+   return $self->next::method( $c, @rest ) if (not $arg or not ref $arg);
+
+   return $self->next::method( @rest );
 }
 
 # Private methods
@@ -193,7 +200,7 @@ CatalystX::Usul::Model - Application independent common model methods
 
 =head1 Version
 
-0.1.$Revision: 432 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

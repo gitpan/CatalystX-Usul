@@ -1,14 +1,14 @@
-#!/usr/bin/perl
-
-# @(#)$Id: 10base.t 446 2009-04-11 02:53:16Z pjf $
+# @(#)$Id: 10base.t 497 2009-05-26 12:59:33Z pjf $
 
 use strict;
 use warnings;
-use English qw(-no_match_vars);
-use Exception::Class ( q(TestException) => { fields => [ qw(arg1 arg2) ] } );
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 497 $ =~ /\d+/gmx );
 use File::Spec::Functions;
-use FindBin  qw( $Bin );
-use lib (catdir( $Bin, updir, q(lib) ));
+use FindBin qw( $Bin );
+use lib catdir( $Bin, updir, q(lib) );
+
+use Exception::Class ( q(TestException) => { fields => [ qw(arg1 arg2) ] } );
+use English qw( -no_match_vars );
 use Test::More;
 
 BEGIN {
@@ -18,7 +18,7 @@ BEGIN {
       plan skip_all => q(CPAN Testing stopped);
    }
 
-   plan tests => 29;
+   plan tests => 30;
 }
 
 use_ok q(CatalystX::Usul);
@@ -55,6 +55,9 @@ ok( $ref->create_token( q(test) )
     eq q(a94a8fe5ccb19ba61c4c0873d391e987982fbbd3), q(create_token) );
 
 ok( $ref->dirname( catfile( qw(dir1 file1) ) ) eq q(dir1), q(dirname) );
+
+ok( $ref->distname( q(App::Munchies) ) eq q(App-Munchies),
+    q(distname) );
 
 ok( $ref->env_prefix( q(App::Munchies) ) eq q(APP_MUNCHIES), q(env_prefix) );
 

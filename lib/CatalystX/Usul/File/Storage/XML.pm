@@ -1,15 +1,15 @@
-package CatalystX::Usul::File::Storage::XML;
+# @(#)$Id: XML.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: XML.pm 407 2009-03-30 09:34:16Z pjf $
+package CatalystX::Usul::File::Storage::XML;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
+
 use Class::C3;
 use Hash::Merge qw(merge);
 use List::Util qw(max);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 407 $ =~ /\d+/gmx );
 
 __PACKAGE__->config( extn => q(.xml), lang => q(), path => q(), _dtd => [] );
 
@@ -86,7 +86,8 @@ sub _delete {
    }
 
    unless ($updated) {
-      $self->throw( error => q(eNotUpdated), arg1 => $path, arg2 => $name );
+      $self->throw( error => 'File [_1] element [_2] not updated',
+                    args  => [ $path, $name ] );
    }
 
    return $updated;
@@ -283,7 +284,8 @@ sub _merge_attrs {
 sub _read_file {
    my ($self, $path) = @_;
 
-   $self->throw( error => q(eNotOverriden), arg1 => $path->pathname );
+   $self->throw( error => 'Method _read_file not overridden in [_1]',
+                 args  => [ ref $self ] );
    return;
 }
 
@@ -327,13 +329,13 @@ sub _set_cache {
 }
 
 sub _validate_params {
-   my $self = shift; my ($element, $path);
+   my $self = shift; my ($elem, $path, $schema);
 
-   $self->throw( q(eNoSchema)  ) unless ($self->schema);
-   $self->throw( q(eNoPath)    ) unless ($path = $self->path);
-   $self->throw( q(eNoElement) ) unless ($element = $self->schema->element);
+   $self->throw( 'No schema specified'    ) unless ($schema = $self->schema);
+   $self->throw( 'No file path specified' ) unless ($path = $self->path);
+   $self->throw( 'No element specified'   ) unless ($elem = $schema->element);
 
-   return ($path, $element);
+   return ($path, $elem);
 }
 
 sub _write {
@@ -352,7 +354,7 @@ sub _write {
       $updated ||= $res;
    }
 
-   $self->throw( q(eNothingUpdated) ) if ($overwrite and not $updated);
+   $self->throw( 'Nothing updated' ) if ($overwrite and not $updated);
 
    return $updated;
 }
@@ -360,7 +362,8 @@ sub _write {
 sub _write_file {
    my ($self, $path, $data) = @_;
 
-   $self->throw( error => q(eNotOverriden), arg1 => $path->pathname );
+   $self->throw( error => 'Method _write_file not overridden in [_1]',
+                 args  => [ ref $self ] );
    return;
 }
 
@@ -392,8 +395,8 @@ sub _write_on_condition {
    my ($data)  = $self->_read_file( $path );
 
    if (!$overwrite && exists $data->{ $element }->{ $name }) {
-      $self->throw( error => q(eAlreadyExists),
-                    arg1  => $path->pathname, arg2 => $name );
+      $self->throw( error => 'File [_1] element [_2] already exists',
+                    args  => [ $path->pathname, $name ] );
    }
 
    my $row_ref = \$data->{ $element }->{ $name };
@@ -417,7 +420,7 @@ CatalystX::Usul::File::Storage::XML - Read/write XML data storage model
 
 =head1 Version
 
-0.1.$Revision: 407 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

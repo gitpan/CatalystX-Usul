@@ -1,10 +1,12 @@
-package CatalystX::Usul::Programs;
+# @(#)$Id: Programs.pm 566 2009-06-09 19:34:27Z pjf $
 
-# @(#)$Id: Programs.pm 419 2009-03-31 02:10:53Z pjf $
+package CatalystX::Usul::Programs;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 566 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+
 use CatalystX::Usul::InflateSymbols;
 use Class::C3;
 use Class::Null;
@@ -24,12 +26,13 @@ use Text::Autoformat;
 use XML::Simple;
 use YAML::Syck;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 419 $ =~ /\d+/gmx );
-
 my $BRK    = q(: );
+my $NO     = q(n);
 my $NUL    = q();
 my $PREFIX = q(/opt);
+my $QUIT   = q(q);
 my $SPC    = q( );
+my $YES    = q(y);
 
 sub new {
    my ($self, @rest) = @_;
@@ -59,15 +62,11 @@ sub new {
 }
 
 sub add_leader {
-   my ($self, $text, $args) = @_; my ($leader, @largs, $res);
+   my ($self, $text, $args) = @_; my ($leader, $res);
 
-   $res = $NUL; chomp $text;
-
-   for (grep { exists $args->{ q(arg).$_ } } 1..2) {
-      push @largs, $args->{ q(arg).$_ };
-   }
-
-   $text   = $self->loc( $text, @largs ) || '[no message]';
+   $res    = $NUL; $text = $NUL.$text; chomp $text;
+   $text   = $self->loc( $self, $text, @{ $args->{args} || [] } );
+   $text ||= '[no message]';
    $leader = exists $args->{noLead} || exists $args->{no_lead}
            ? $NUL : (ucfirst $self->name).$BRK;
 
@@ -111,10 +110,15 @@ sub dispatch {
       $rv = eval { $self->$method( @{ $parms } ) };
 
       if ($e = $self->catch) {
-         $self->output( $e->out ) if ( $e->out );
-         $self->error(  $e->as_string( $self->debug ? 2 : 1 ),
-                        { arg1 => $e->arg1, arg2 => $e->arg2 } );
-         $rv = $e->rv || -1 unless (defined $rv);
+         my $class = ref $e;
+
+         if ($class and $class eq $self->exception_class) {
+            $self->output( $e->out ) if ( $e->out );
+            $self->error ( $e->as_string( $self->debug ? 2 : 1 ),
+                           { args => $e->args } );
+            $rv = $e->rv || -1 unless (defined $rv);
+         }
+         else { $self->error( $e ); $rv = -1 }
       }
       else {
          unless (defined $rv) {
@@ -131,7 +135,7 @@ sub dispatch {
    }
 
    if (defined $rv && $rv == 0) { $self->output( 'Finished' ) }
-   else { $self->output( 'Terminated code '.$rv ) }
+   else { $self->output( "Terminated code $rv" ) }
 
    $self->delete_tmp_files;
    return $rv;
@@ -144,9 +148,8 @@ sub error {
 
    $self->log_error( $_ ) for (split m{ \n }mx, $text);
 
-   unless ($self->silent) {
-      print {*STDERR} $text."\n" or $self->throw( q(eIOError) );
-   }
+   print {*STDERR} $text."\n"
+      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
 
    return;
 }
@@ -160,7 +163,8 @@ sub fatal {
 
    $self->log_alert( $_ ) for (split m{ \n }mx, $text);
 
-   print {*STDERR} $text."\n" or $self->throw( q(eIOError) );
+   print {*STDERR} $text."\n"
+      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
    exit 1;
 }
 
@@ -173,12 +177,7 @@ sub get_debug_option {
 
    return 0 unless (is_interactive());
 
-   my $rv = $self->yorn( 'Do you want debugging turned on', q(n), 1 );
-
-   return 1 if ($rv == 0);
-   return 0 if ($rv == 1);
-
-   exit 0;
+   return $self->yorn( 'Do you want debugging turned on', 0, 1 );
 }
 
 sub get_line {
@@ -187,7 +186,7 @@ sub get_line {
    my ($advice, $left_x, $left_prompt, $right_prompt, $prompt);
    my ($result, $right_x, $total);
 
-   if (defined $quit && $quit) { $advice = '(q to quit) ' }
+   if ($quit) { $advice = "($QUIT to quit) " }
    else { $advice = $NUL; $quit = 0 }
 
    $right_prompt = $advice.($default ? q([).$default.q(]) : $NUL);
@@ -209,7 +208,7 @@ sub get_line {
    }
    else { $result = $self->prompt( -d => $default, -p => $prompt ) }
 
-   return if ($quit and defined $result and lc $result eq q(q));
+   exit 1 if ($quit and defined $result and lc $result eq $QUIT);
 
    return $NUL.$result;
 }
@@ -247,9 +246,7 @@ sub info {
 
    $self->log_info( $_ ) for (split m{ \n }mx, $text);
 
-   unless ($self->silent) {
-      print {*STDOUT} $text."\n" or $self->throw( q(eIOError) );
-   }
+   $self->say( $text ) unless ($self->silent);
 
    return;
 }
@@ -259,16 +256,11 @@ sub output {
 
    return if ($self->silent);
 
-   if ($args and $args->{cl}) {
-      print {*STDOUT} "\n"  or $self->throw( q(eIOError) );
-   }
+   $self->say if ($args and $args->{cl});
 
-   print {*STDOUT} $self->add_leader( $text, $args )."\n"
-      or $self->throw( q(eIOError) );
+   $self->say( $self->add_leader( $text, $args ) );
 
-   if ($args and $args->{nl}) {
-      print {*STDOUT} "\n" or $self->throw( q(eIOError) );
-   }
+   $self->say if ($args and $args->{nl});
 
    return;
 }
@@ -295,7 +287,8 @@ sub prompt {
 
    ($cntl, %cntl)  = $self->_get_control_chars( $IN );
    local $SIG{INT} = sub { $self->_restore_mode( $IN ); exit };
-   print {$OUT} $prompt or $self->throw( q(eIOError) );
+   print {$OUT} $prompt
+      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
    $input = $NUL;
    $self->_raw_mode( $IN );
 
@@ -308,14 +301,16 @@ sub prompt {
          elsif ($next eq $cntl{ERASE}) {
             if ($len = length $input) {
                $input = substr $input, 0, $len - 1;
-               print {$OUT} "\b \b" or $self->throw( q(eIOError) );
+               print {$OUT} "\b \b"
+                  or $self->throw( error => 'IO error [_1]', args =>[$ERRNO] );
             }
 
             next;
          }
          elsif ($next eq $cntl{EOF}) {
             $self->_restore_mode( $IN );
-            close $IN or $self->throw( q(eIOError) );
+            close $IN
+               or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
             return $input;
          }
          elsif ($next !~ m{ $cntl }mx) {
@@ -325,10 +320,11 @@ sub prompt {
                if ($input eq "\n" and $default) {
                   print {$OUT} ('['.(defined $echo
                                      ? $echo x length $default
-                                     : $default).']')
-                      or $self->throw( q(eIOError) );
-                  print {$OUT} "\n" or $self->throw( q(eIOError) );
+                                     : $default).']')."\n"
+                     or $self->throw( error => 'IO error [_1]',
+                                      args  =>[ $ERRNO ] );
                   $self->_restore_mode( $IN );
+
                   return $onechar ? substr $default, 0, 1 : $default;
                }
 
@@ -336,7 +332,7 @@ sub prompt {
             }
             else {
                print {$OUT} (defined $echo ? $echo : $next)
-                  or $self->throw( q(eIOError) );
+                  or $self->throw( error => 'IO error [_1]', args =>[$ERRNO] );
             }
          }
          else { $input .= $next }
@@ -346,7 +342,8 @@ sub prompt {
          chomp $input; $self->_restore_mode( $IN );
 
          if (defined $newlines) {
-            print {$OUT} $newlines or $self->throw( q(eIOError) );
+            print {$OUT} $newlines
+               or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
          }
 
          return $onechar ? substr $input, 0, 1 : $input;
@@ -354,6 +351,10 @@ sub prompt {
    }
 
    return;
+}
+
+sub stash {
+   my $self = shift; return $self;
 }
 
 sub usage {
@@ -384,9 +385,7 @@ sub warning {
 
    $self->log_warning( $_ ) for (split m{ \n }mx, $text);
 
-   unless ($self->silent) {
-      print {*STDOUT} $text."\n" or $self->throw( q(eIOError) );
-   }
+   $self->say( $text ) unless ($self->silent);
 
    return;
 }
@@ -397,10 +396,11 @@ sub yorn {
    my ($advice, $left_x, $left_prompt, $right_prompt, $prompt);
    my ($result, $right_x, $total);
 
-   if (defined $quit && $quit) { $advice = '(y/n, q) ' }
-   else { $advice = '(y/n) '; $quit = 0 }
-
+   $quit         = $quit    ? $QUIT : q();
+   $default      = $default ? $YES  : $NO;
+   $advice       = $quit    ? "($YES/$NO, $quit) " : "($YES/$NO) ";
    $right_prompt = $advice.q([).$default.q(]);
+   $left_prompt  = $question;
 
    if (defined $width) {
       $total        = $width || $self->pwidth || 40;
@@ -408,16 +408,16 @@ sub yorn {
       $left_x       = $total - $right_x;
       $left_prompt  = sprintf '%-*s', $left_x, $question;
    }
-   else { $left_prompt = $question }
 
    $prompt  = $left_prompt.$SPC.$right_prompt.$BRK;
+
    $prompt .= "\n" if (defined $newline && $newline == 1);
 
    while ($result = $self->prompt( -d => $default, -p => $prompt )) {
-      return 0 unless (defined $result);
-      return 0 if     ($result =~ m{ \A y }imx);
-      return 1 if     ($result =~ m{ \A n }imx);
-      return 2 if     ($result =~ m{ \A [q\e] }imx && $quit);
+      exit   1 unless (defined $result);
+      exit   1 if     ($quit and $result =~ m{ \A (?: $quit | [\e] ) }imx);
+      return 1 if     ($result =~ m{ \A $YES }imx);
+      return 0 if     ($result =~ m{ \A $NO  }imx);
    }
 
    return;
@@ -458,10 +458,7 @@ sub _bootstrap {
    $self->{binsdir   } = $inflator->binsdir;
    $self->{libsdir   } = $inflator->libsdir;
    $self->{debug     } = $cfg->{debug};
-   my $dir             = $self->catdir( File::Spec->rootdir,
-                                        q(home), q(common) );
-   $self->{commondir } = $self->_inflate( $cfg->{common_home} || $dir );
-   $dir                = '__appldir('.$self->catdir( q(var), q(etc) ).')__';
+   my $dir             = '__appldir('.$self->catdir( q(var), q(etc) ).')__';
    $self->{ctrldir   } = $self->_inflate( $cfg->{ctrldir    } || $dir );
    $dir                = '__appldir('.$self->catdir( q(var), q(db) ).')__';
    $self->{dbasedir  } = $self->_inflate( $cfg->{dbasedir   } || $dir );
@@ -475,6 +472,7 @@ sub _bootstrap {
    $self->{logname   } = $ENV{USER}                           || $ENV{LOGNAME};
    $dir                = '__appldir(logs)__';
    $self->{logsdir   } = $self->_inflate( $cfg->{logsdir}     || $dir );
+   $self->{messages  } = {};
    $self->{method    } = $NUL;
    $self->{mode      } = oct ($cfg->{mode}                    || q(027) );
    $self->{name      }
@@ -637,7 +635,7 @@ sub _load_messages {
       $cfg  = eval {
          XML::Simple->new( ForceArray => [ q(messages) ] )->xml_in( $text );
       };
-      $self->error(    $EVAL_ERROR      ) if ($EVAL_ERROR);
+      $self->error   ( $EVAL_ERROR      ) if ($EVAL_ERROR);
       $self->messages( $cfg->{messages} ) if ($cfg && $cfg->{messages});
    }
 
@@ -657,7 +655,7 @@ sub _load_os_depends {
          XML::Simple->new( ForceArray => [ q(os) ] )->xml_in( $text );
       };
       $self->error( $EVAL_ERROR ) if ($EVAL_ERROR);
-      $self->os(    $cfg->{os}  ) if ($cfg && $cfg->{os});
+      $self->os   ( $cfg->{os}  ) if ($cfg && $cfg->{os});
    }
 
    return;
@@ -730,7 +728,7 @@ CatalystX::Usul::Programs - Provide support for command line programs
 
 =head1 Version
 
-0.1.$Revision: 419 $
+0.1.$Revision: 566 $
 
 =head1 Synopsis
 
@@ -980,7 +978,7 @@ program leader and prints the result to I<STDOUT>
 
 Prompt the user to respond to a yes or no question. The C<$question>
 is printed to I<STDOUT> with a program leader. The C<$default>
-argument is C<n|y>. If C<$quit> is true then the option to quit is
+argument is C<0|1>. If C<$quit> is true then the option to quit is
 included in the prompt. If the C<$width> argument is defined then the
 string is formatted to the specified width which is C<$width> or
 C<< $obj->pwdith >> or 40

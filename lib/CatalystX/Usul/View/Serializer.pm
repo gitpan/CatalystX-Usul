@@ -1,14 +1,14 @@
-package CatalystX::Usul::View::Serializer;
+# @(#)$Id: Serializer.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Serializer.pm 403 2009-03-28 04:09:04Z pjf $
+package CatalystX::Usul::View::Serializer;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::View);
+
 use Class::C3;
 use Data::Serializer;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
 
 __PACKAGE__->config
    ( content_types => {
@@ -49,7 +49,7 @@ CatalystX::Usul::View::Serializer - Serialize response to an XMLHttpRequest
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

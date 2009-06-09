@@ -1,12 +1,12 @@
-#!/usr/bin/perl
-
-# @(#)$Id: 14config.t 446 2009-04-11 02:53:16Z pjf $
+# @(#)$Id: 14config.t 546 2009-06-07 12:21:14Z pjf $
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 546 $ =~ /\d+/gmx );
 use File::Spec::Functions;
-use FindBin  qw( $Bin );
-use lib (catdir( $Bin, updir, q(lib) ));
+use FindBin qw( $Bin );
+use lib catdir( $Bin, updir, q(lib) );
+
 use Test::More;
 
 BEGIN {
@@ -59,13 +59,15 @@ ok( ref $cfg->{levels}->{entrance}->{acl} eq q(ARRAY), 'Detects arrays' );
 
 eval { $model->create_or_update }; my $e = $model->catch;
 
-ok( $e->as_string eq q(eNoFile), 'Detects misssin file parameter' );
+ok( $e->as_string eq 'No file path specified',
+    'Detects misssin file parameter' );
 
 my $args = {}; $args->{file} = q(t/default.xml);
 
 eval { $model->create( $args ) }; $e = $model->catch;
 
-ok( $e->as_string eq q(eNoName), 'Detects misssin name parameter' );
+ok( $e->as_string eq 'No element name specified',
+    'Detects misssin name parameter' );
 
 $model = $context->model( q(Config::Levels) );
 
@@ -83,7 +85,8 @@ ok( $cfg->{levels}->{dummy}->{acl}->[ 0 ] eq q(any), 'Dummy level defaults' );
 
 eval { $model->create( $args ) }; $e = $model->catch;
 
-ok( $e->as_string eq q(eAlreadyExists), 'Detects existing record' );
+ok( $e->as_string eq 'File [_1] element [_2] already exists',
+    'Detects existing record' );
 
 eval { $model->delete( $args ) }; $e = $model->catch;
 
@@ -91,7 +94,8 @@ ok ( !$e, 'Deletes dummy level' );
 
 eval { $model->delete( $args ) }; $e = $model->catch;
 
-ok( $e->as_string eq q(eNotUpdated), 'Detects non existance on delete' );
+ok( $e->as_string eq 'File [_1] element [_2] not updated',
+    'Detects non existance on delete' );
 
 my @res = $model->search( q(t/default.xml), { acl => q(@support) } );
 

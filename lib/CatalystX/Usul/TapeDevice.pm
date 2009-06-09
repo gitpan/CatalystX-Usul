@@ -1,13 +1,13 @@
-package CatalystX::Usul::TapeDevice;
+# @(#)$Id: TapeDevice.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: TapeDevice.pm 403 2009-03-28 04:09:04Z pjf $
+package CatalystX::Usul::TapeDevice;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
-use English qw(-no_match_vars);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
+use English qw(-no_match_vars);
 
 my $NUL = q();
 
@@ -51,9 +51,7 @@ sub eject {
 }
 
 sub get_status {
-   my ($self, $volume) = @_; my ($cmd, $path, $posn, $ref, $res);
-
-   my $form = $self->form; my $s = {};
+   my ($self, $volume) = @_; my $s = {}; my ($cmd, $path, $posn, $ref);
 
    $s->{devices   } = [];
    $s->{dump_type } = $self->type;
@@ -71,6 +69,7 @@ sub get_status {
    $s->{position  } = $NUL;
    $s->{working   } = $NUL;
 
+   my $form   = $self->form;
    my $device = $self->device;
    my $pat    = $self->pattern;
    my $io     = $self->io( $self->dev_dir );
@@ -94,7 +93,8 @@ sub get_status {
          $cmd  = $self->mt_cmd.q( );
          $cmd .= $self->_get_dev_path( $self->_get_no_rewind( $device ) );
          $cmd .= q( status);
-         $res  = $self->run_cmd( $cmd, { err => q(out) } );
+
+         my $res = $self->run_cmd( $cmd, { err => q(out) } );
 
          for my $line (split m{ \n }mx, $res->out) {
             $s->{online } = 1  if ($line =~ m{ ONLINE }mx ||
@@ -149,24 +149,24 @@ sub process {
    }
 
    unless (-c $dev) {
-      $self->throw( error => q(eNotCharacterDevice), arg1 => $dev );
+      $self->throw( error => 'Not a character device [_1]', args => [ $dev ] );
    }
 
    $self->lock->set( k => $dev, t => $self->max_wait );
 
    if ($self->operation == 2) {
-      $text = 'Rewinding '.$dev."\n";
+      $text = "Rewinding $dev\n";
       $cmd  = $self->mt_cmd.q( ).$dev.q( rewind);
    }
    else {
-      $text = 'Appending to '.$dev."\n";
+      $text = "Appending to $dev\n";
       $cmd  = $self->mt_cmd.q( ).$dev.q( status);
    }
 
    $res = $self->run_cmd( $cmd, { err => q(out) } );
 
    for $path (@paths) {
-      $text .= 'Dumping '.$path.q( ).$self->stamp."\n";
+      $text .= "Dumping $path ".$self->stamp."\n";
 
       if ($self->format eq q(dump)) {
          $cmd  = $self->dump_cmd.($self->debug ? q( -v) : $NUL);
@@ -186,7 +186,7 @@ sub process {
 sub start {
    my $self = shift; my ($cmd, $value);
 
-   $self->throw( q(eNoPath) ) unless ($self->paths);
+   $self->throw( 'No file path specified' ) unless ($self->paths);
 
    $cmd  = $self->suid.' -c tape_backup'.($self->debug ? ' -D' : ' -n');
    $cmd .= ' -L '.$self->lang;
@@ -212,7 +212,7 @@ sub _get_dev_path {
 sub _get_last {
    my ($self, $volume) = @_; my ($dstr, $level); my $lastd = 0;
 
-   $self->throw( q(eNoVolume) ) unless ($volume);
+   $self->throw( 'No disk volume specified' ) unless ($volume);
 
    return ($NUL, 0) unless (-f $self->dump_dates);
 
@@ -243,7 +243,7 @@ CatalystX::Usul::TapeDevice - Provides tape device methods
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

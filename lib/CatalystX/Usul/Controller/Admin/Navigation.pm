@@ -1,20 +1,20 @@
-package CatalystX::Usul::Controller::Admin::Navigation;
+# @(#)$Id: Navigation.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Navigation.pm 406 2009-03-30 01:53:50Z pjf $
+package CatalystX::Usul::Controller::Admin::Navigation;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 406 $ =~ /\d+/gmx );
+my $NUL = q();
+my $SEP = q(/);
 
 __PACKAGE__->config( namespace => q(admin), realm_class => q(IdentityUnix) );
 
 __PACKAGE__->mk_accessors( qw(realm_class) );
 
-my $SEP = q(/);
-
-sub navigation_base : Chained(common) PathPart(navigation) CaptureArgs(0) {
+sub navigation_base : Chained(common) PathPart(configuration) CaptureArgs(0) {
    my ($self, $c) = @_; my $s = $c->stash;
 
    my $model = $c->model( $self->realm_class );
@@ -34,58 +34,28 @@ sub navigation_base : Chained(common) PathPart(navigation) CaptureArgs(0) {
 sub access_control : Chained(navigation_base) Args HasActions {
    my ($self, $c, $namespace, $name) = @_;
 
-   $namespace = $self->set_key( $c, q(level), $namespace );
+   $namespace = $self->set_key( $c, q(level), $namespace ) || $NUL;
    $name      = $self->set_key( $c, q(room),  $name      );
    $c->model( q(Navigation) )->form( $namespace, $name   );
    return;
 }
 
 sub access_control_set : ActionFor(access_control.set) {
-   my ($self, $c) = @_; my ($file, $level, $model, $name, $room);
+   my ($self, $c) = @_;
 
-   unless ($level = $self->get_key( $c, q(level) )) {
-      $self->throw( q(eNoLevelName) );
-   }
-
-   unless ($room = $self->get_key( $c, q(room) )) {
-      $self->throw( q(eNoRoomName)  );
-   }
-
-   if ($room eq q(..Level..)) {
-      $model = $c->model( q(Config::Levels) );
-      $file  = q(default); $name = $level;
-   }
-   else {
-      $model = $c->model( q(Config::Rooms) );
-      $file  = $level; $name = $room;
-   }
+   my ($model, $file, $name) = $self->_get_parameters( $c );
 
    $model->set_state( { file => $file, name => $name } );
    return 1;
 }
 
 sub access_control_update : ActionFor(access_control.update) {
-   my ($self, $c) = @_; my ($file, $level, $model, $msg, $name, $room);
+   my ($self, $c) = @_; my $msg;
 
-   unless ($level = $self->get_key( $c, q(level) )) {
-      $self->throw( q(eNoLevelName) );
-   }
-
-   unless ($room = $self->get_key( $c, q(room) )) {
-      $self->throw( q(eNoRoomName)  );
-   }
-
-   if ($room eq q(..Level..)) {
-      $model = $c->model( q(Config::Levels) );
-      $file  = q(default); $name = $level;
-   }
-   else {
-      $model = $c->model( q(Config::Rooms) );
-      $file  = $level; $name = $room;
-   }
+   my ($model, $file, $name) = $self->_get_action_parameters( $c );
 
    if ($model->query_value( q(user_groups_n_deleted) )) {
-      $msg = $room eq q(..Level..) ? q(revokedLevel) : q(revokedRoom);
+      $msg = $file eq q(default) ? q(revokedLevel) : q(revokedRoom);
       $model->remove_from_attribute_list( { file  => $file,
                                             name  => $name,
                                             field => q(user_groups_deleted),
@@ -94,7 +64,7 @@ sub access_control_update : ActionFor(access_control.update) {
    }
 
    if ($model->query_value( q(user_groups_n_added) )) {
-      $msg = $room eq q(..Level..) ? q(grantedLevel) : q(grantedRoom);
+      $msg = $file eq q(default) ? q(grantedLevel) : q(grantedRoom);
       $model->add_to_attribute_list( { file  => $file,
                                        name  => $name,
                                        field => q(user_groups_added),
@@ -105,40 +75,19 @@ sub access_control_update : ActionFor(access_control.update) {
    return 1;
 }
 
-sub navigation_manager : Chained(navigation_base) PathPart('') Args(0) {
-   my ($self, $c) = @_;
-
-   return $self->redirect_to_path( $c, $SEP.q(access_control) );
-}
-
 sub room_manager : Chained(navigation_base) Args HasActions {
    my ($self, $c, $namespace, $name) = @_;
 
-   $namespace = $self->set_key( $c, q(level), $namespace ) || q();
+   $namespace = $self->set_key( $c, q(level), $namespace ) || $NUL;
    $name      = $self->set_key( $c, q(room),  $name      );
    $c->model( q(Navigation) )->form( $namespace, $name );
    return;
 }
 
 sub room_manager_delete : ActionFor(room_manager.delete) {
-   my ($self, $c) = @_; my ($file, $level, $model, $name, $room);
+   my ($self, $c) = @_;
 
-   unless ($level = $self->get_key( $c, q(level) )) {
-      $self->throw( q(eNoLevelName) );
-   }
-
-   unless ($room = $self->get_key( $c, q(room) )) {
-      $self->throw( q(eNoRoomName)  );
-   }
-
-   if ($room eq q(..Level..)) {
-      $model = $c->model( q(Config::Levels) );
-      $file  = q(default); $name = $level;
-   }
-   else {
-      $model = $c->model( q(Config::Rooms) );
-      $file  = $level; $name = $room;
-   }
+   my ($model, $file, $name) = $self->_get_action_parameters( $c );
 
    $model->delete( { file => $file, name => $name } );
    return 1;
@@ -146,28 +95,36 @@ sub room_manager_delete : ActionFor(room_manager.delete) {
 
 sub room_manager_save : ActionFor(room_manager.save)
                         ActionFor(room_manager.insert) {
-   my ($self, $c) = @_; my ($file, $level, $model, $name, $room);
+   my ($self, $c) = @_;
 
-   unless ($level = $self->get_key( $c, q(level) )) {
-      $self->throw( q(eNoLevelName) );
-   }
+   my $name = $c->model( q(Base) )->query_value( q(name) ) || $NUL;
 
-   $room = $self->get_key( $c, q(room) );
-   $name = $c->model( q(Config) )->query_value( q(name) );
+   $self->set_key( $c, q(room), $name );
 
-   if ($room eq q(..Level..)) {
-      $self->throw( q(eNoLevelName) ) unless ($name);
-
-      $model = $c->model( q(Config::Levels) ); $file = q(default);
-   }
-   else {
-      $self->throw( q(eNoRoomName) ) unless ($name);
-
-      $model = $c->model( q(Config::Rooms) ); $file = $level;
-   }
+   my ($model, $file) = $self->_get_action_parameters( $c );
 
    $model->create_or_update( { file => $file, name => $name } );
    return 1;
+}
+
+# Private methods
+
+sub _get_action_parameters {
+   my ($self, $c) = @_; my $s = $c->stash; my ($name, $namespace);
+
+   unless ($namespace = $self->get_key( $c, q(level) )) {
+      $self->throw( 'No namespace for action specified' );
+   }
+
+   unless ($name = $self->get_key( $c, q(room) )) {
+      $self->throw( 'No name for action specified' );
+   }
+
+   if ($name eq q(..Level..)) {
+      return ($s->{level_model}, q(default), $namespace);
+   }
+
+   return ($s->{room_model}, $namespace, $name);
 }
 
 1;
@@ -182,7 +139,7 @@ CatalystX::Usul::Controller::Admin::Navigation - Menu maintenance actions
 
 =head1 Version
 
-0.1.$Revision: 406 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -234,10 +191,6 @@ Sets the selected actions state to one of; I<open>, I<hidden>, or I<closed>
 =head2 access_control_update
 
 Changes the ACL on the selected action
-
-=head2 navigation_manager
-
-Redirects to the L</room_manager>
 
 =head2 room_manager
 

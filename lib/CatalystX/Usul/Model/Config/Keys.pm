@@ -1,16 +1,15 @@
-package CatalystX::Usul::Model::Config::Keys;
+# @(#)$Id: Keys.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Keys.pm 401 2009-03-27 00:17:37Z pjf $
+package CatalystX::Usul::Model::Config::Keys;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 401 $ =~ /\d+/gmx );
-
 __PACKAGE__->config
-   ( create_msg_key    => q(keysCreated),
-     delete_msg_key    => q(keysDeleted),
+   ( create_msg_key    => q(Keys [_1] / [_2] created),
+     delete_msg_key    => q(Keys [_1] / [_2] deleted),
      keys_attr         => q(key),
      schema_attributes => {
         attributes     => [ qw(vals) ],
@@ -25,7 +24,7 @@ __PACKAGE__->config
                                       sizes  => { name => 16,
                                                   key  => 32 } } },
      typelist          => {},
-     update_msg_key    => q(keysUpdated), );
+     update_msg_key    => q(Keys [_1] / [_2] updated), );
 
 1;
 
@@ -39,7 +38,7 @@ CatalystX::Usul::Model::Config::Keys - Class definition for keys configuration e
 
 =head1 Version
 
-0.1.$Revision: 401 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

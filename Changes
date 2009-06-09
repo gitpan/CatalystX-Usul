@@ -1,11 +1,21 @@
 Revision history for CatalystX::Usul
 
+0.2.571  09/06/2009
+         - Squeezed a domain model out of the identity model
+         - Much improved OO-fu in Build.pm
+         - Improved testing idioms
+         - Made Project::Docs and Plugin::Captcha optional modules
+         - Added repository method to Build.pm. Returns the SVN
+           repository for the resources attribute in META.yml
+         - Simple page puts better class names on elements. Paragraph
+           columns now have a max width
+
 0.1.450  12/04/2009
          - More CPAN testing crap
 
 0.1.443  09/04/2009
          - Navigation model now uses the menu subclass from
-         HTML::FormWidgets
+           HTML::FormWidgets
 
 0.1.437  07/04/2009
          - Added more tests

@@ -1,10 +1,12 @@
-package CatalystX::Usul::View;
+# @(#)$Id: View.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: View.pm 404 2009-03-28 04:16:03Z pjf $
+package CatalystX::Usul::View;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Catalyst::View CatalystX::Usul);
+
 use Encode;
 use HTML::FormWidgets;
 
@@ -15,12 +17,10 @@ __PACKAGE__->mk_accessors( qw(content_types deserialize_attrs
                               dynamic_templates form_sources
                               serialize_attrs) );
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 404 $ =~ /\d+/gmx );
-
 sub bad_request {
-   my ($self, $c, $body) = @_;
+   my ($self, $c, $verb, $msg) = @_;
 
-   $c->res->body( $body );
+   $c->res->body( $msg );
    $c->res->content_type( q(text/plain) );
    $c->res->status( 400 );
    return 0;
@@ -83,9 +83,9 @@ sub get_verb {
 }
 
 sub not_implemented {
-   my ($self, $c, $body) = @_;
+   my ($self, $c, $verb, $msg) = @_;
 
-   $c->res->body( $body );
+   $c->res->body( $msg );
    $c->res->content_type( q(text/plain) );
    $c->res->status( 405 );
    return 0;
@@ -130,14 +130,12 @@ sub process {
 
    my $s = $c->stash; my $type = $s->{content_type};
 
-   $self->messages( $s->{messages} );
-
    if ($types = $self->content_types) {
       if ($type) {
          if (exists $types->{ $type }) { $attrs = $types->{ $type } }
-         else { $body = $self->loc( q(eUnknownContentType), $type ) }
+         else { $body = $self->loc( $c, 'Content type [_1] unknown', $type ) }
       }
-      else { $body = $self->loc( q(eNoContentType) ) }
+      else { $body = $self->loc( $c, 'Content type not specified' ) }
 
       return $self->_unsupported_media_type( $c, $body."\r\n" ) if ($body);
    }
@@ -146,7 +144,7 @@ sub process {
    $body = eval { $self->serialize( $attrs, $self->prepare_data( $c ) ) };
 
    if ($e = $self->catch) {
-      $body  = $self->loc( q(eSerializeFailed), $type );
+      $body  = $self->loc( $c, 'Serializer [_1] failed', $type );
       $body .= "\r\n***ERROR***\r\n".$e->as_string;
       $self->bad_request( $c, $body );
       return 1;
@@ -185,7 +183,7 @@ CatalystX::Usul::View - Base class for views
 
 =head1 Version
 
-0.1.$Revision: 404 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

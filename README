@@ -2,7 +2,7 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    0.1.$Revision: 450 $
+    0.1.$Revision: 571 $
 
 Synopsis
        use base qw(CatalystX::Usul);
@@ -56,11 +56,7 @@ Subroutines/Methods
     This class inherits from Catalyst::Component and CatalystX::Usul::Base.
     The Catalyst application context is $app and $config is a hash ref whose
     contents are copied to the created object. Defines the following
-    accessors:
-
-    content_type
-       The content type of any markup produced by the Text::Markdown module.
-       Defaults to *text/html*
+    attributes:
 
     debug
        The application context debug is used to set this. Defaults to false
@@ -75,10 +71,6 @@ Subroutines/Methods
 
     log
        The application context log. Defaults to a Class::Null object
-
-    messages
-       A hash ref of messages in the currently selected language. Used by
-       "localize"
 
     prefix
        The prefix applied to executable programs in the *bin* directory.
@@ -112,13 +104,13 @@ Subroutines/Methods
        $action = $self->get_action( $c, $action_path );
 
     Provide defaults for the get_action method. Return the action object if
-    one exists
+    one exists, otherwise log a warning and return undef
 
   loc
   localize
-       $local_text = $self->localize( $message, $args );
+       $local_text = $self->localize( $c, $message, @args );
 
-    Localizes the message. Optionally calls "markdown" on the text
+    Localizes the message. Optionally calls "Text::Markdown" on the text
 
   setup_plugins
        @plugins = $self->setup_plugins( $class, $config_ref );
@@ -131,7 +123,13 @@ Subroutines/Methods
 
     Turns the action path into an action object by calling "get_action".
     Calculates the number of capture args by introspecting the dispatcher
-    spilts them of from passed args and then calls uri_for
+    splits them of from passed args and then calls uri_for
+
+  _get_chained_action
+       $action = $self->_get_chained_action( $c, $action_path );
+
+    Returns the action object for the given chained midpoint action path.
+    Called by "uri_for". Irons out the differences between Catalyst versions
 
   _lock_obj
        $self->_lock_obj( $args );
@@ -170,6 +168,9 @@ Bugs and Limitations
 
 Author
     Peter Flanigan, "<Support at RoxSoft.co.uk>"
+
+Acknowledgements
+    Larry Wall - For the Perl programming language
 
 License and Copyright
     Copyright (c) 2009 Peter Flanigan. All rights reserved

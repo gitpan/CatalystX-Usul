@@ -1,40 +1,46 @@
-package CatalystX::Usul::File::ResultSource;
+# @(#)$Id: ResultSource.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: ResultSource.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::ResultSource;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
+
+use CatalystX::Usul::File::ResultSet;
 use CatalystX::Usul::File::Schema;
 use Class::C3;
-use Scalar::Util qw(weaken);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+__PACKAGE__->config
+   ( resultset_attributes => {},
+     resultset_class      => q(CatalystX::Usul::File::ResultSet),
+     schema_class         => q(CatalystX::Usul::File::Schema) );
 
-__PACKAGE__->config( schema_class => q(CatalystX::Usul::File::Schema) );
-
-__PACKAGE__->mk_accessors( qw(schema schema_class) );
+__PACKAGE__->mk_accessors( qw(resultset_attributes resultset_class
+                              schema schema_class) );
 
 sub new {
-   my ($self, $app, $attrs)  = @_;
+   my ($self, $app, $attrs) = @_;
 
    my $new = $self->next::method( $app, $attrs );
 
    $attrs  = { %{ $attrs->{schema_attributes} || {} }, source => $new };
-
    $new->schema( $new->schema_class->new( $app, $attrs ) );
 
-   weaken( $new->schema->{source} );
    return $new;
 }
 
 sub resultset {
    my ($self, $path, $lang) = @_;
 
-   $self->schema->storage->path( $path ) if ($path);
-   $self->schema->storage->lang( $lang ) if ($lang);
+   $self->storage->path( $path ) if ($path);
+   $self->storage->lang( $lang ) if ($lang);
 
-   return $self->schema->resultset;
+   return $self->resultset_class->new( $self, $self->resultset_attributes );
+}
+
+sub storage {
+   return shift->schema->storage;
 }
 
 1;
@@ -49,7 +55,7 @@ CatalystX::Usul::File::ResultSource - A source of result sets for a given schema
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -78,9 +84,11 @@ which defaults to L<CatalystX::Usul::File::Schema>
 
 Sets the schema's I<file> and I<lang> attributes from the optional
 parameters. Creates and returns a new
-L<CatalystX::Usul::File::Resultset> object via the
-L<resultset|CatalystX::Usul::File::Schema/resultset> method in the
-schema class
+L<CatalystX::Usul::File::Resultset> object
+
+=head2 storage
+
+Returns the storage handle for the current schema
 
 =head1 Diagnostics
 

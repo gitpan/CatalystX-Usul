@@ -1,15 +1,14 @@
-package CatalystX::Usul::Model::Config::Globals;
+# @(#)$Id: Globals.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Globals.pm 406 2009-03-30 01:53:50Z pjf $
+package CatalystX::Usul::Model::Config::Globals;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 406 $ =~ /\d+/gmx );
-
-__PACKAGE__->config( create_msg_key    => q(globalsCreated),
-                     delete_msg_key    => q(globalsDeleted),
+__PACKAGE__->config( create_msg_key    => q(Globals [_2] created),
+                     delete_msg_key    => q(Globals [_2] deleted),
                      file              => q(default),
                      keys_attr         => q(),
                      schema_attributes => {
@@ -18,7 +17,7 @@ __PACKAGE__->config( create_msg_key    => q(globalsCreated),
                         element        => q(globals),
                         lang_dep       => {}, },
                      typelist          => {},
-                     update_msg_key    => q(globalsUpdated), );
+                     update_msg_key    => q(Globals [_2] updated), );
 
 __PACKAGE__->mk_accessors( qw(file) );
 
@@ -59,7 +58,8 @@ sub save {
 
    if ($p = $self->query_value( q(newParam) )) {
       if ($self->find( $self->file, lc $p )) {
-         $self->throw( error => q(eAttrExists), arg1 => lc $p );
+         $self->throw( error => 'Attribute [_1] already exists',
+                       args  => [ lc $p ] );
       }
 
       $self->create( { file   => $self->file,
@@ -77,7 +77,7 @@ sub save {
          }
       }
 
-      $self->throw( q(eNothingUpdated) ) unless ($updated);
+      $self->throw( 'Nothing updated' ) unless ($updated);
    }
 
    return;
@@ -95,7 +95,7 @@ CatalystX::Usul::Model::Config::Globals - Class definition for global configurat
 
 =head1 Version
 
-0.1.$Revision: 406 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

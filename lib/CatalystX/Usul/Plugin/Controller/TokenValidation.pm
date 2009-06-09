@@ -1,12 +1,11 @@
-package CatalystX::Usul::Plugin::Controller::TokenValidation;
+# @(#)$Id: TokenValidation.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: TokenValidation.pm 436 2009-04-07 19:54:11Z pjf $
+package CatalystX::Usul::Plugin::Controller::TokenValidation;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 436 $ =~ /\d+/gmx );
 
 my $NUL = q();
 
@@ -97,7 +96,7 @@ CatalystX::Usul::Plugin::Controller::TokenValidation - CSRF form tokens
 
 =head1 Version
 
-0.1.$Revision: 436 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

@@ -1,24 +1,24 @@
-package CatalystX::Usul::Schema;
+# @(#)$Id: Schema.pm 566 2009-06-09 19:34:27Z pjf $
 
-# @(#)$Id: Schema.pm 403 2009-03-28 04:09:04Z pjf $
+package CatalystX::Usul::Schema;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 566 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
+
 use Crypt::CBC;
 use English qw(-no_match_vars);
 use MIME::Base64;
 use Sys::Hostname;
 use XML::Simple;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
-
-__PACKAGE__->mk_accessors( qw(attrs databases) );
-
 my $CLEANER = '.*^\s*use\s+Acme::Bleach\s*;\r*\n';
 my $KEY     = " \t" x 8;
 my $NUL     = q();
 my $DATA    = do { local $RS = undef; <DATA> };
+
+__PACKAGE__->mk_accessors( qw(attrs databases) );
 
 sub connect_info {
    my ($self, $path, $db, $seed) = @_; my ($attr, $cfg, $dsn);
@@ -74,7 +74,7 @@ sub deploy_and_populate {
    my ($cfg, $class, $flds, $hndl, $path, @paths, $re, $res, @rows, $xs);
 
    $dbh->storage->ensure_connected;
-   $dbh->deploy( $self->attrs, $dir.q(/) );
+   $dbh->deploy( $self->attrs, $dir );
 
    $schema =~ s{ :: }{-}gmx;
    $re     = '\A '.$schema.' [-] \d+ [-] (.*) \.xml \z';
@@ -89,8 +89,8 @@ sub deploy_and_populate {
 
    for $path (sort { $a->filename cmp $b->filename } @paths) {
       ($class) = $path->filename =~ m{ $re }mx;
-      $self->fatal( q(eNoClass) ) unless ($class);
-      $self->output( 'Populating '.$class );
+      $self->fatal( 'No class in [_1]', $path->filename ) unless ($class);
+      $self->output( "Populating $class" );
       $cfg  = $xs->xml_in( $path->pathname );
       $flds = [ split q( ), $cfg->{fields} ];
       @rows = map { [ map { my $row = $_;
@@ -153,7 +153,7 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 566 $
 
 =head1 Synopsis
 

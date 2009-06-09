@@ -1,12 +1,14 @@
-package CatalystX::Usul::Base;
+# @(#)$Id: Base.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Base.pm 424 2009-04-01 12:11:02Z pjf $
+package CatalystX::Usul::Base;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Class::Accessor::Fast
               Class::Accessor::Grouped
               CatalystX::Usul::Encoding);
+
 use CatalystX::Usul::Exception;
 use CatalystX::Usul::File::IO;
 use CatalystX::Usul::Time;
@@ -16,8 +18,6 @@ use English qw(-no_match_vars);
 use File::Spec;
 use List::Util qw(first);
 use Path::Class::Dir;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 424 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_log_methods();
 
@@ -42,7 +42,7 @@ sub basename {
 }
 
 sub catch {
-   my ($self, @rest) = @_; return CatalystX::Usul::Exception->catch( @rest );
+   my ($self, @rest) = @_; return $self->exception_class->catch( @rest );
 }
 
 sub catdir {
@@ -54,9 +54,7 @@ sub catfile {
 }
 
 sub class2appdir {
-   my ($self, $class) = @_; (my $appdir = lc $class) =~ s{ :: }{-}gmx;
-
-   return $appdir;
+   my ($self, $class) = @_; return lc $self->distname( $class );
 }
 
 sub classfile {
@@ -73,7 +71,7 @@ sub create_token {
          last if ($digest = eval { Digest->new( $candidate ) });
       }
 
-      $self->throw( q(eNoDigestAlgorithm) ) unless ($digest);
+      $self->throw( 'No digest algorithm' ) unless ($digest);
 
       __PACKAGE__->set_inherited( q(digest), $candidate );
    }
@@ -93,6 +91,12 @@ sub dirname {
    my ($self, $path) = @_; return $self->io( $path )->dirname;
 }
 
+sub distname {
+   my ($self, $class) = @_; (my $distname = $class) =~ s{ :: }{-}gmx;
+
+   return $distname;
+}
+
 sub ensure_class_loaded {
    my ($self, $class, $opts) = @_; my $error;
 
@@ -104,8 +108,9 @@ sub ensure_class_loaded {
 
    $self->throw( $error ) if ($error);
 
-   $self->throw( error => q(eUndefinedPackage), arg1 => $class )
-      unless (Class::Inspector->loaded( $class ));
+   unless (Class::Inspector->loaded( $class )) {
+      $self->throw( error => 'Class [_1] failed to load', args => [ $class ] );
+   }
 
    return 1;
 }
@@ -119,6 +124,10 @@ sub escape_TT {
 
    $val ||= q(); $val =~ s{ \[\% }{<%}gmx; $val =~ s{ \%\] }{%>}gmx;
    return $val;
+}
+
+sub exception_class {
+   return q(CatalystX::Usul::Exception);
 }
 
 sub find_source {
@@ -149,7 +158,7 @@ sub io {
 
    my $io = CatalystX::Usul::File::IO->new( @rest );
 
-   $io->exception_class( q(CatalystX::Usul::Exception) );
+   $io->exception_class( $self->exception_class );
 
    $io->lock_obj( $self->{lock} ) if (ref $self && exists $self->{lock});
 
@@ -188,6 +197,13 @@ sub load_component {
 
 sub nap {
    my ($self, @rest) = @_; return CatalystX::Usul::Time->nap( @rest );
+}
+
+sub say {
+   my ($self, @rest) = @_; local ($OFS, $ORS) = ("\n", "\n"); chomp( @rest );
+
+   return print {*STDOUT} @rest
+      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
 }
 
 sub stamp {
@@ -253,7 +269,7 @@ sub tempname {
 }
 
 sub throw {
-   my ($self, @rest) = @_; return CatalystX::Usul::Exception->throw( @rest );
+   my ($self, @rest) = @_; return $self->exception_class->throw( @rest );
 }
 
 sub time2str {
@@ -283,7 +299,7 @@ CatalystX::Usul::Base - Base class utility methods
 
 =head1 Version
 
-0.1.$Revision: 424 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -354,8 +370,8 @@ Expose L<File::Spec/catfile>
 
    $appdir = $self->class2appdir( __PACKAGE__ );
 
-Takes a class name and returns it lower cased with B<::> changed to
-B<->, e.g. C<App::Munchies> becomes C<app-munchies>
+Returns lower cased L</distname>, e.g. C<App::Munchies> becomes
+C<app-munchies>
 
 =head2 classfile
 
@@ -386,6 +402,13 @@ which defaults to C<< $self->tempdir >>
 
 Returns the L<directory name|File::Basename/dirname> of the passed path
 
+=head2 distname
+
+   $distname = $self->distname( __PACKAGE__ );
+
+Takes a class name and returns it with B<::> changed to
+B<->, e.g. C<App::Munchies> becomes C<App-Munchies>
+
 =head2 ensure_class_loaded
 
    $self->ensure_class_loaded( $some_class );
@@ -407,6 +430,11 @@ The left square bracket causes problems in some contexts. Substitute a
 less than symbol instead. Also replaces the right square bracket with
 greater than for balance. L<Template::Toolkit> will work with these
 sequences too, so unescaping isn't absolutely necessary
+
+=head2 exception_class
+
+Return the exception class. Used by the action class to process
+exceptions
 
 =head2 find_source
 
@@ -446,6 +474,13 @@ it inherits from the parents
 
 Exposes the L<nap|CatalystX::Usul::Time/nap> method which sleeps for
 (possibly fractional) periods of time
+
+=head2 say
+
+   $self->say( @lines_of_text );
+
+Prints to I<STDOUT> the lines of text passed to it. Lines are C<chomp>ed
+and then have newlines appended. Throws on IO errors
 
 =head2 stamp
 
@@ -512,7 +547,7 @@ L</delete_tmp_files> if it is called otherwise it will persist
 
 =head2 throw
 
-   $self->throw( error => q(error_key), arg1 => q(error_arg) );
+   $self->throw( error => q(error_key), args => [ q(error_arg) ] );
 
 Expose the C<throw> method in the error class L<CatalystX::Usul::Exception>
 

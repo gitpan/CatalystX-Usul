@@ -1,24 +1,24 @@
-package CatalystX::Usul::FileSystem;
+# @(#)$Id: FileSystem.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: FileSystem.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::FileSystem;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+
 use CatalystX::Usul::Table;
 use Class::C3;
 use Fcntl qw(:mode);
 use File::Copy;
 use File::Find;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+my $NUL = q();
 
 __PACKAGE__->config( no_thrash => 3, postfix => q(A_), );
 
 __PACKAGE__->mk_accessors( qw(ctldata file_systems fs_type fuser
                               logsdir no_thrash postfix volume) );
-
-my $NUL = q();
 
 sub new {
    my ($self, $app, @rest) = @_;
@@ -36,11 +36,12 @@ sub archive {
    # Prepend $self->postfix to file
    my ($self, @paths) = @_; my $out = $NUL;
 
-   $self->throw( q(eNoPath) ) unless ($paths[0]);
+   $self->throw( 'No file path specified' ) unless ($paths[0]);
 
    for my $path (@paths) {
       unless (-e $path) {
-         $self->throw( error => q(eNotFound), arg1 => $path, out => $out );
+         $self->throw( error => 'Path [_1] does not exist',
+                       args  => [ $path ], out => $out );
       }
 
       my $to = $self->catfile( $self->dirname( $path ),
@@ -50,7 +51,8 @@ sub archive {
 
       if (move( $path, $to )) { $out .= "Archived $path\n" }
       else {
-         $self->throw( error => q(eCannotMove), arg1 => $path, out => $out );
+         $self->throw( error => 'Cannot move from [_1] to [_2]',
+                       args  => [ $path, $to ], out => $out );
       }
    }
 
@@ -192,11 +194,14 @@ sub purge_tree {
    $delete  = defined $dtime && $dtime == 0 ? 0 : 1;
    $dtime   = defined $dtime ? $dtime : 2 * $atime;
 
-   $self->throw( q(eNoPath) ) unless ($dir);
-   $self->throw( error => q(eNotFound), arg1 => $dir ) unless (-d $dir);
+   $self->throw( 'No directory path specified' ) unless ($dir);
+
+   unless (-d $dir) {
+      $self->throw( error => 'Directory [_1] not found', args => [ $dir ] );
+   }
 
    if ($archive) {
-      $out    = 'Archiving files more than '.$atime.' days old in '.$dir."\n";
+      $out    = "Archiving files more than $atime days old in $dir\n";
       $atime  = time - ($atime * 86_400);
       @paths  = ();
 
@@ -213,11 +218,11 @@ sub purge_tree {
       if ($paths[0]) {
          for $path (@paths) { $out .= $self->archive( $path ) }
       }
-      else { $out .= 'Nothing to archive in '.$dir."\n" }
+      else { $out .= "Nothing to archive in $dir\n" }
    }
 
    if ($delete) {
-      $out  .= 'Deleting files more than '.$dtime.' days old in '.$dir."\n";
+      $out  .= "Deleting files more than $dtime days old in $dir\n";
       $dtime = time - ($dtime * 86_400);
       @paths = ();
 
@@ -229,15 +234,14 @@ sub purge_tree {
 
       if ($paths[0]) {
          for $path (@paths) {
-            if (unlink $path) { $out .= 'Deleted '.$path."\n" }
+            if (unlink $path) { $out .= "Deleted $path\n" }
             else {
-               $self->throw( error => q(eCannotDelete),
-                           arg1  => $path,
-                           out   => $out );
+               $self->throw( error => 'Cannot delete [_1]',
+                             args  => [ $path ], out => $out );
             }
          }
       }
-      else { $out .= 'Nothing to delete in '.$dir."\n"  }
+      else { $out .= "Nothing to delete in $dir\n" }
    }
 
    return $out;
@@ -311,10 +315,10 @@ sub wait_for {
    my ($self, $vars, $key, $max_wait, $no_thrash) = @_;
    my ($elapsed, $out, $path, $ref, $rep, $start);
 
-   $self->throw( q(eNoKey) ) unless ($key);
+   $self->throw( 'No hash key specified' ) unless ($key);
 
    unless ($ref = $self->ctldata->{wait_for}->{ $key }) {
-      $self->throw( error => q(eNoData), arg1 => $key );
+      $self->throw( error => 'No data for key [_1]', args => [ $key ] );
    }
 
    $path  = $ref && $ref->{path} ? $ref->{path} : $NUL;
@@ -324,7 +328,10 @@ sub wait_for {
       $rep = $vars->{ $rep } || $NUL; $path =~ s{ % (\w+) % }{ $rep }gmsx;
    }
 
-   $self->throw( error => q(eNoPath), arg1 => $key, rv => 2 ) unless ($path);
+   unless ($path) {
+      $self->throw( error => 'No file path specified',
+                    args  => [$key], rv => 2 );
+   }
 
    $max_wait  = 60 unless ($max_wait);
    $out       = "Waiting for $path for $max_wait minutes\n";
@@ -338,8 +345,10 @@ sub wait_for {
       $elapsed = time - $start;
 
       if ($elapsed > $max_wait) {
-         $self->throw( error => q(eTimeOut), arg1  => $path,
-                       out   => $out,        rv    => 3 );
+         $self->throw( error => 'Timed out waiting for [_1]',
+                       args  => [ $path ],
+                       out   => $out,
+                       rv    => 3 );
       }
 
       sleep $no_thrash;
@@ -376,7 +385,7 @@ CatalystX::Usul::FileSystem - File system related methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

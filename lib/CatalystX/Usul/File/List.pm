@@ -1,12 +1,11 @@
-package CatalystX::Usul::File::List;
+# @(#)$Id: List.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: List.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::List;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_accessors( qw(element found labels list) );
 
@@ -29,7 +28,7 @@ CatalystX::Usul::File::List - List response class
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

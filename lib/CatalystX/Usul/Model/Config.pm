@@ -1,24 +1,25 @@
-package CatalystX::Usul::Model::Config;
+# @(#)$Id: Config.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Config.pm 428 2009-04-05 17:44:30Z pjf $
+package CatalystX::Usul::Model::Config;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use CatalystX::Usul::File;
 use CatalystX::Usul::Table;
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 428 $ =~ /\d+/gmx );
+my $NUL = q();
+my $SPC = q( );
 
 __PACKAGE__->config( default_level => q(default) );
 
 __PACKAGE__->mk_accessors( qw(create_msg_key ctrldir default_level
-                              delete_msg_key file_model keys_attr lang
+                              delete_msg_key domain_model keys_attr lang
                               schema_attributes table_data typelist
                               update_msg_key) );
-
-my $NUL = q();
 
 sub new {
    my ($self, $app, @rest) = @_;
@@ -36,8 +37,8 @@ sub build_per_context_instance {
    my $new   = $self->next::method( $c, @rest);
    my $attrs = { schema_attributes => $new->schema_attributes };
 
-   $new->file_model( CatalystX::Usul::File->new( $c, $attrs ) );
-   $new->lang      ( $c->stash->{lang} || q(en) );
+   $new->domain_model( CatalystX::Usul::File->new( $c, $attrs ) );
+   $new->lang        ( $c->stash->{lang} || q(en) );
 
    return $new;
 }
@@ -50,7 +51,7 @@ sub add_to_attribute_list {
 
    $args->{lang } = $self->lang if ($self->lang);
 
-   my $added    = $self->file_model->add_to_attribute_list( $args );
+   my $added    = $self->domain_model->add_to_attribute_list( $args );
    my $aname    = $args->{file}.q( / ).$args->{name};
    my $msg_args = [ $aname, (join q(, ), @{ $added }) ];
 
@@ -65,16 +66,19 @@ sub config_form {
 
    $level ||= $self->default_level; $name ||= $newtag;
 
-   my $args       = { file => $level, lang => $self->lang,
-                      name => $name,  path => $self->_get_path( $level ) };
-   my $config_ref = eval { $self->file_model->get_list( $args ) };
+   my $config_ref = eval {
+      my $args = { file => $level, lang => $self->lang,
+                   name => $name,  path => $self->_get_path( $level ) };
+
+      $self->domain_model->get_list( $args );
+   };
 
    return $self->add_error( $e ) if ($e = $self->catch);
 
    my $list       = $config_ref->list; unshift @{ $list }, $NUL, $newtag;
    my $first_fld  = $name eq $newtag ? q(config.name) : q(config.attr);
    my $levels     = [ $self->default_level, sort keys %{ $s->{levels} } ];
-   my $schema     = $self->file_model->result_source->schema;
+   my $schema     = $self->domain_model->result_source->schema;
    my $attr       = $s->{key_attr} = $self->keys_attr;
    my $def_prompt = $self->loc( q(defTextPrompt) );
    my $form       = $s->{form}->{name};
@@ -163,19 +167,19 @@ sub create {
 
    $args->{lang  } = $self->lang  if ($self->lang);
 
-   my $name = $self->file_model->create( $args );
+   my $name = $self->domain_model->create( $args );
 
    $self->add_result_msg( $self->create_msg_key, [ $args->{file}, $name ] );
    return $name;
 }
 
 sub create_or_update {
-   my ($self, $args) = @_; my $val;
+   my ($self, $args) = @_; my ($type, $val);
 
-   my $schema = $self->file_model->result_source->schema;
+   my $schema = $self->domain_model->result_source->schema;
 
    for my $attr (@{ $schema->attributes }) {
-      if ($val = $schema->defaults->{ $attr } and ref $val eq q(HASH)) {
+      if ($type = $schema->defaults->{ $attr } and ref $type eq q(HASH)) {
          my $key    = $self->table_data->{ $attr }->{flds}->[0];
          my $nrows  = $self->query_value( $attr.q(_nrows) );
          my $count  = undef;
@@ -199,10 +203,12 @@ sub create_or_update {
             $suffix = $count;
          }
       }
-      else {
-         if (defined ($val = $self->query_value( $attr ))) {
-            $args->{fields}->{ $attr } = $self->unescape_TT( $val );
-         }
+      elsif ($type and ref $type eq q(ARRAY)) {
+         $args->{fields}->{ $attr } = [ map { $self->unescape_TT( $_ ) }
+                                           @{ $self->query_array( $attr ) } ];
+      }
+      elsif (defined ($val = $self->query_value( $attr ))) {
+         $args->{fields}->{ $attr } = $self->unescape_TT( $val );
       }
    }
 
@@ -221,7 +227,7 @@ sub delete {
 
    $args->{lang} = $self->lang if ($self->lang);
 
-   my $name = $self->file_model->delete( $args );
+   my $name = $self->domain_model->delete( $args );
 
    $self->add_result_msg( $self->delete_msg_key, [ $args->{file}, $name ] );
    return;
@@ -236,7 +242,7 @@ sub find {
 
    $args->{lang} = $self->lang if ($self->lang);
 
-   return $self->file_model->find( $args );
+   return $self->domain_model->find( $args );
 }
 
 sub get_list {
@@ -248,7 +254,7 @@ sub get_list {
 
    $args->{lang} = $self->lang if ($self->lang);
 
-   return $self->file_model->get_list( $args );
+   return $self->domain_model->get_list( $args );
 }
 
 sub load_files {
@@ -256,7 +262,7 @@ sub load_files {
 
    my @paths = map { $self->_get_path( $_ ) } @files;
 
-   return $self->file_model->load_files( @paths );
+   return $self->domain_model->load_files( @paths );
 }
 
 sub remove_from_attribute_list {
@@ -267,7 +273,7 @@ sub remove_from_attribute_list {
 
    $args->{lang } = $self->lang if ($self->lang);
 
-   my $removed  = $self->file_model->remove_from_attribute_list( $args );
+   my $removed  = $self->domain_model->remove_from_attribute_list( $args );
    my $aname    = $args->{file}.q( / ).$args->{name};
    my $msg_args = [ $aname, (join q(, ), @{ $removed }) ];
 
@@ -283,7 +289,7 @@ sub search {
 
    $args->{lang} = $self->lang if ($self->lang);
 
-   return $self->file_model->search( $args );
+   return $self->domain_model->search( $args );
 }
 
 sub update {
@@ -294,7 +300,7 @@ sub update {
 
    $args->{lang  } = $self->lang if ($self->lang);
 
-   my $name = $self->file_model->update( $args );
+   my $name = $self->domain_model->update( $args );
 
    $self->add_result_msg( $self->update_msg_key, [ $args->{file}, $name ] );
    return $name;
@@ -303,20 +309,22 @@ sub update {
 # Private methods
 
 sub _get_path {
-   my ($self, $file, $args) = @_; $args ||= {};
+   my ($self, $path, $args) = @_; $args ||= {};
 
-   $self->throw( q(eNoFile) ) unless ($file);
+   $self->throw( 'No file path specified' ) unless ($path);
 
-   return $file if (ref $file);
+   return $path if (ref $path);
 
-   return $self->io( $file ) if (-f $file);
+   return $self->io( $path ) if (-f $path);
 
-   my $path = $self->catfile( $self->ctrldir, $file.q(.xml) );
+   $path = $self->catfile( $self->ctrldir, $path.q(.xml) );
 
    # TODO: Test for a permission error rather than returning undef
    return $self->io( $path ) if (-f $path or $args->{ignore_error});
 
-   $self->log_info( (ref $self).q( ).$self->loc( q(eNotFound), $path ) );
+   my $msg = $self->loc( 'File [_1] not found', $path );
+
+   $self->log_info( (ref $self).$SPC.$msg );
 
    return;
 }
@@ -333,7 +341,7 @@ CatalystX::Usul::Model::Config - Read and write configuration files
 
 =head1 Version
 
-0.1.$Revision: 428 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

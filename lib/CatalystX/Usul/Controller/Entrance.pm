@@ -1,13 +1,15 @@
-package CatalystX::Usul::Controller::Entrance;
+# @(#)$Id: Entrance.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Entrance.pm 440 2009-04-09 20:17:47Z pjf $
+package CatalystX::Usul::Controller::Entrance;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
+
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
+my $SEP = q(/);
 
 __PACKAGE__->config( docs_uri       => q(/html/index.html),
                      realm_class    => q(IdentityUnix),
@@ -15,30 +17,26 @@ __PACKAGE__->config( docs_uri       => q(/html/index.html),
 
 __PACKAGE__->mk_accessors( qw(docs_uri realm_class register_class) );
 
-my $SEP = q(/);
-
 sub activate_account : Chained(register_base) Args(1) Public {
    my ($self, $c, $key) = @_; my $model = $c->model( q(Navigation) );
 
-   $model->clear_menu;
+   $model->clear_menus;
    $model->add_menu_blank;
    $c->stash->{register_model}->activate_account( $key );
    return;
 }
 
 sub auth : Chained(common) PathPart(authentication) CaptureArgs(0) {
-   my ($self, $c) = @_;
-   my $s          = $c->stash;
-   my $model      = $c->model( $self->realm_class );
-   my $realm      = $self->get_key( $c, q(realm) ) || $model->default_realm;
-   my $user_class;
+   my ($self, $c) = @_; my ($msg, $user_class);
+
+   my $s     = $c->stash;
+   my $model = $c->model( $self->realm_class );
+   my $realm = $self->get_key( $c, q(realm) ) || $model->default_realm;
 
    unless ($realm && ($user_class = $model->auth_realms->{ $realm })) {
       $user_class = $self->realm_class;
-
-      if ($s->{debug}) {
-         $self->log_debug( 'Defaulting user class '.$user_class );
-      }
+      $msg        = 'Defaulting user class [_1]';
+      $self->log_warning( $self->loc( $c, $msg, $user_class ) );
    }
 
    $s->{user_model} = $c->model( $user_class )->users;
@@ -50,7 +48,7 @@ sub authentication : Chained(auth) PathPart('') Args HasActions {
 }
 
 sub authentication_login : ActionFor(authentication.login) {
-   my ($self, $c, $no_redirect) = @_; my ($user_ref, $wanted);
+   my ($self, $c, $no_redirect) = @_; my ($msg, $user_ref, $wanted);
 
    my $s     = $c->stash;
    my $model = $c->model( q(Base) );
@@ -71,8 +69,9 @@ sub authentication_login : ActionFor(authentication.login) {
                       and $user_ref->username eq $user);
 
          if ($c->authenticate( $userinfo, $realm )) {
-            $self->log_info( "Logged in $user to $realm" );
             $c->session->{elapsed} = time;
+            $msg = "User [_1] logged in to realm [_2]";
+            $self->log_info( $self->loc( $c, $msg, $user, $realm ) );
 
             return 1 if ($no_redirect);
 
@@ -89,13 +88,14 @@ sub authentication_login : ActionFor(authentication.login) {
 
       $c->logout;
       $s->{override} = 1;
-      $s->{user} = q(unknown);
+      $s->{user    } = q(unknown);
       $c->session_expire_key( __user => 0 );
-      $self->throw( error => q(eLoginFailure), arg1 => $user );
+      $msg = 'The login id ([_1]) and password were not recognised';
+      $self->throw( error => $msg, args => [ $user ] );
    }
 
    $s->{user} = q(unknown);
-   $self->throw( q(eLoginParameters) );
+   $self->throw( 'Id and/or password not set' );
    return;
 }
 
@@ -190,7 +190,8 @@ sub register_create : ActionFor(register.insert) {
    my $value = $s->{register_model}->query_value( q(security) );
 
    unless ($c->validate_captcha( $value )) {
-      $self->throw( q(eBadSecurityCode) );
+      $self->throw( error => 'Security code [_1] incorrect',
+                    args  => [ $value ] );
    }
 
    $s->{register}->{profile} = q(users);
@@ -202,10 +203,10 @@ sub sitemap : Chained(common) Args(0) {
    my ($self, $c) = @_; $c->model( q(Navigation) )->sitemap; return;
 }
 
-sub tutorial : Chained(reception_base) Args(0) {
-   my ($self, $c) = @_;
+sub tutorial : Chained(reception_base) Args {
+   my ($self, $c, $n_cols) = @_;
 
-   $c->model( q(Base) )->simple_page( q(tutorial) );
+   $c->model( q(Base) )->simple_page( q(tutorial), $n_cols );
    $c->model( $self->realm_class )->users->authentication_reminder;
    return;
 }
@@ -222,7 +223,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 440 $
+$Revision: 562 $
 
 =head1 Synopsis
 

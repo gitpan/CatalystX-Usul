@@ -1,12 +1,13 @@
-#!/usr/bin/perl
-
-# @(#)$Id: 03podcoverage.t 428 2009-04-05 17:44:30Z pjf $
+# @(#)$Id: 03podcoverage.t 485 2009-05-21 22:49:51Z pjf $
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 485 $ =~ /\d+/gmx );
 use File::Spec::Functions;
-use FindBin  qw( $Bin );
-use lib (catdir( $Bin, updir, q(lib) ));
+use FindBin qw( $Bin );
+use lib catdir( $Bin, updir, q(lib) );
+
+use English qw(-no_match_vars);
 use Test::More;
 
 BEGIN {
@@ -15,9 +16,9 @@ BEGIN {
    }
 }
 
-eval "use Test::Pod::Coverage 1.04";
+eval { use Test::Pod::Coverage 1.04; };
 
-plan skip_all => 'Test::Pod::Coverage 1.04 required' if ($@);
+plan skip_all => 'Test::Pod::Coverage 1.04 required' if ($EVAL_ERROR);
 
 all_pod_coverage_ok();
 

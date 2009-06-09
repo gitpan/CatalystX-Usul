@@ -1,12 +1,11 @@
-package CatalystX::Usul::Plugin::Controller::ModelHelper;
+# @(#)$Id: ModelHelper.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: ModelHelper.pm 440 2009-04-09 20:17:47Z pjf $
+package CatalystX::Usul::Plugin::Controller::ModelHelper;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 my $SEP = q(/);
 
@@ -189,7 +188,7 @@ CatalystX::Usul::Plugin::Controller::ModelHelper - Convenience methods for commo
 
 =head1 Version
 
-0.1.$Revision: 440 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -239,19 +238,9 @@ Sets stash values for the navigation menus, tools menus, the footer,
 quick links and recovers the keys for the current form
 from the session store
 
-Calls L<add_header|CatalystX::Usul::Model>
+Calls L<add_header|CatalystX::Usul::Model::Navigation>
 
 Calls L<add_footer|CatalystX::Usul::Model>
-
-Calls L<add_main_menu|CatalystX::Usul::Model::Navigation>.  This is
-the main navigation menu
-
-Calls L<add_quick_links|CatalystX::Usul::Model::Navigation>. Quick
-links appear in the header and are selected from the I<rooms> config
-items if the I<quick_link> element is set. It's numeric value
-determines the sort order of the links
-
-Calls L<add_tools_menu|CatalystX::Usul::Model::Navigation>
 
 =head2 default
 

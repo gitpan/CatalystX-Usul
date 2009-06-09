@@ -1,13 +1,13 @@
-package CatalystX::Usul::Encoding;
+# @(#)$Id: Encoding.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Encoding.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Encoding;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+
 use Encode;
 use Encode::Guess;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
 
 our $ENCODINGS = [ qw(ascii iso-8859-1 UTF-8 guess) ];
 our $LEVELS    = [ qw(alert debug error fatal info warn) ];
@@ -105,7 +105,7 @@ CatalystX::Usul::Encoding - Create additional methods for different encodings
 
 =head1 Version
 
-$Revision: 402 $
+$Revision: 562 $
 
 =head1 Synopsis
 

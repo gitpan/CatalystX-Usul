@@ -1,15 +1,15 @@
-package CatalystX::Usul::Model::Schema;
+# @(#)$Id: Schema.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Schema.pm 372 2009-03-05 17:39:15Z pjf $
+package CatalystX::Usul::Model::Schema;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Model::DBIC::Schema
               CatalystX::Usul::Model
               CatalystX::Usul::Schema);
-use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 372 $ =~ /\d+/gmx );
+use Class::C3;
 
 sub new {
    my ($self, $app, @rest) = @_;
@@ -32,7 +32,7 @@ sub connect_info {
       $info = $self->next::method( $self->catfile( $dir, $db.q(.xml) ),
                                    $db, $args );
    }
-   else { $app->log->error( $self.': No database or directory'."\n" ) }
+   else { $app->log->error( "${self}: No database or directory\n" ) }
 
    return $info;
 }
@@ -49,7 +49,7 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-0.1.$Revision: 372 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

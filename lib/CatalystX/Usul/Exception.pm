@@ -1,18 +1,17 @@
-package CatalystX::Usul::Exception;
+# @(#)$Id: Exception.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Exception.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Exception;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use Exception::Class
-   ( 'CatalystX::Usul::Exception::Class'
-        => { fields => [qw(arg1 arg2 out rv)] } );
-use base       qw(CatalystX::Usul::Exception::Class);
+   ( 'CatalystX::Usul::Exception::Class' => { fields => [qw(args out rv)] } );
+use base qw(CatalystX::Usul::Exception::Class);
+
 use English    qw(-no_match_vars);
 use List::Util qw(first);
 use Carp;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
 
 my $NUL = q();
 
@@ -23,8 +22,9 @@ sub catch {
 
    return $e if ($e = $self->caught( @rest ));
 
-   return $self->new( arg1           => $NUL,
-                      arg2           => $NUL,
+   return $EVAL_ERROR if (ref $EVAL_ERROR);
+
+   return $self->new( args           => [],
                       ignore_package => $IGNORE,
                       out            => $NUL,
                       rv             => 1,
@@ -35,15 +35,13 @@ sub catch {
 }
 
 sub as_string {
-   my ($self, $verbosity, $offset) = @_; my ($frame, $l_no, %seen);
+   my ($self, $verbosity, $offset) = @_; $verbosity ||= 1; $offset ||= 1;
 
-   $verbosity ||= 1; $offset ||= 1;
-
-   my $text = $NUL.$self->message; # I hate Return::Value
+   my ($l_no, %seen); my $text = $NUL.$self->message; # I hate Return::Value
 
    return $text if ($verbosity < 2 and not $self->show_trace);
 
-   my $i = $verbosity > 2 ? 0 : $offset; $frame = undef;
+   my $i = $verbosity > 2 ? 0 : $offset; my $frame = undef;
 
    while (defined ($frame = $self->trace->frame( $i++ ))) {
       my $line = "\n".$frame->package.' line '.$frame->line;
@@ -65,8 +63,7 @@ sub throw {
 
    my @args = @rest == 1 ? ( error => $rest[0] ) : @rest;
 
-   croak $self->new( arg1           => $NUL,
-                     arg2           => $NUL,
+   croak $self->new( args           => [],
                      ignore_package => $IGNORE,
                      out            => $NUL,
                      rv             => 1,
@@ -86,7 +83,7 @@ CatalystX::Usul::Exception - Exception base class
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

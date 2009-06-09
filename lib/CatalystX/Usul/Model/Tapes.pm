@@ -1,21 +1,21 @@
-package CatalystX::Usul::Model::Tapes;
+# @(#)$Id: Tapes.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Tapes.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Model::Tapes;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use CatalystX::Usul::TapeDevice;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+my $NUL = q();
 
 __PACKAGE__->config( fields   => [ qw(device format next_level operation
                                       paths position type) ],
                      fs_class => q(FileSystem) );
 
 __PACKAGE__->mk_accessors( qw(fields fs_class fs_model tape_device) );
-
-my $NUL = q();
 
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_; my $s = $c->stash; my $args;
@@ -179,7 +179,7 @@ CatalystX::Usul::Model::Tapes - Provides tape backup methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

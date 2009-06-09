@@ -1,13 +1,13 @@
-package CatalystX::Usul::Controller::Root;
+# @(#)$Id: Root.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Root.pm 440 2009-04-09 20:17:47Z pjf $
+package CatalystX::Usul::Controller::Root;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
-use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
+use Class::C3;
 
 my $SEP = q(/);
 
@@ -25,21 +25,22 @@ sub about : Chained(lang) Args(0) Public {
 
 sub access_denied : Chained(lang) Args Public {
    # The auto method has decided not to allow access to the requested room
-   my ($self, $c, $ns, $name) = @_; my $s = $c->stash;
+   my ($self, $c, $ns, $name) = @_; my $s = $c->stash; my $msg;
 
    unless ($s->{denied_level} = $ns and $s->{denied_room} = $name) {
-      return $self->error_page( $c, q(eNoPath) );
+      $msg = 'No action namespace and/or name specified';
+
+      return $self->error_page( $c, $msg );
    }
 
    my $model = $c->model( q(Navigation) );
 
+   $model->add_header;
    $model->clear_controls;
    $model->add_menu_back;
    $model->simple_page( q(cracker) );
-
-   my $msg = 'Access denied to [_1] for [_2]';
-
-   $self->log_warn( $self->loc( $msg, $ns.$SEP.$name, $s->{user} ) );
+   $msg = 'Access denied to [_1] for [_2]';
+   $self->log_warn( $self->loc( $c, $msg, $ns.$SEP.$name, $s->{user} ) );
    $c->res->status( 403 );
    return 0;
 }
@@ -51,12 +52,13 @@ sub app_closed : Chained(lang) Args HasActions {
    my $form       = $s->{form}->{name};
    my $model      = $c->model( q(Navigation) );
 
+   $model->add_header;
    $model->clear_controls;
    $model->add_menu_blank;
    $model->simple_page( $form );
-   $model->add_field(   { id => $form.q(.user)   } );
-   $model->add_field(   { id => $form.q(.passwd) } );
-   $model->add_hidden(  $form, 0 );
+   $model->add_field  ( { id => $form.q(.user)   } );
+   $model->add_field  ( { id => $form.q(.passwd) } );
+   $model->add_hidden ( $form, 0 );
    $model->add_buttons( q(Login) );
 
    $s->{token} = $c->config->{token};
@@ -136,10 +138,10 @@ sub imager : Chained(lang) Args Public {
    };
 
    if ($e = $self->catch) {
-      return $self->error_page( $c, $e->as_string, $e->arg1 );
+      return $self->error_page( $c, $e->as_string, @{ $e->args } );
    }
 
-   return $self->error_page( $c, q(eNoData) ) unless ($data);
+   return $self->error_page( $c, 'No body data specified' ) unless ($data);
 
    $c->res->body( $data );
    $c->res->content_type( $type );
@@ -168,8 +170,9 @@ sub quit : Chained(/) Args(0) Public {
 
    exit 0 if ($ENV{ $self->env_prefix( $c->config->{name} ).q(_QUIT_OK) });
 
-   $self->log_warn( $self->loc( 'Quit attempted by [_1]', $s->{user} ) );
-   return;
+   $self->log_warn( $self->loc( $c, 'Quit attempted by [_1]', $s->{user} ) );
+
+   return $self->redirect_to_path( $c );
 }
 
 sub redirect_to_default : Chained(/) PathPart('') Args {
@@ -184,15 +187,18 @@ sub room_closed : Chained(lang) Args Public {
    my ($self, $c, $ns, $name) = @_; my $s = $c->stash; my $e;
 
    unless ($s->{closed_level} = $ns and $s->{closed_room} = $name) {
-      return $self->error_page( $c, q(eNoPath) );
+      my $msg = 'No action namespace and/or name specified';
+
+      return $self->error_page( $c, $msg );
    }
 
    my $model = $c->model( q(Navigation) );
 
+   $model->add_header;
    $model->clear_controls;
    $model->add_menu_back;
    $model->simple_page( q(closed) );
-   $self->log_warn( $self->loc( 'Action [_1]/[_2] closed', $ns, $name ) );
+   $self->log_warn( $self->loc( $c, 'Action [_1]/[_2] closed', $ns, $name ) );
    return;
 }
 
@@ -202,13 +208,14 @@ sub version {
 
 sub view_source : Chained(lang) Args Public {
    # Display the source code with syntax highlighting
-   my ($self, $c, $module) = @_; my $s = $c->stash; my $e;
+   my ($self, $c, $module) = @_; my $e;
 
-   return $self->error_page( $c, q(eNoModuleName) ) unless ($module);
-
-   my $model = $c->model( q(Navigation) ); $self->common( $c );
+   return $self->error_page( $c, 'No module specified' ) unless ($module);
 
    eval {
+      my $model = $c->model( q(Navigation) );
+
+      $self->common( $c );
       $model->clear_controls;
       $model->add_menu_back;
       $c->model( q(FileSystem) )->view_file( q(source), $module );
@@ -231,7 +238,7 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-0.1$Revision: 440 $
+0.1$Revision: 562 $
 
 =head1 Synopsis
 

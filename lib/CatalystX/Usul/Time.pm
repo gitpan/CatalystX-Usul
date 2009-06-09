@@ -1,15 +1,15 @@
-package CatalystX::Usul::Time;
+# @(#)$Id: Time.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Time.pm 347 2009-01-21 16:00:06Z pjf $
+package CatalystX::Usul::Time;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+
 use DateTime::Format::Epoch;
 use Time::HiRes qw(usleep);
 use Time::Local;
 use Time::Zone;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 347 $ =~ /\d+/gmx );
 
 sub nap {
    my ($self, $period) = @_;
@@ -258,7 +258,7 @@ CatalystX::Usul::Time - Class methods for date and time manipulation
 
 =head1 Version
 
-$Revision: 347 $
+$Revision: 562 $
 
 =head1 Synopsis
 

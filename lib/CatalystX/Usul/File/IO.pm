@@ -1,12 +1,14 @@
-package CatalystX::Usul::File::IO;
+# @(#)$Id: IO.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: IO.pm 379 2009-03-09 00:21:59Z pjf $
+package CatalystX::Usul::File::IO;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Class::Accessor::Fast);
+
 use English qw(-no_match_vars);
-use Exception::Class ( 'IO::Exception' => { fields => [ qw(arg1 arg2) ] } );
+use Exception::Class ( 'IO::Exception' => { fields => [ qw(args) ] } );
 use Fcntl qw(:flock);
 use File::Basename ();
 use File::Path ();
@@ -14,8 +16,6 @@ use File::Spec ();
 use File::Temp ();
 use IO::Dir;
 use IO::File;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 379 $ =~ /\d+/gmx );
 
 my $NUL         = q();
 my @STAT_FIELDS = (
@@ -104,8 +104,8 @@ sub assert_dirpath {
    return $dir_name if (-d $dir_name
                         or CORE::mkdir( $self->pathname, $perms )
                         or File::Path::mkpath( $dir_name )
-                        or $self->throw( error => 'Cannot create path',
-                                         arg1  => $dir_name ));
+                        or $self->throw( error => 'Cannot create path [_1]',
+                                         args  => [ $dir_name ] ));
    return;
 }
 
@@ -214,9 +214,8 @@ sub _close_file {
 
    if ($self->_atomic and -f $self->_atomic) {
       rename $self->_atomic, $self->pathname
-         or $self->throw( error => 'Cannot rename',
-                          arg1  => $self->_atomic,
-                          arg2  => $self->pathname );
+         or $self->throw( error => 'Cannot rename [_1] to [_2]',
+                          args  => [ $self->_atomic, $self->pathname ] );
    }
 
    $self->is_open || return;
@@ -298,7 +297,7 @@ sub error_check {
 
    $self->io_handle->can( q(error) ) || return;
    $self->io_handle->error || return;
-   $self->throw( error => 'IO error', arg1 => $ERRNO );
+   $self->throw( error => 'IO error [_1]', args => [ $ERRNO ] );
    return;
 }
 
@@ -336,7 +335,7 @@ sub getline {
    }
 
    $self->error_check;
-   return $line if defined $line;
+   return $line if (defined $line);
    $self->autoclose && $self->close;
    return;
 }
@@ -354,8 +353,9 @@ sub getlines {
    }
 
    $self->error_check;
-
-   return (@lines) or $self->autoclose && $self->close && () or ();
+   return (@lines) if (scalar @lines);
+   $self->autoclose && $self->close;
+   return ();
 }
 
 sub is_absolute {
@@ -412,7 +412,7 @@ sub _open_dir {
       && $self->pathname && $self->assert_dirpath( $self->pathname );
 
    unless ($io = IO::Dir->new( $self->pathname )) {
-      $self->throw( error => 'Cannot open', arg1 => $self->pathname );
+      $self->throw( error => 'Cannot open [_1]', args => [ $self->pathname ] );
    }
 
    $self->io_handle( $io );
@@ -434,14 +434,14 @@ sub _open_file {
       my $pathname = $self->_atomic ? $self->_atomic : $self->pathname;
 
       unless ($io = IO::File->new( $pathname, @args )) {
-         $self->throw( error => 'Cannot open', arg1 => $pathname );
+         $self->throw( error => 'Cannot open [_1]', args => [ $pathname ] );
       }
 
       $self->io_handle( $io );
       $self->is_open( 1 );
    }
 
-   $self->set_lock;
+   $self->_lock && $self->set_lock;
    $self->set_binmode;
    return $self;
 }
@@ -460,8 +460,9 @@ sub print {
    $self->assert_open( q(w) );
 
    for (@rest) {
-      print {$self->io_handle} $_ or $self->throw( error => 'IO error',
-                                                   arg1  => $self->pathname );
+      print {$self->io_handle} $_
+         or $self->throw( error => 'IO error [_1]',
+                          args  => [ $ERRNO ] );
    }
 
    return;
@@ -497,7 +498,7 @@ sub read_dir {
       return @names;
    }
 
-   while (!$name or $name =~ $dir_pat) {
+   while (not $name or $name =~ $dir_pat) {
       unless (defined ($name = $self->io_handle->read)) {
          $self->_close_dir;
          return;
@@ -524,7 +525,7 @@ sub set_binmode {
 }
 
 sub set_lock {
-   my $self = shift; $self->_lock || return;
+   my $self = shift;
 
    return $self->lock_obj->set( k => $self->pathname ) if ($self->lock_obj);
 
@@ -571,8 +572,10 @@ sub tempfile {
 sub throw {
    my ($self, @rest) = @_;
 
-   $self->unlock;
+   eval { $self->unlock; };
+
    $self->exception_class->throw( @rest ) if ($self->exception_class);
+
    IO::Exception->throw( @rest );
    return;
 }
@@ -631,7 +634,7 @@ CatalystX::Usul::File::IO - Better IO syntax
 
 =head1 Version
 
-0.1.$Revision: 379 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

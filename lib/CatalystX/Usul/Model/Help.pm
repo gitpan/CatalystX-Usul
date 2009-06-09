@@ -1,16 +1,16 @@
-package CatalystX::Usul::Model::Help;
+# @(#)$Id: Help.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Help.pm 440 2009-04-09 20:17:47Z pjf $
+package CatalystX::Usul::Model::Help;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use CatalystX::Usul::Table;
 use Class::C3;
 use File::Spec;
 use Pod::Html;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
 
 my $NUL  = q();
 my $SEP  = q(/);
@@ -160,7 +160,7 @@ sub module_list {
 
    $table->count( $count );
    $self->add_field(    { data => $table, type => q(table) } );
-   $self->group_fields( { id   => q(module_list_select), nitems => 1 } );
+   $self->group_fields( { id   => q(module_list.select), nitems => 1 } );
    return;
 }
 
@@ -224,7 +224,7 @@ CatalystX::Usul::Model::Help - Create HTML from POD
 
 =head1 Version
 
-0.1.$Revision: 440 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

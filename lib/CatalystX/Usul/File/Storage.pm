@@ -1,12 +1,13 @@
-package CatalystX::Usul::File::Storage;
+# @(#)$Id: Storage.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Storage.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::Storage;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use Scalar::Util qw(weaken);
 
 __PACKAGE__->config( class => q(XML::Simple) );
 
@@ -20,7 +21,10 @@ sub new {
 
    $self->ensure_class_loaded( $class );
 
-   return $class->new( $app, $attrs );
+   my $new = $class->new( $app, $attrs );
+
+   weaken( $new->{schema} );
+   return $new;
 }
 
 1;
@@ -35,7 +39,7 @@ CatalystX::Usul::File::Storage - Factory subclass loader
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

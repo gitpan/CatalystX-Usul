@@ -1,17 +1,17 @@
-package CatalystX::Usul::Model::Identity::Suid;
+# @(#)$Id: Suid.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Suid.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Users::Suid;
 
 use strict;
 use warnings;
-use parent qw(CatalystX::Usul::Model::Identity::Users::Unix);
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Users::Unix);
+
 use Crypt::PasswdMD5;
 use English qw(-no_match_vars);
 use File::Copy;
 use File::Path;
 use XML::Simple;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
 
 my @CSET = ( q(.), q(/), 0 .. 9, q(A) .. q(Z), q(a) .. q(z) );
 my $NUL  = q();
@@ -28,21 +28,23 @@ sub create_account {
    $user   = $params->{username};
 
    if ($self->is_user( $user )) {
-      $self->throw( error => q(eUserExists), arg1 => $user );
+      $self->throw( error => 'User [_1] already exists', args => [ $user ] );
    }
 
-   $self->throw( q(eNoProfile) ) unless ($pname = $params->{profile});
-
-   unless ($gid = $self->roles_obj->get_rid( $pname )) {
-      $self->throw( q(eNoPrimaryGroup) );
+   unless ($pname = $params->{profile}) {
+      $self->throw( 'No user profile specified' );
    }
 
-   $profile = $self->profiles_ref->find( $pname );
+   unless ($gid = $self->role_domain->get_rid( $pname )) {
+      $self->throw( 'No primary group specified' );
+   }
+
+   $profile = $self->profile_domain->find( $pname );
    $base_id = $profile->baseid    || $self->base_id;
    $inc     = $profile->increment || $self->uid_inc;
 
    unless ($uid = $self->_get_new_uid( $base_id, $inc )) {
-      $self->throw( q(eNoNewUID) );
+      $self->throw( 'No new uid available' );
    }
 
    $passwd = $params->{password} || $profile->passwd || $self->def_passwd;
@@ -85,85 +87,76 @@ sub create_account {
    # Add entries to the group file
    if ($profile->roles) {
       for $role (split m{ , }mx, $profile->roles) {
-         unless ($self->roles_obj->is_member_of_role( $role, $user )) {
-            $self->roles_obj->f_add_user_to_role( $role, $user );
+         unless ($self->role_domain->is_member_of_role( $role, $user )) {
+            $self->role_domain->add_user_to_role( $role, $user );
          }
       }
    }
 
-   return 'Account created '.$user;
+   return "Account created $user";
 }
 
 sub delete_account {
-   my ($self, $user) = @_;
-   my ($home_dir, $passwd_obj, $role, @roles, $user_ref);
+   my ($self, $user) = @_; my $home_dir;
 
-   $self->throw( q(eNoUser) ) unless ($user);
+   $self->throw( 'No user specified' ) unless ($user);
 
-   $user_ref = $self->f_get_user( $user );
+   my $user_obj = $self->_assert_user_known( $user );
 
-   if ($user_ref->{username} eq q(unknown)) {
-      $self->throw( error => q(eUnknownUser), arg1 => $user );
-   }
-
-   if ($home_dir = $user_ref->{homedir} and -d $home_dir) {
+   if ($home_dir = $user_obj->homedir and -d $home_dir) {
       rmtree( $home_dir, {} );
    }
 
-   @roles = $self->roles_obj->get_roles( $user ); shift @roles;
+   my @roles = $self->role_domain->get_roles( $user ); shift @roles;
 
-   for $role (@roles) {
-      $self->roles_obj->f_remove_user_from_role( $role, $user );
+   for my $role (@roles) {
+      $self->role_domain->remove_user_from_role( $role, $user );
    }
 
-   $passwd_obj = $self->_get_passwd_obj;
+   my $passwd_obj = $self->_get_passwd_obj;
+
    $self->lock->set( k => $self->ppath );
    $passwd_obj->delete( $user );
    $passwd_obj->commit( backup => '.bak' );
    $self->lock->reset( k => $self->ppath );
    $self->_update_shadow( q(delete), $user );
-   return 'Account deleted '.$user;
+   return "Account deleted $user";
 }
 
 sub populate_account {
-   my ($self, $path) = @_;
-   my ($e, $home, $gid, $group, $mode, $params, $pat, $profile);
-   my ($s_flds, $uid, $user, $user_ref);
+   my ($self, $path) = @_; my ($e, $home, $group, $s_flds);
 
-   $params   = $self->_read_params( $path );
-   $user     = $params->{username};
-   $user_ref = $self->f_get_user( $user );
+   my $params   = $self->_read_params( $path );
+   my $user     = $params->{username};
+   my $user_obj = $self->_assert_user_known( $user );
 
-   if ($user_ref->{username} eq q(unknown)) {
-      $self->throw( error => q(eUnknownUser), arg1 => $user );
+   unless ($home = $user_obj->homedir) {
+      $self->throw( error => 'User [_1] no home directory', args => [$user] );
    }
 
-   unless ($home = $user_ref->{homedir}) {
-      $self->throw( error => q(eNoHomeDir), arg1 => $user );
-   }
-
-   $pat = $self->common_home;
+   my $pat = $self->common_home;
 
    return if ($home =~ m{ \A $pat }mx);
 
-   $uid = $user_ref->{uid}; $gid = $user_ref->{pgid};
+   my $uid = $user_obj->uid; my $gid = $user_obj->pgid;
 
-   unless ($group = $self->roles_obj->get_name( $gid )) {
+   unless ($group = $self->role_domain->get_name( $gid )) {
       $gid ||= q(NULL);
-      $self->throw( error => q(eInvalidPrimaryGroup),
-                    arg1  => $gid, arg2 => $user );
+      $self->throw( error => 'User [_1] invalid primary group [_2]',
+                    args  => [ $user, $gid ] );
    }
 
-   $profile = $self->profiles_ref->find( $params->{profile} );
-   $mode    = $profile->permissions
-            ? oct $profile->permissions : oct $self->def_perms;
+   my $profile = $self->profile_domain->find( $params->{profile} );
+   my $mode    = $profile->permissions
+               ? oct $profile->permissions : oct $self->def_perms;
+
    $self->lock->set( k => $home );
 
    eval {
       mkdir $home unless (-d $home);
 
       unless (-d $home) {
-         $self->throw( error => q(eCannotCreate), arg1 => $home );
+         $self->throw( error => 'Cannot create [_1]', args => [ $home ] );
       }
 
       $s_flds = $self->io( $home )->stat;
@@ -229,43 +222,39 @@ sub populate_account {
 }
 
 sub update_account {
-   my ($self, $path) = @_;
-   my ($e, $gecos, $gid, $home, $params, $passwd, $passwd_obj);
-   my ($shell, $uid, $user, $user_ref);
+   my ($self, $path) = @_; my $e;
 
-   $params   = $self->_read_params( $path );
-   $user     = $params->{username};
-   $user_ref = $self->f_get_user( $user, 1 );
+   my $params     = $self->_read_params( $path );
+   my $user       = $params->{username};
+   my $user_obj   = $self->_assert_user_known( $user, 1 );
+   my $passwd     = $self->spath && -f $self->spath
+                  ? q(x) : $user_obj->password;
+   my $uid        = $user_obj->uid;
+   my $gid        = $user_obj->pgid;
+   my $gecos      = $self->_get_gecos( $params );
+   my $home       = $params->{homedir};
+   my $shell      = $params->{shell};
+   my $passwd_obj = $self->_get_passwd_obj;
 
-   if ($user_ref->{username} eq q(unknown)) {
-      $self->throw( error => q(eUnknownUser), arg1 => $user );
-   }
-
-   $passwd   = $self->spath && -f $self->spath ? q(x) : $user_ref->{password};
-   $uid      = $user_ref->{uid};
-   $gid      = $user_ref->{pgid};
-   $gecos    = $self->_get_gecos( $params );
-   $home     = $params->{homedir};
-   $shell    = $params->{shell};
-
-   $passwd_obj = $self->_get_passwd_obj;
-   $self->lock->set( k => $self->ppath );
-   $passwd_obj->user( $user, $passwd, $uid, $gid, $gecos, $home, $shell );
-   $passwd_obj->commit( backup => '.bak' );
-   $self->lock->reset( k => $self->ppath );
+   $self->lock->set   ( k => $self->ppath );
+   $passwd_obj->user  ( $user, $passwd, $uid, $gid, $gecos, $home, $shell );
+   $passwd_obj->commit( backup => q(.bak) );
+   $self->lock->reset ( k => $self->ppath );
 
    # TODO: Save project text
-   return 'Account updated '.$user;
+   return "Account updated $user";
 }
 
 sub user_report {
-   my ($self, $path, $fmt) = @_;
-   my (@flds, $line, %lastl, @lines, $out, $passwd, $res);
-   my ($sdate, $trunc, $type, $user, $user_ref);
+   my ($self, $path, $fmt) = @_; my (@flds, $line, $out);
 
-   $fmt  = q(text) unless ($fmt); %lastl = (); @lines = (); $sdate = $NUL;
    $path = q(-)    unless ($path);
-   $res  = $self->_list_previous;
+   $fmt  = q(text) unless ($fmt);
+
+   my %lastl = ();
+   my @lines = ();
+   my $sdate = $NUL;
+   my $res   = $self->_list_previous;
 
    for $line (split m{ \n }mx, $res->out) {
       $line =~ s{ \s+ }{ }gmx; @flds = split $SPC, $line;
@@ -281,10 +270,12 @@ sub user_report {
       }
    }
 
-   for $user (@{ $self->retrieve->user_list }) {
-      @flds     = ();
-      $user_ref = $self->f_get_user( $user, 1 );
-      $passwd   = $user_ref->{crypted_password};
+   for my $user (@{ $self->retrieve->user_list }) {
+      my $user_obj = $self->get_user( $user, 1 );
+      my $passwd   = $user_obj->crypted_password;
+      my $trunc    = substr $user, 0, 8;
+
+      @flds = ();
    TRY: {
       if ($passwd =~ m{ DISABLED }imx) { $flds[0] = 'D'; last TRY }
       if ($passwd =~ m{ EXPIRED }imx)  { $flds[0] = 'E'; last TRY }
@@ -294,20 +285,19 @@ sub user_report {
       if ($passwd =~ m{ \* }mx)        { $flds[0] = 'D'; last TRY }
       if ($passwd =~ m{ \! }mx)        { $flds[0] = 'D'; last TRY }
 
-      $flds[0] = q(C);
+      $flds[0]  = q(C);
    } # TRY
-      $flds[1] = $user;
-      $flds[2] = $user_ref->{first_name}.$SPC.$user_ref->{last_name};
-      $flds[3] = $user_ref->{location};
-      $flds[4] = $fmt ne q(csv)
-               ? substr $user_ref->{work_phone}, -5, 5
-               : $user_ref->{work_phone};
-      $flds[5] = $user_ref->{project};
-      $trunc   = substr $user, 0, 8;
-      $flds[6] = exists $lastl{ $trunc }
-               ? $lastl{ $trunc } : 'Never Logged In';
-      $flds[6] = $user_ref->{homedir} && -d $user_ref->{homedir}
-               ? $flds[6] : 'No Home Dir.';
+      $flds[1]  = $user;
+      $flds[2]  = $user_obj->first_name.$SPC.$user_obj->last_name;
+      $flds[3]  = $user_obj->location;
+      $flds[4]  = $fmt ne q(csv)
+                ? substr $user_obj->work_phone, -5, 5
+                : $user_obj->work_phone;
+      $flds[5]  = $user_obj->project;
+      $flds[6]  = exists $lastl{ $trunc }
+                ? $lastl{ $trunc } : 'Never Logged In';
+      $flds[6]  = $user_obj->homedir && -d $user_obj->homedir
+                ? $flds[6] : 'No Home Dir.';
 
       if ($fmt ne q(csv)) {
          $line = sprintf '%s %-8.8s %-20.20s %-10.10s %5.5s %-14.14s %-16.16s',
@@ -318,7 +308,7 @@ sub user_report {
       push @lines, $line;
    }
 
-   @lines = sort @lines;
+   @lines = sort @lines; my $count = @lines;
 
    if ($fmt eq 'csv') {
       unshift @lines, '#S,Login,Full Name,Location,Extn,Role,Last Login';
@@ -338,12 +328,13 @@ sub user_report {
       $line  = 'Status field key: C = Current, D = Disabled, ';
       $line .= 'E = Expired, L = Left, N = NOLOGIN';
       push @lines, $line, '                  U = Unused';
+      push @lines, "Total users $count";
    }
 
    if ($path eq q(-)) { $out = (join "\n", @lines)."\n" }
    else {
       $self->io( $path )->println( join "\n", @lines  );
-      $out = 'Wrote '.($#lines+1).' lines to '.$path;
+      $out = "Report $path contains $count users";
    }
 
    return $out;
@@ -372,7 +363,10 @@ sub _backup {
    }
 
    if ($type eq q(file)) {
-      $self->throw( error => q(eNotFound), arg1 => $src ) unless (-r $src);
+      unless (-r $src) {
+         $self->throw( error => 'File [_1] not found', args => [ $src ] );
+      }
+
       $self->throw( $ERRNO ) unless (copy( $src, $path ));
 
       chown $uid, $gid, $path; chmod $mode, $path;
@@ -380,7 +374,9 @@ sub _backup {
    }
 
    if ($type eq q(link)) {
-      $self->throw( 'not found '.$src ) unless (-e $src);
+      unless (-e $src) {
+         $self->throw( error => 'Path [_1] does not exist', args => [ $src ] );
+      }
 
       unlink $path if (-e $path);
 
@@ -429,10 +425,10 @@ sub _read_params {
 
    $self->throw( $e ) if ($e = $self->catch);
 
-   $self->throw( q(eNoUser) ) unless ($user = $params->{username});
+   $self->throw( 'No user specified' ) unless ($user = $params->{username});
 
    if ($user =~ m{ [ :] }mx) {
-      $self->throw( error => q(eInvalidUser), arg1 => $user );
+      $self->throw( error => 'User [_1] invalid name', args => [ $user ] );
    }
 
    return $params;
@@ -446,11 +442,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Identity::Suid - Set uid root methods for account manipulation
+CatalystX::Usul::Users::Suid - Set uid root methods for account manipulation
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -462,7 +458,7 @@ CatalystX::Usul::Model::Identity::Suid - Set uid root methods for account manipu
 
    sub new {
       my ($class, @rest) = @_;
-      my $config   = { role_class => q(Roles::Unix), user_class => q(Suid) };
+      my $config   = { role_class => q(Unix), user_class => q(Suid) };
       my $id_class = q(CatalystX::Usul::Model::Identity);
 
       $self->{identity} = $id_class->new( $self, $config );
@@ -489,7 +485,7 @@ methods enable the management of OS accounts
 
 Creates an OS account. The given path is an XML file containing the
 account parameters. Account profiles are obtained from the
-C<< $self->profiles_ref >> object. New entries are added to the I<passwd>
+C<< $self->profile_domain >> object. New entries are added to the I<passwd>
 file, the I<shadow> file (if it is being used) and the I<group> file
 
 =head2 delete_account

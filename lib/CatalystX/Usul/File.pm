@@ -1,14 +1,14 @@
-package CatalystX::Usul::File;
+# @(#)$Id: File.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: File.pm 407 2009-03-30 09:34:16Z pjf $
+package CatalystX::Usul::File;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
+
 use CatalystX::Usul::File::ResultSource;
 use Class::C3;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 407 $ =~ /\d+/gmx );
 
 __PACKAGE__->config
    ( result_source_class => q(CatalystX::Usul::File::ResultSource),
@@ -33,11 +33,11 @@ sub add_to_attribute_list {
 
    my ($rs, $name) = $self->_validate_params( $args );
 
-   $self->throw( q(eNoListName) ) unless ($list = $args->{list});
+   $self->throw( 'No list name specified' ) unless ($list = $args->{list});
 
    my $items = $args->{items};
 
-   $self->throw( q(eNoListItems) ) unless ($items->[0]);
+   $self->throw( 'List contains no items' ) unless ($items->[0]);
 
    $self->_txn_do( $args->{path}, sub {
       ($attrs, $added) = $rs->push_attribute( $name, $list, $items );
@@ -68,7 +68,10 @@ sub delete {
 
    $self->_txn_do( $args->{path}, sub {
       my $element = $rs->find( $name );
-      $self->throw( error => q(eNoRecord), arg1 => $name ) unless ($element);
+      my $msg     = 'Element [_1] does not exist';
+
+      $self->throw( error => $msg, args => [ $name ] ) unless ($element);
+
       $element->delete;
    } );
 
@@ -86,7 +89,7 @@ sub find {
 sub get_list {
    my ($self, $args) = @_; my $path;
 
-   $self->throw( q(eNoPath) ) unless ($path = $args->{path});
+   $self->throw( 'No file path specified' ) unless ($path = $args->{path});
 
    my $rs = $self->result_source->resultset( $path, $args->{lang} );
 
@@ -107,11 +110,11 @@ sub remove_from_attribute_list {
 
    my ($rs, $name) = $self->_validate_params( $args );
 
-   $self->throw( q(eNoListName) ) unless ($list = $args->{list});
+   $self->throw( 'No list name specified' ) unless ($list = $args->{list});
 
    my $items = $args->{items};
 
-   $self->throw( q(eNoListItems) ) unless ($items->[0]);
+   $self->throw( 'List contains no items' ) unless ($items->[0]);
 
    $self->_txn_do( $args->{path}, sub {
       ($attrs, $removed) = $rs->splice_attribute( $name, $list, $items );
@@ -124,8 +127,8 @@ sub remove_from_attribute_list {
 sub search {
    my ($self, $args) = @_; my ($lang, $path);
 
-   $self->throw( q(eNoPath)     ) unless ($path = $args->{path});
-   $self->throw( q(eNoLanguage) ) unless ($lang = $args->{lang});
+   $self->throw( 'No file path specified' ) unless ($path = $args->{path});
+   $self->throw( 'No language specified'  ) unless ($lang = $args->{lang});
 
    my $rs = $self->result_source->resultset( $path, $lang );
 
@@ -168,8 +171,8 @@ sub _txn_do {
 sub _validate_params {
    my ($self, $args) = @_; my ($name, $path, $rs);
 
-   $self->throw( q(eNoPath) ) unless ($path = $args->{path});
-   $self->throw( q(eNoName) ) unless ($name = $args->{name});
+   $self->throw( 'No file path specified'    ) unless ($path = $args->{path});
+   $self->throw( 'No element name specified' ) unless ($name = $args->{name});
 
    $rs = $self->result_source->resultset( $path, $args->{lang} );
 
@@ -188,7 +191,7 @@ CatalystX::Usul::File - Read and write configuration files
 
 =head1 Version
 
-0.1.$Revision: 407 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

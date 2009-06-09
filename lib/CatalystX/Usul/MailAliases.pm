@@ -1,16 +1,16 @@
-package CatalystX::Usul::MailAliases;
+# @(#)$Id: MailAliases.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: MailAliases.pm 372 2009-03-05 17:39:15Z pjf $
+package CatalystX::Usul::MailAliases;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+
 use Class::C3;
 use English qw(-no_match_vars);
 use File::Copy;
 use Text::Wrap;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 372 $ =~ /\d+/gmx );
 
 my $NUL = q();
 
@@ -20,18 +20,19 @@ __PACKAGE__->config( aliases_file => q(/etc/mail/aliases),
 
 __PACKAGE__->mk_accessors( qw(aliases aliases_file file new_aliases
                               comment commit created found owner prog
-                              recipients suid) );
+                              recipients) );
 
 sub new {
    my ($self, $app, @rest) = @_;
 
-   my $new      = $self->next::method( $app, @rest );
    my $app_conf = $app->config || {};
-   my $prog     = lc $app_conf->{prefix}.q(_misc);
-   my $aliases  = $self->catfile( $app_conf->{ctrldir}, q(aliases) );
+   my $new      = $self->next::method( $app, @rest );
+   my $aliases  = $self->catfile(    $app_conf->{ctrldir}, q(aliases) );
+   my $prog     = $self->catfile(    $app_conf->{binsdir},
+                                  lc $app_conf->{prefix }.q(_misc) );
 
-   $new->file( $new->file || $aliases );
-   $new->prog( $new->prog || $self->catfile( $app_conf->{binsdir}, $prog ) );
+   $new->file( $aliases ) unless ($new->file);
+   $new->prog( $prog    ) unless ($new->prog);
 
    return $new;
 }
@@ -39,24 +40,26 @@ sub new {
 sub create {
    my ($self, $flds) = @_; my ($cmd, $name, $res);
 
-   $self->throw( q(eNoAliasName) ) unless ($name = $flds->{alias_name});
+   unless ($name = $flds->{alias_name}) {
+      $self->throw( 'No alias name specified' );
+   }
 
-   $res = $self->retrieve( $name );
+   if ($res = $self->retrieve( $name ) and $res->found) {
+      $self->throw( error => 'Alias [_1] already exists', args => [ $name ] );
+   }
 
-   $self->throw( error => q(eAliasExists), arg1 => $name ) if ($res->found);
-
-   $cmd  = $self->suid.' -n -c aliases_update -- '.$name.' "';
-   $cmd .= (join q(,), @{ $flds->{recipients} }).'" ';
+   $cmd  = $self->suid.' -n -c aliases_update -- '.$name;
+   $cmd .= ' "'.(join q(,), @{ $flds->{recipients} }).'" ';
    $cmd .= $flds->{owner}.' "'.$flds->{comment}.'" ';
 
    return $self->run_cmd( $cmd, { err => q(out) } )->out;
 }
 
 sub delete {
-   my ($self, $name) = @_; my $res = $self->retrieve( $name );
+   my ($self, $name) = @_; my $res;
 
-   unless ($res->found) {
-      $self->throw( error => q(eUnknownAlias), arg1 => $name );
+   unless ($res = $self->retrieve( $name ) and $res->found) {
+      $self->throw( error => 'Alias [_1] unknown', args => [ $name ] );
    }
 
    my $cmd = $self->suid.' -n -c aliases_update -- '.$name;
@@ -115,16 +118,16 @@ sub retrieve {
 sub update {
    my ($self, $flds) = @_; my ($cmd, $name, $res);
 
-   $self->throw( q(eNoAliasName) ) unless ($name = $flds->{alias_name});
-
-   $res = $self->retrieve( $name );
-
-   unless ($res->found) {
-      $self->throw( error => q(eUnknownAlias), arg1 => $name );
+   unless ($name = $flds->{alias_name}) {
+      $self->throw( 'No alias name specified' );
    }
 
-   $cmd  = $self->suid.' -n -c aliases_update -- '.$name.' "';
-   $cmd .= (join q(,), @{ $flds->{recipients} }).'" "" "';
+   unless ($res = $self->retrieve( $name ) and $res->found) {
+      $self->throw( error => 'Alias [_1] unknown', args => [ $name ] );
+   }
+
+   $cmd  = $self->suid.' -n -c aliases_update -- '.$name;
+   $cmd .= ' "'.(join q(,), @{ $flds->{recipients} }).'" "" "';
    $cmd .= $flds->{comment}.'" ';
 
    return $self->run_cmd( $cmd, { err => q(out) } )->out;
@@ -135,7 +138,7 @@ sub update_file {
    my (@buf, $cmd, $created, $found, $func, $in_region);
    my ($key, $line, @lines, $pad, $res, $tempfile);
 
-   $self->throw( q(eNoAlias) ) unless ($alias);
+   $self->throw( 'No alias name specified' ) unless ($alias);
 
    $tempfile = $self->tempfile;
    ($key = $alias) =~ tr{ }{.};
@@ -190,21 +193,21 @@ sub update_file {
 
    unless ($found) {
       $self->lock->reset( k => $self->file );
-      $self->throw( error => q(eUnknownAlias), arg1 => $alias );
+      $self->throw( error => 'Alias [_1] unknown', args => [ $alias ] );
    }
 
    $tempfile->io_handle->flush;
 
    unless (copy( $tempfile->pathname, $self->file )) {
       $self->lock->reset( k => $self->file );
-      $self->throw( error => $ERRNO );
+      $self->throw( $ERRNO );
    }
 
    $self->lock->reset( k => $self->file ); $tempfile->close;
 
    if ($self->new_aliases && -x $self->new_aliases) {
       unless (copy( $self->file, $self->aliases_file )) {
-         $self->throw( error => $ERRNO );
+         $self->throw( $ERRNO );
       }
 
       $self->run_cmd( $self->new_aliases, { err => q(out) } );
@@ -238,7 +241,8 @@ sub _read_file {
    my $self = shift; my ($e, $buf, $line);
 
    unless (-s $self->file) {
-      $self->throw( error => q(eNotFound), arg1 => $self->file );
+      $self->throw( error => 'File [_1] not found or zero bytes',
+                    args  => [ $self->file ] );
    }
 
    $self->lock->set( k => $self->file );
@@ -264,7 +268,7 @@ CatalystX::Usul::MailAliases - Manipulate the mail aliases file
 
 =head1 Version
 
-0.1.$Revision: 372 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

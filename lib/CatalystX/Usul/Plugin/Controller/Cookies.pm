@@ -1,12 +1,11 @@
-package CatalystX::Usul::Plugin::Controller::Cookies;
+# @(#)$Id: Cookies.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Cookies.pm 425 2009-04-01 15:52:23Z pjf $
+package CatalystX::Usul::Plugin::Controller::Cookies;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
 
 my $NUL = q();
 
@@ -152,7 +151,7 @@ CatalystX::Usul::Plugin::Controller::Cookies - Cookie multiplexing methods
 
 =head1 Version
 
-0.1.$Revision: 425 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

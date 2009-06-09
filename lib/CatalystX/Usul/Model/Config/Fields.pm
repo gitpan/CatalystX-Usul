@@ -1,16 +1,15 @@
-package CatalystX::Usul::Model::Config::Fields;
+# @(#)$Id: Fields.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Fields.pm 401 2009-03-27 00:17:37Z pjf $
+package CatalystX::Usul::Model::Config::Fields;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 401 $ =~ /\d+/gmx );
-
 __PACKAGE__->config
-   ( create_msg_key    => q(createdField),
-     delete_msg_key    => q(deletedField),
+   ( create_msg_key    => q(Field [_1] / [_2] created),
+     delete_msg_key    => q(Field [_1] / [_2] deleted),
      keys_attr         => q(field),
      schema_attributes => {
       attributes       => [ qw(type prompt clear width maxlength tip
@@ -24,7 +23,7 @@ __PACKAGE__->config
       lang_dep         => { qw(atitle 1 ctitle 1 fhelp 1
                                prompt 1 text   1 tip   1) } },
      typelist          => { fhelp => q(textarea), tip => q(textarea) },
-     update_msg_key    => q(updatedField), );
+     update_msg_key    => q(Field [_1] / [_2] updated), );
 
 1;
 
@@ -38,7 +37,7 @@ CatalystX::Usul::Model::Config::Fields - Class definition for fields
 
 =head1 Version
 
-0.1.$Revision: 401 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

@@ -1,17 +1,20 @@
-package CatalystX::Usul::View::HTML;
+# @(#)$Id: HTML.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: HTML.pm 440 2009-04-09 20:17:47Z pjf $
+package CatalystX::Usul::View::HTML;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Catalyst::View::TT CatalystX::Usul::View);
+
 use Class::C3;
 use Encode;
 use English qw(-no_match_vars);
 use File::Find;
 use Template::Stash;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 440 $ =~ /\d+/gmx );
+my $NUL = q();
+my $SEP = q(/);
 
 __PACKAGE__->config( CATALYST_VAR       => q(c),
                      COMPILE_EXT        => q(.ttc),
@@ -27,14 +30,11 @@ __PACKAGE__->config( CATALYST_VAR       => q(c),
                      target             => q(top),
                      template_extension => q(.tt), );
 
-__PACKAGE__->mk_accessors( qw(css css_files default_template
-                              jscript jscript_dir
-                              jscript_path lang_dep_jsprefixs
-                              lang_dep_jscript static_jscript target
-                              template_extension templates) );
-
-my $NUL = q();
-my $SEP = q(/);
+__PACKAGE__->mk_accessors( qw(css css_files default_template jscript
+                              jscript_dir jscript_path
+                              lang_dep_jsprefixs lang_dep_jscript
+                              static_jscript target template_extension
+                              templates) );
 
 sub new {
    my ($self, $app, @rest) = @_; my $path;
@@ -82,15 +82,11 @@ sub new {
               sub { $new->templates->{ $_ } = 1 if (m{ $extension \z }mx) } },
          $new->dynamic_templates );
 
-   $Template::Stash::SCALAR_OPS->{loc} = sub {
-      my (undef, $msg, @rest) = @_; return $new->loc( $msg, @rest );
-   };
-
    return $new;
 }
 
 sub bad_request {
-   my ($self, $c, $msg, $controller, $verb) = @_; my $s = $c->stash;
+   my ($self, $c, $verb, $msg) = @_; my $s = $c->stash;
 
    # Add a stock phrase to the user visible reason for failure
    my $button = $s->{buttons}->{ $c->action->{name}.q(.).$verb } || {};
@@ -141,6 +137,10 @@ sub fix_stash {
        $s->{description} = $text if ($text = $cfg->{tip     });
        $s->{keywords   } = $text if ($text = $cfg->{keywords});
    }
+
+   $Template::Stash::SCALAR_OPS->{loc} = sub {
+      my (undef, $msg, @rest) = @_; return $self->loc( $c, $msg, @rest );
+   };
 
    return;
 }
@@ -230,8 +230,6 @@ sub not_implemented {
 sub process {
    my ($self, $c) = @_; my $s = $c->stash; my $enc;
 
-   $self->content_type ( $s->{content_type}      );
-   $self->messages     ( $s->{messages}          );
    $self->fix_stash    ( $c                      );
    $self->build_widgets( $c, $self->form_sources );
    $self->get_css      ( $c                      );
@@ -260,7 +258,7 @@ CatalystX::Usul::View::HTML - Render a page of HTML or XHTML
 
 =head1 Version
 
-0.1.$Revision: 440 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

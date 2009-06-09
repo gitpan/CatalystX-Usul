@@ -1,13 +1,13 @@
-package CatalystX::Usul::Model::Navigation;
+# @(#)$Id: Navigation.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Navigation.pm 443 2009-04-09 21:57:57Z pjf $
+package CatalystX::Usul::Model::Navigation;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
-use CatalystX::Usul::Table;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 443 $ =~ /\d+/gmx );
+use CatalystX::Usul::Table;
 
 my $DOTS = chr 8230;
 my $GT   = q(&gt;);
@@ -64,9 +64,9 @@ sub access_control_form {
    my $level_tag = q(..Level..);
    my $form      = $s->{form}->{name};
    my $states    = { 0 => q(open), 1 => q(hidden), 2 => q(closed) };
-   my $noun      = !$level || $room eq $level_tag ? q(level) : q(room);
+   my $noun      = !$level || $room eq $level_tag ? q(controller) : q(action);
 
-   $s->{info  }  = $noun eq q(level) ? $level : $room;
+   $s->{info  }  = $noun eq q(controller) ? $level : $room;
    $s->{noun  }  = $noun;
    $s->{pwidth} -= 10;
 
@@ -76,7 +76,7 @@ sub access_control_form {
 
    my $levels = $res->list; unshift @{ $levels }, $NUL, q(default);
 
-   $acl = $res->element->acl if ($noun eq q(level));
+   $acl = $res->element->acl if ($noun eq q(controller));
 
    $res = eval { $s->{room_model}->get_list( $level, $room ) };
 
@@ -85,7 +85,7 @@ sub access_control_form {
    my $rooms = $res->list; unshift @{ $rooms }, $NUL, $level_tag;
    my $state = $res->element->state || 0;
 
-   $acl = $res->element->acl if ($noun eq q(room));
+   $acl = $res->element->acl if ($noun eq q(action));
 
    for $model (@{ $s->{auth_models} }) {
       $users = eval { $model->users->retrieve( q([^\?]+), $NUL )->user_list };
@@ -149,10 +149,9 @@ sub add_header {
    my $self = shift; my $s = $self->context->stash;
 
    $self->next::method();
-
    $self->stash_content( $self->get_main_menu,  q(menus) );
    $self->stash_content( $self->get_tools_menu, q(menus) );
-   $self->add_quick_links;
+   $s->{quick_links} = { items => $self->get_quick_links };
    return;
 }
 
@@ -216,46 +215,6 @@ sub add_menu_close {
    $self->push_menu_item( $menu, 0, $content );
    $content = { data => $menu, id => q(menu), type => q(menu), widget => 1 };
    $self->stash_content( $content,  q(menus) );
-   return;
-}
-
-sub add_quick_links {
-   my $self = shift; my $c = $self->context; my $s = $c->stash; my $links;
-
-   if ($links = $self->_quick_link_cache->{ $s->{lang} }) {
-      $s->{quick_links} = { items => $links };
-      return;
-   }
-   else { $links = [] }
-
-   my $model = $c->model( q(Config::Rooms) );
-   my $title = $self->loc( q(navigationTitle) );
-
-   for my $ns (keys %{ $s->{levels} }) {
-      my @elements = $model->search( $ns, { quick_link => { '>' => 0 } } );
-
-      for my $element (@elements) {
-         my $name = $element->name;
-         my $href = $self->uri_for( $ns.$SEP.$name, $s->{lang} );
-         my $tip  = $title.$TTS.($element->tip || $NUL);
-
-         push @{ $links }, {
-            content => { class     => q(headerFade),
-                         container => 0,
-                         href      => $href,
-                         name      => $name,
-                         sort_by   => $element->quick_link,
-                         text      => $element->text || $name,
-                         tip       => $tip,
-                         type      => q(anchor),
-                         widget    => 1 } };
-      }
-   }
-
-   @{ $links } = sort { $a->{content}->{sort_by}
-                        <=> $b->{content}->{sort_by} } @{ $links };
-   $self->_quick_link_cache->{ $s->{lang} } = $links;
-   $s->{quick_links} = { items => $links };
    return;
 }
 
@@ -448,6 +407,43 @@ sub get_main_menu {
    return $content;
 }
 
+sub get_quick_links {
+   my $self = shift; my $c = $self->context; my $s = $c->stash; my $links;
+
+   return $links if ($links = $self->_quick_link_cache->{ $s->{lang} });
+
+   $links = [];
+
+   my $model = $c->model( q(Config::Rooms) );
+   my $title = $self->loc( q(navigationTitle) );
+
+   for my $ns (keys %{ $s->{levels} }) {
+      my @elements = $model->search( $ns, { quick_link => { '>' => 0 } } );
+
+      for my $element (@elements) {
+         my $name = $element->name;
+         my $href = $self->uri_for( $ns.$SEP.$name, $s->{lang} );
+         my $tip  = $title.$TTS.($element->tip || $NUL);
+
+         push @{ $links }, {
+            content => { class     => q(headerFade),
+                         container => 0,
+                         href      => $href,
+                         name      => $name,
+                         sort_by   => $element->quick_link,
+                         text      => $element->text || $name,
+                         tip       => $tip,
+                         type      => q(anchor),
+                         widget    => 1 } };
+      }
+   }
+
+   @{ $links } = sort { $a->{content}->{sort_by}
+                        <=> $b->{content}->{sort_by} } @{ $links };
+
+   return $self->_quick_link_cache->{ $s->{lang} } = $links;
+}
+
 sub get_tools_menu {
    my $self    = shift; my ($alt, $jscript, $text);
    my $menu    = 0;
@@ -600,7 +596,7 @@ sub get_tools_menu {
       widget    => 1 } ); $item++;
 
    # Send feedback email to site administrators
-   if ($s->{user} ne q(unknown)) {
+   unless ($s->{user} eq q(unknown)) {
       $text = $self->uri_for( q(root).$SEP.q(feedback), $s->{lang},
                               $c->action->namespace, $c->action->name );
       $self->push_menu_item( \@tools, $menu, {
@@ -616,24 +612,24 @@ sub get_tools_menu {
          tip       => $title.$TTS.$self->loc( q(feedbackOptionTip) ),
          type      => q(anchor),
          widget    => 1 } ); $item++;
+
+      $menu++; $item = 0;
+
+      # Logout option drops current identity
+      $self->push_menu_item( \@tools, $menu, {
+         class     => $name.q(TitleFade),
+         container => 0,
+         fhelp     => 'Exit',
+         href      => '#top',
+         id        => $name.$menu.q(item).$item,
+         onclick   => "behaviour.window.wayOut('".$c->req->base."')",
+         imgclass  => $name,
+         sep       => $NUL,
+         text      => $s->{assets}.q(exit.gif),
+         tip       => $DOTS.$TTS.$self->loc( q(exitTip) ),
+         type      => q(anchor),
+         widget    => 1 } ); $item++;
    }
-
-   $menu++; $item = 0;
-
-   # Logout option drops current identity
-   $self->push_menu_item( \@tools, $menu, {
-      class     => $name.q(TitleFade),
-      container => 0,
-      fhelp     => 'Exit',
-      href      => '#top',
-      id        => $name.$menu.q(item).$item,
-      onclick   => "behaviour.window.wayOut('".$c->req->base."')",
-      imgclass  => $name,
-      sep       => $NUL,
-      text      => $s->{assets}.'exit.gif',
-      tip       => $DOTS.$TTS.$self->loc( q(exitTip) ),
-      type      => q(anchor),
-      widget    => 1 } ); $item++;
 
    $menu++; $item = 0;
 
@@ -653,6 +649,8 @@ sub get_tools_menu {
          tip       => $DOTS.$TTS.$self->loc( 'Lock the current display' ),
          type      => q(anchor),
          widget    => 1 } ); $item++;
+
+      $menu++; $item = 0;
    }
 
    my $content = { data   => \@tools,
@@ -686,8 +684,9 @@ sub retrieve {
    my $model  = $c->model( q(Config::Rooms) );
    my $title  = $self->loc( q(navigationTitle) );
    my $new    = CatalystX::Usul::Table->new
-      ( align  => { level => q(left)  }, flds   => [ q(level) ],
-        labels => { level => 'Level' },  values => [] );
+      ( align  => { level => q(left)  },
+        flds   => [ q(level) ],
+        labels => { level => 'Level' } );
    my ($c_no, $element, $fld, $path, $room);
 
    for my $level (sort { __level_cmp( $levels, $a, $b ) } keys %{ $levels }) {
@@ -749,11 +748,16 @@ sub retrieve {
       }
    }
 
+   my $width = (int 100 / (2 + $n_cols)).q(%);
+
+   $new->widths->{ q(level) } = $width;
+
    for $c_no (0 .. $n_cols) {
       $fld = q(room).$c_no;
       push @{ $new->flds }, $fld;
       $new->labels->{ $fld } = 'Rooms';
       $new->align->{ $fld }  = q(left);
+      $new->widths->{ $fld } = $width;
    }
 
    return $new;
@@ -768,10 +772,10 @@ sub room_manager_form {
    my $form      = $s->{form}->{name};
    my $new_tag   = $s->{newtag};
    my $noun      = !$level || $level eq $new_tag || $room eq $level_tag
-                 ? q(level) : q(room);
+                 ? q(controller) : q(action);
    my $step      = 1;
 
-   $s->{info}    = $noun eq q(level) ? $level : $room;
+   $s->{info}    = $noun eq q(controller) ? $level : $room;
    $s->{noun}    = $noun;
    $s->{pwidth} -= 10;
 
@@ -863,7 +867,6 @@ sub select_this {
 
 sub sitemap {
    my $self = shift; my $e;
-
    my $data = eval { $self->retrieve };
 
    return $self->add_error( $e ) if ($e = $self->catch);
@@ -906,7 +909,7 @@ CatalystX::Usul::Model::Navigation - Navigation links and access control
 
 =head1 Version
 
-0.1.$Revision: 443 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -959,6 +962,14 @@ levels and rooms
 
 Calls parent method. Adds main and tools menu data. Adds quick link data
 
+Calls L</get_main_menu>. This is the main navigation menu
+
+Calls L<get_quick_links>. Quick links appear in the header and are
+selected from the I<rooms> config items if the I<quick_link> element
+is set. It's numeric value determines the sort order of the links
+
+Calls L<get_tools_menu>
+
 =head2 add_menu_back
 
    $c->model( q(Navigation) )->add_menu_back( $args );
@@ -976,16 +987,6 @@ Adds some filler to the main navigation menu
    $c->model( q(Navigation) )->add_menu_close( $args );
 
 Adds a window close link to the main navigation menu
-
-=head2 add_quick_links
-
-   $c->model( q(Navigation) )->add_quick_links;
-
-Stashes the data used to display "quick" navigation links. These
-usually appear in the header and allow single click access to any
-endpoint. They are identified in the configuration by adding a
-I<quick_link> attribute to the I<rooms> element. The I<quick_link>
-attribute value is an integer which determines the display order
 
 =head2 allowed
 
@@ -1006,15 +1007,26 @@ item's href
 
    $c->model( q(Navigation) )->get_main_menu;
 
-Adds data to the stash to generate the main navigation menu. The menu uses
+Returns the data used to generate the main navigation menu. The menu uses
 a Cone Trees layout which has been flattened to produce a visual trail
 of breadcrumbs effect, i.e. Home > Reception > Tutorial
+
+=head2 get_quick_links
+
+   $links = $c->model( q(Navigation) )->get_quick_links;
+
+Returns the data used to display "quick" navigation links. Caches data
+on first use. These usually appear in the header and allow single
+click access to any endpoint. They are identified in the configuration
+by adding a I<quick_link> attribute to the I<rooms> element. The
+I<quick_link> attribute value is an integer which determines the
+display order
 
 =head2 get_tools_menu
 
    $c->model( q(Navigation) )->get_tools_menu;
 
-Adds the stash data for the tools menu. This contains a selection of
+Returns the stash data for the tools menu. This contains a selection of
 utility options including: toggle runtime debugging, toggle footer,
 skin switching, context sensitive help, about popup, email feedback
 and logout option

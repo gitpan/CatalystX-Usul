@@ -1,15 +1,15 @@
-package CatalystX::Usul::InflateSymbols;
+# @(#)$Id: InflateSymbols.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: InflateSymbols.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::InflateSymbols;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Base);
+
 use Config;
 use Cwd qw(abs_path);
 use File::Spec;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
 
 __PACKAGE__->mk_accessors( qw(_application) );
 
@@ -86,7 +86,7 @@ CatalystX::Usul::InflateSymbols - Return paths to installation directories
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

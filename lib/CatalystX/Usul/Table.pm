@@ -1,15 +1,14 @@
-package CatalystX::Usul::Table;
+# @(#)$Id: Table.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Table.pm 403 2009-03-28 04:09:04Z pjf $
+package CatalystX::Usul::Table;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Class::Accessor::Fast);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
-
 __PACKAGE__->mk_accessors( qw(align class count flds hclass labels
-                              sizes typelist values wrap) );
+                              sizes typelist values widths wrap) );
 
 sub new {
    my ($self, @rest) = @_;
@@ -19,7 +18,8 @@ sub new {
                       count  => 0,  flds     => [],
                       hclass => {}, labels   => {},
                       sizes  => {}, typelist => {},
-                      values => [], wrap     => {} }, ref $self || $self;
+                      values => [], widths   => {},
+                      wrap   => {} }, ref $self || $self;
 
    for (grep { exists $new->{ $_ } } keys %{ $args }) {
       $new->$_( $args->{ $_ } );
@@ -40,7 +40,7 @@ CatalystX::Usul::Table - Data structure for the table widget
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

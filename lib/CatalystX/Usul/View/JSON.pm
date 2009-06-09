@@ -1,14 +1,14 @@
-package CatalystX::Usul::View::JSON;
+# @(#)$Id: JSON.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: JSON.pm 330 2008-12-16 21:54:28Z pjf $
+package CatalystX::Usul::View::JSON;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::View);
+
 use Class::C3;
 use JSON qw(decode_json encode_json);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 330 $ =~ /\d+/gmx );
 
 sub deserialize {
    my ($self, @rest) = @_;
@@ -34,7 +34,7 @@ CatalystX::Usul::View::JSON - Render JSON response to an XMLHttpRequest
 
 =head1 Version
 
-0.1.$Revision: 330 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

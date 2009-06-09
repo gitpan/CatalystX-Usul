@@ -1,15 +1,15 @@
-package CatalystX::Usul::Plugin::Model::StashHelper;
+# @(#)$Id: StashHelper.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: StashHelper.pm 443 2009-04-09 21:57:57Z pjf $
+package CatalystX::Usul::Plugin::Model::StashHelper;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
+
 use Data::Pageset;
 use Lingua::Flags;
 use Time::Elapsed qw(elapsed);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 443 $ =~ /\d+/gmx );
 
 my $DOTS = chr 8230;
 my $NUL  = q();
@@ -29,13 +29,13 @@ sub stash_content {
 
    eval { $self->$clear() } if ($clear and not defined $s->{ $id });
 
-   my $ref = { content => $content, id => $id };
+   my $item = { content => $content, id => $id };
 
    if (ref $content eq q(HASH) and $content->{class}) {
-      $ref->{class} = $content->{class};
+      $item->{class} = $content->{class};
    }
 
-   push @{ $s->{ $id }->{items} }, $ref;
+   push @{ $s->{ $id }->{items} }, $item;
    $s->{ $id }->{count} = @{ $s->{ $id }->{items} };
    return;
 }
@@ -388,24 +388,22 @@ sub add_error {
    my ($self, $e, $verbosity, $offset) = @_;
 
    unless (defined $verbosity) {
-      ($verbosity, $offset) = (($self->context->stash->{debug} ? 3 : 2), 1);
+      $verbosity = $self->context->stash->{debug} ? 3 : 2;
    }
 
-   my $estr = $e->as_string( $verbosity, $offset );
-   my $text = $self->loc( $estr, $e->arg1, $e->arg2 );
+   $offset = 1 unless (defined $offset);
 
-   $self->log_error( (ref $self).$SPC.(split m{ \n }mx, $text)[0] );
-   $self->add_result( $text );
+   my $err = $self->loc( $e->as_string( $verbosity, $offset ), @{ $e->args } );
+
+   $self->log_error ( (ref $self).$SPC.(split m{ \n }mx, $err)[0] );
+   $self->add_result( $err );
    return;
 }
 
 sub add_error_msg {
-   my ($self, $key, $args) = @_;
+   my ($self, @rest) = @_;
 
-   my $msg = $self->loc( $key, $args );
-   my $e   = CatalystX::Usul::Exception->new( error => $msg );
-
-   $self->add_error( $e );
+   $self->add_error( $self->exception_class->new( $self->loc( @rest ) ) );
    return;
 }
 
@@ -434,11 +432,11 @@ sub add_search_links {
    $attrs ||= {};
 
    my $s            = $self->context->stash;
-   my $clear        = 'left';
    my $expr         = $attrs->{expression};
    my $hits_per     = $attrs->{hits_per};
    my $href         = $s->{form}->{action}.$SEP.$expr.$SEP;
    my $anchor_class = $attrs->{anchor_class} || q(searchFade smaller);
+   my $clear        = 1;
 
    for $page (qw(first_page previous_page pages_in_set next_page last_page)) {
       if ($page eq q(pages_in_set)) {
@@ -469,12 +467,12 @@ sub add_search_links {
                    type   => q(anchor) };
 
          if ($clear) {
-            $ref->{clear}  = $clear;
-            $ref->{prompt} = $self->loc( q(page_prompt) );
+            $ref->{class } .= q( clearLeft);
+            $ref->{prompt}  = $self->loc( q(page_prompt) );
          }
 
          $self->add_field( $ref );
-         $clear = $NUL;
+         $clear = 0;
       }
    }
 
@@ -483,17 +481,17 @@ sub add_search_links {
 
 sub group_fields {
    # Enclose a group of form fields in a field set definition
-   my ($self, $args) = @_; my ($content, $text);
+   my ($self, $args) = @_; my $text;
 
    my $nitems = $args->{nitems} || $args->{nItems};
+   my $class  = exists $args->{class} ? $args->{class} : q(fullWidth);
 
    return if (!$nitems || $nitems <= 0);
 
-   $text    = $args->{id  } ?  $self->loc( $args->{id} ) : q(duh);
-   $text    = $args->{text} || $text;
-   $content = { nitems => $nitems, text => $text, group => 1 };
+   $text = $args->{text} || $self->loc( $args->{id} || q(duh) );
 
-   $self->stash_form( $content );
+   $self->stash_form( { class  => $class,  group => 1,
+                        nitems => $nitems, text  => $text } );
    return;
 }
 
@@ -555,13 +553,14 @@ sub search_page {
 
 sub simple_page {
    # Knock up a page of simple content from the XML config files
-   my ($self, $name) = @_; my ($page, $ref, $subh, $text);
+   my ($self, $name, $n_cols) = @_; my ($page, $ref, $subh, $text);
 
    my $s = $self->context->stash;
 
-   unless ($name and $page = $s->{pages}->{ $name }) {
-      $self->add_error_msg( q(eNoPage), [ $name ] );
-      return;
+   return $self->add_error_msg( 'No page specified' ) unless ($name);
+
+   unless ($page = $s->{pages}->{ $name }) {
+      return $self->add_error_msg( 'Page [_1] unknown', $name );
    }
 
    unless (exists $s->{sdata}) {
@@ -572,11 +571,13 @@ sub simple_page {
              title      => $page->{title} || $s->{title} } );
    }
 
-   my $columns = $page->{columns}; my $data = { values => [] }; my $idx = 0;
-   my $para    = $page->{vals}->{ q(para).$idx };
+   my $idx  = 0;
+   my $data = { values => [] };
+   my $para = $page->{vals}->{ q(para).$idx };
 
    while ($text = $para->{text}) {
       my $drop = $para->{dropcap} || 0; my $mark = $para->{markdown} || 0;
+
       $ref  = { class => q(), text => { dropcap => $drop, markdown => $mark,
                                         text    => $text, type => q(label) } };
 
@@ -588,13 +589,17 @@ sub simple_page {
       $para = $page->{vals}->{ q(para).++$idx };
    }
 
-   $self->add_field( { class        => $page->{class},
-                       column_class => $columns > 1 ? q(paraColumn) : $NUL,
-                       columns      => $columns,
-                       container    => 0,
-                       data         => $data,
-                       hclass       => q(subheading),
-                       type         => q(paragraphs) } );
+   my $columns   = $n_cols || $page->{columns};
+   my $col_class = ($columns > 1 ? 'multi' : 'one').'Column '.$page->{class};
+
+   $self->add_field( { class           => q(fullWidth),
+                       column_class    => $col_class,
+                       columns         => $columns,
+                       container       => 1,
+                       container_class => q(paragraphs centre),
+                       data            => $data,
+                       hclass          => q(subheading),
+                       type            => q(paragraphs) } );
    return 1;
 }
 
@@ -747,7 +752,7 @@ CatalystX::Usul::Plugin::Model::StashHelper - Convenience methods for stuffing t
 
 =head1 Version
 
-0.1.$Revision: 443 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

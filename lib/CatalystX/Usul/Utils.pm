@@ -1,10 +1,12 @@
-package CatalystX::Usul::Utils;
+# @(#)$Id: Utils.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Utils.pm 425 2009-04-01 15:52:23Z pjf $
+package CatalystX::Usul::Utils;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Base);
+
 use CatalystX::Usul::Response;
 use English qw(-no_match_vars);
 use Email::Send;
@@ -18,9 +20,7 @@ use POSIX qw(:signal_h :errno_h :sys_wait_h);
 use Proc::ProcessTable;
 use Template;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 425 $ =~ /\d+/gmx );
-
-my ($ERROR, $WAITEDPID);
+my $NUL = q(); my ($ERROR, $WAITEDPID);
 
 sub child_list {
    my ($self, $pid, $ref) = @_; my ($child, $p, $t); my @pids = ();
@@ -47,10 +47,9 @@ sub cleaner {
 }
 
 sub handler {
-   # Is the candidate value in the list
-   my $pid    = waitpid -1, WNOHANG();
+   my $pid = waitpid -1, WNOHANG();
 
-   $WAITEDPID = $pid if ($pid != -1 && WIFEXITED( $CHILD_ERROR ));
+   $WAITEDPID = $pid if ($pid != -1 and WIFEXITED( $CHILD_ERROR ));
 
    $SIG{CHLD} = \&handler; # in case of unreliable signals
    return;
@@ -70,7 +69,8 @@ sub popen {
 
       if (defined $input[0]) {
          for my $line (@input) {
-            print {$wtr} $line or $self->throw( q(eWritePipe) );
+            print {$wtr} $line
+               or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
          }
       }
 
@@ -110,7 +110,7 @@ sub process_exists {
    my $pid_file = $args->{file};
    my $pid      = $args->{pid};
 
-   if ($pid_file && -f $pid_file) {
+   if ($pid_file and -f $pid_file) {
       $pid = $self->io( $pid_file )->chomp->lock->getline;
    }
 
@@ -120,56 +120,51 @@ sub process_exists {
 }
 
 sub run_cmd {
-   my ($self, $cmd, $args) = @_;
-   my ($e, $err, $out, $pid, $prog, $res, $rv, $text);
+   my ($self, $cmd, @rest) = @_; my ($e, $err, $text);
 
-   $self->throw( q(eNoCommand) ) unless ($cmd);
-   $prog = $self->basename( (split q( ), $cmd)[0] );
+   $self->throw( 'No command specified' ) unless ($cmd);
 
-   $args                ||= {};
-   $args->{debug      } ||= $self->debug;
-   $args->{expected_rv} ||= 0;
-   $args->{tempdir    } ||= $self->tempdir;
-   # Three different semi-random file names in the temp directory
-   $args->{err_ref    } ||= $self->tempfile( $args->{tempdir} );
-   $args->{out_ref    } ||= $self->tempfile( $args->{tempdir} );
-   $args->{pid_ref    } ||= $self->tempfile( $args->{tempdir} );
+   my $args = $self->_get_run_cmd_args( @rest );
+   my $prog = $self->basename( (split q( ), $cmd)[0] );
 
-   if ($args->{async} && !$args->{out}) {
+   if ($args->{async} and not $args->{out}) {
       $args->{out} = $args->{out_ref}->pathname; $args->{err} = q(out);
    }
 
-   $out = $args->{out} ? $args->{out} : $args->{out_ref}->pathname;
+   my $out = $args->{out} ? $args->{out} : $args->{out_ref}->pathname;
 
    if ($args->{err}) { $err = $args->{err} eq q(out) ? $out : $args->{err} }
    else { $err = $args->{err_ref}->pathname }
 
    $cmd .= ' 1>'.$out if ($out ne q(stdout));
-   $cmd .= $err eq $out ? ' 2>&1' : ($err ne q(stderr) ? ' 2>'.$err : q());
+   $cmd .= $err eq $out ? ' 2>&1' : ($err ne q(stderr) ? ' 2>'.$err : $NUL);
    $cmd .= ' & echo $! 1>'.$args->{pid_ref}->pathname if ($args->{async});
 
-   $self->log_debug( "Run cmd $cmd" ) if ($args->{debug});
+   $self->log_debug( "Running $cmd" ) if ($args->{debug});
 
-   $rv = eval { local $SIG{CHLD} = \&handler; system $cmd; };
+   my $rv = eval { local $SIG{CHLD} = \&handler; system $cmd; };
 
    if ($e = $self->catch) { $e->rv( -1 ); $self->throw( $e ) }
 
    if ($rv == -1) {
-      $self->throw( error => q(eFailedToStart),
-                    arg1  => $prog, arg2 => $ERRNO, rv => -1 );
+      $text = 'Program [_1] failed to start [_2]';
+      $self->throw( error => $text, args  => [ $prog, $ERRNO ], rv => -1 );
    }
 
-   $res = CatalystX::Usul::Response->new();
+   my $res = CatalystX::Usul::Response->new();
+
    $res->sig( $rv & 127 ); $res->core( $rv & 128 ); $rv = $rv >> 8;
 
    if ($args->{async}) {
       if ($rv != 0) {
-         $self->throw( error => q(eFailedToStart), arg1 => $prog, rv => $rv );
+         $text = 'Program [_1] failed to start';
+         $self->throw( error => $text, args => [ $prog ], rv => $rv );
       }
 
-      $pid = $self->io( $args->{pid_ref}->pathname )->chomp->getline
-          || q(pid unknown);
-      $res->out( 'Started '.$prog.'('.$pid.') in the background' );
+      my $pid = $self->io( $args->{pid_ref}->pathname )->chomp->getline
+             || q(pid unknown);
+
+      $res->out( "Started ${prog}(${pid}) in the background" );
       return $res;
    }
 
@@ -185,22 +180,23 @@ sub run_cmd {
          if (-f $err and $text = $self->io( $err )->slurp) {
             $res->stderr( $text ); chomp $text;
          }
-         else { $text = q() }
-
-         $text .= ' code '.$rv if ($args->{debug});
+         else { $text = $NUL }
       }
       else { $res->stderr( $res->stdout ); $text = $res->out; chomp $text }
    }
 
-   $self->throw( error => $text, rv => $rv ) if ($rv > $args->{expected_rv});
+   if ($rv > $args->{expected_rv}) {
+      $text .= ' code [_1]' if ($args->{debug});
+      $self->throw( error => $text, args => [ $rv ], rv => $rv );
+   }
 
    return $res;
 }
 
 sub send_email {
-   my ($self, $args) = @_; my $email;
+   my ($self, $args) = @_; my ($email, $text, $tmplt);
 
-   $self->throw( q(eNoArgs) ) unless ($args);
+   $self->throw( 'No parameters specified' ) unless ($args);
 
    $email->{attributes} =  $args->{attributes} || {};
    $email->{header    } =
@@ -209,9 +205,7 @@ sub send_email {
         Subject         => $args->{subject   } || q(No subject) ];
 
    unless ($email->{body} = $args->{body}) {
-      $self->throw( q(eNoBodyFound) ) unless ($args->{template});
-
-      my ($text, $tmplt);
+      $self->throw( 'No message body' ) unless ($args->{template});
 
       if ($tmplt = Template->new( $self )) {
          if ($tmplt->process( $args->{template}, $args->{stash}, \$text )) {
@@ -266,12 +260,12 @@ sub signal_process {
       unlink $pid_file if ($sig eq q(TERM));
    }
 
-   unless (defined $pids->[0] && $pids->[0] =~ m{ \d+ }mx) {
-      $self->throw( q(eBadPid) );
+   unless (defined $pids->[0] and $pids->[0] =~ m{ \d+ }mx) {
+      $self->throw( 'Bad process id' );
    }
 
    for $mpid (@{ $pids }) {
-      if (exists $args->{flag} && $args->{flag} =~ m{ one }imx) {
+      if (exists $args->{flag} and $args->{flag} =~ m{ one }imx) {
          CORE::kill $sig, $mpid;
          next;
       }
@@ -290,6 +284,23 @@ sub signal_process {
    return;
 }
 
+# Private methods
+
+sub _get_run_cmd_args {
+   my ($self, $args) = @_;
+
+   $args                ||= {};
+   $args->{debug      } ||= $self->debug;
+   $args->{expected_rv} ||= 0;
+   $args->{tempdir    } ||= $self->tempdir;
+   # Three different semi-random file names in the temp directory
+   $args->{err_ref    } ||= $self->tempfile( $args->{tempdir} );
+   $args->{out_ref    } ||= $self->tempfile( $args->{tempdir} );
+   $args->{pid_ref    } ||= $self->tempfile( $args->{tempdir} );
+
+   return $args;
+}
+
 1;
 
 __END__
@@ -302,7 +313,7 @@ CatalystX::Usul::Utils - Base class utility methods for models and programs
 
 =head1 Version
 
-0.1.$Revision: 425 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

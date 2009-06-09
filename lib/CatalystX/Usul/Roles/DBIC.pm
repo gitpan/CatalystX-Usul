@@ -1,45 +1,27 @@
-package CatalystX::Usul::Model::Identity::Roles::DBIC;
+# @(#)$Id: DBIC.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: DBIC.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Roles::DBIC;
 
 use strict;
 use warnings;
-use parent qw(CatalystX::Usul::Model::Identity::Roles);
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Roles);
 
 __PACKAGE__->config( _dirty => 1 );
 
 __PACKAGE__->mk_accessors( qw(dbic_role_class dbic_user_roles_class
-                              role_model user_roles_model _dirty) );
-
-sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $class;
-
-   my $new = $self->next::method( $c, @rest );
-
-   $class = $new->users_obj->dbic_user_class;
-   $new->users_obj->user_model( $c->model( $class ) );
-
-   $class = $new->dbic_role_class;
-   $new->role_model( $c->model( $class ) );
-
-   $class = $new->dbic_user_roles_class;
-   $new->user_roles_model( $c->model( $class ) );
-
-   return $new;
-}
+                              dbic_role_model dbic_user_roles_model _dirty) );
 
 # Factory methods
 
-sub f_add_user_to_role {
+sub add_user_to_role {
    my ($self, $role, $user) = @_; my $e;
 
    my $rid      = $self->get_rid( $role );
-   my $user_obj = $self->users_obj->find_user( $user );
+   my $user_obj = $self->user_domain->find_user( $user );
 
    unless ($self->is_member( $role, @{ $user_obj->roles } )) {
-      eval { $self->user_roles_model->create
+      eval { $self->dbic_user_roles_model->create
                 ( { role_id => $rid, user_id => $user_obj->uid } ) };
 
       $self->throw( $e ) if ($e = $self->catch);
@@ -50,10 +32,10 @@ sub f_add_user_to_role {
    return;
 }
 
-sub f_create {
+sub create {
    my ($self, $role) = @_; my $e;
 
-   eval { $self->role_model->create( { role => $role } ) };
+   eval { $self->dbic_role_model->create( { role => $role } ) };
 
    $self->throw( $e ) if ($e = $self->catch);
 
@@ -61,15 +43,16 @@ sub f_create {
    return;
 }
 
-sub f_delete {
+sub delete {
    my ($self, $role) = @_;
 
    $self->lock->set( k => __PACKAGE__ );
-   my $role_obj = $self->role_model->search( { role => $role } );
+
+   my $role_obj = $self->dbic_role_model->search( { role => $role } );
 
    unless (defined $role_obj) {
       $self->lock->reset( k => __PACKAGE__ );
-      $self->throw( error => q(eUnknownRole), arg1 => $role );
+      $self->throw( error => 'Role [_1] unknown', args => [ $role ] );
    }
 
    $role_obj->delete; $self->_dirty( 1 );
@@ -77,22 +60,22 @@ sub f_delete {
    return;
 }
 
-sub f_remove_user_from_role {
+sub remove_user_from_role {
    my ($self, $role, $user) = @_;
 
    my $rid      = $self->get_rid( $role );
-   my $user_obj = $self->users_obj->find_user( $user );
+   my $user_obj = $self->user_domain->find_user( $user );
 
    if ($self->is_member( $role, @{ $user_obj->roles } )) {
       $self->lock->set( k => __PACKAGE__ );
 
-      my $user_roles_obj = $self->user_roles_model->search
+      my $user_roles_obj = $self->dbic_user_roles_model->search
          ( { role_id => $rid, user_id => $user_obj->uid } );
 
       unless (defined $user_roles_obj) {
          $self->lock->reset( k => __PACKAGE__ );
-         $self->throw( error => q(eUserNotInRole),
-                       arg1  => $role, arg2 => $user );
+         $self->throw( error => 'User [_1] not in role [_2]',
+                       args  => [ $user, $role ] );
       }
 
       $user_roles_obj->delete; $self->_dirty( 1 );
@@ -120,7 +103,7 @@ sub _load {
    }
 
    $self->_cache( {} ); $self->_id2name( {} ); $self->_user2role( {} );
-   $rs   = $self->role_model->search();
+   $rs   = $self->dbic_role_model->search();
 
    while (defined ($role_obj = $rs->next)) {
       $role = $role_obj->get_column( q(role) );
@@ -130,7 +113,7 @@ sub _load {
 
    $attr = { include_columns => [ q(role.role), q(user.username) ],
              join            => [ q(role), q(user) ] };
-   $rs   = $self->user_roles_model->search( {}, $attr );
+   $rs   = $self->dbic_user_roles_model->search( {}, $attr );
 
    while (defined ($user_roles_obj = $rs->next)) {
       $role = $user_roles_obj->get_column( q(role) );
@@ -158,17 +141,17 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Identity::Roles::DBIC - Role management database storage
+CatalystX::Usul::Roles::DBIC - Role management database storage
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Model::Identity::Roles::DBIC;
+   use CatalystX::Usul::Roles::DBIC;
 
-   my $class = CatalystX::Usul::Model::Identity::Roles::DBIC;
+   my $class = CatalystX::Usul::Roles::DBIC;
 
    my $role_obj = $class->new( $app, $config );
 
@@ -185,27 +168,27 @@ required by it's base class
 Make copies of DBIC model references available only after the application
 setup is complete
 
-=head2 f_add_user_to_role
+=head2 add_user_to_role
 
-   $role_obj->f_add_user_to_role( $role, $user );
+   $role_obj->add_user_to_role( $role, $user );
 
 Adds the specified user to the specified role
 
-=head2 f_create
+=head2 create
 
-   $role_obj->f_create( $role );
+   $role_obj->create( $role );
 
 Creates a new role with the given name
 
-=head2 f_delete
+=head2 delete
 
-   $role_obj->f_delete( $role );
+   $role_obj->delete( $role );
 
 Deletes the specified role
 
-=head2 f_remove_user_from_role
+=head2 remove_user_from_role
 
-   $role_obj->f_remove_user_to_role( $role, $user );
+   $role_obj->remove_user_to_role( $role, $user );
 
 Removes the specified user to the specifed role
 
@@ -221,7 +204,7 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Model::Identity::Roles>
+=item L<CatalystX::Usul::Roles>
 
 =back
 

@@ -1,14 +1,14 @@
-package CatalystX::Usul::Process;
+# @(#)$Id: Process.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Process.pm 403 2009-03-28 04:09:04Z pjf $
+package CatalystX::Usul::Process;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+
 use CatalystX::Usul::Table;
 use Proc::ProcessTable;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
 
 sub get_table {
    my ($self, $ptype, $user, $fsystem, $ref) = @_;
@@ -146,7 +146,7 @@ CatalystX::Usul::Process - View and signal processes
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

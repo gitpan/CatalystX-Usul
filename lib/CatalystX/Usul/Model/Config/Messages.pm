@@ -1,15 +1,14 @@
-package CatalystX::Usul::Model::Config::Messages;
+# @(#)$Id: Messages.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Messages.pm 401 2009-03-27 00:17:37Z pjf $
+package CatalystX::Usul::Model::Config::Messages;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 401 $ =~ /\d+/gmx );
-
-__PACKAGE__->config( create_msg_key    => q(createdMessage),
-                     delete_msg_key    => q(deletedMessage),
+__PACKAGE__->config( create_msg_key    => q(Message [_1] / [_2] created),
+                     delete_msg_key    => q(Message [_1] / [_2] deleted),
                      keys_attr         => q(message),
                      schema_attributes => {
                         attributes        => [ qw(markdown text) ],
@@ -17,7 +16,7 @@ __PACKAGE__->config( create_msg_key    => q(createdMessage),
                         element           => q(messages),
                         lang_dep          => { markdown => 1, text => 1 }, },
                      typelist          => { text => q(textarea) },
-                     update_msg_key    => q(updatedMessage), );
+                     update_msg_key    => q(Message [_1] / [_2] updated), );
 
 1;
 
@@ -31,7 +30,7 @@ CatalystX::Usul::Model::Config::Messages - Class definition for the messages con
 
 =head1 Version
 
-0.1.$Revision: 401 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

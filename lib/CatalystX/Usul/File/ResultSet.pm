@@ -1,25 +1,30 @@
-package CatalystX::Usul::File::ResultSet;
+# @(#)$Id: ResultSet.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: ResultSet.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::ResultSet;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
+
 use CatalystX::Usul::File::Element;
 use CatalystX::Usul::File::List;
-
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use Scalar::Util qw(weaken);
 
 __PACKAGE__->config( element_class => q(CatalystX::Usul::File::Element),
                      list_class    => q(CatalystX::Usul::File::List), );
 
-__PACKAGE__->mk_accessors( qw(element_class list_class schema _elements
-                              _iterator) );
+__PACKAGE__->mk_accessors( qw(element_class list_class source
+                              _elements _iterator) );
 
 sub new {
-   my ($self, $attrs) = @_; my $class = ref $self || $self;
+   my ($self, $source, $attrs) = @_; my $class = ref $self || $self;
 
-   return bless $self->merge_config_hashes( $self->config, $attrs ), $class;
+   my $new = bless $self->merge_config_hashes( $self->config, $attrs ), $class;
+
+   $new->source( $source ); weaken( $new->{source} );
+
+   return $new;
 }
 
 sub all {
@@ -115,6 +120,10 @@ sub push_attribute {
 
    $attrs->{ $attr } = $list;
    return ($attrs, $in);
+}
+
+sub schema {
+   return shift->source->schema;
 }
 
 sub search {
@@ -229,7 +238,7 @@ CatalystX::Usul::File::ResultSet - Core element methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -308,6 +317,12 @@ Iterate over the elements returned by the search call
    ($attrs, $added) = $rs->push_attribute( $name, $list, $items );
 
 Adds items to the attribute list
+
+=head2 schema
+
+   $schema = $rs->schema;
+
+Returns the source schema object
 
 =head2 search
 

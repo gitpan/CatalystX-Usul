@@ -1,25 +1,26 @@
-package CatalystX::Usul::Model::MailAliases;
+# @(#)$Id: MailAliases.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: MailAliases.pm 395 2009-03-24 17:55:55Z pjf $
+package CatalystX::Usul::Model::MailAliases;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use CatalystX::Usul::MailAliases;
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 395 $ =~ /\d+/gmx );
-
-__PACKAGE__->mk_accessors( qw(alias_model) );
-
 my $NUL = q();
+
+__PACKAGE__->mk_accessors( qw(domain_attributes domain_model) );
 
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_;
 
-   my $new = $self->next::method( $c, @rest );
+   my $new   = $self->next::method( $c, @rest );
+   my $attrs = $new->domain_attributes || {};
 
-   $new->alias_model( CatalystX::Usul::MailAliases->new( $c, @rest ) );
+   $new->domain_model( CatalystX::Usul::MailAliases->new( $c, $attrs ) );
 
    return $new;
 }
@@ -30,7 +31,7 @@ sub create_or_update {
    my $s = $self->context->stash;
 
    unless ($name = $self->query_value( q(name) )) {
-      $self->throw( q(eNoAliasName) );
+      $self->throw( 'No alias name specified' );
    }
 
    ($recipients = $self->query_value( q(recipients) )) =~ s{ \s+ }{ }gmsx;
@@ -42,19 +43,19 @@ sub create_or_update {
    $alias = $self->query_value( q(alias) ) || $NUL;
 
    if ($alias eq $s->{newtag}) {
-      $self->add_result( $self->alias_model->create( $flds ) );
+      $self->add_result( $self->domain_model->create( $flds ) );
    }
-   else { $self->add_result( $self->alias_model->update( $flds ) ) }
+   else { $self->add_result( $self->domain_model->update( $flds ) ) }
 
    return $name;
 }
 
 sub delete {
-   my ($self, $alias) = @_;
+   my $self = shift; my $alias = $self->query_value( q(alias) );
 
-   $self->throw( q(eNoAliasName) ) unless ($alias);
+   $self->throw( 'No alias name specified' ) unless ($alias);
 
-   $self->add_result( $self->alias_model->delete( $alias ) );
+   $self->add_result( $self->domain_model->delete( $alias ) );
    return;
 }
 
@@ -62,7 +63,7 @@ sub mail_aliases_form {
    my ($self, $alias) = @_;
 
    # Retrieve data from model
-   my $data    = eval { $self->alias_model->retrieve( $alias ) }; my $e;
+   my $data    = eval { $self->domain_model->retrieve( $alias ) }; my $e;
 
    return $self->add_error( $e ) if ($e = $self->catch);
 
@@ -120,7 +121,7 @@ CatalystX::Usul::Model::MailAliases - Manipulate the mail aliases file
 
 =head1 Version
 
-0.1.$Revision: 395 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

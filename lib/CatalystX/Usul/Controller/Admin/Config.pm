@@ -1,12 +1,13 @@
-package CatalystX::Usul::Controller::Admin::Config;
+# @(#)$Id: Config.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Config.pm 406 2009-03-30 01:53:50Z pjf $
+package CatalystX::Usul::Controller::Admin::Config;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 406 $ =~ /\d+/gmx );
+my $SEP = q(/);
 
 __PACKAGE__->config( namespace => q(admin) );
 
@@ -16,6 +17,12 @@ sub config_base : Chained(common) PathPart(configuration) CaptureArgs(0) {
    $c->stash->{model_args} = { file => $self->get_key( $c, q(level) ),
                                name => $model->query_value( q(name)  ) };
    return;
+}
+
+sub configuration : Chained(config_base) PathPart('') Args(0) Public {
+   my ($self, $c) = @_;
+
+   return $self->redirect_to_path( $c, $SEP.q(globals) );
 }
 
 sub buttons_delete : ActionFor(buttons_view.delete) {
@@ -125,7 +132,7 @@ sub fields_view : Chained(config_base) PathPart(fields) Args HasActions {
    return;
 }
 
-sub globals : Chained(config_base) PathPart('') Args(0) HasActions {
+sub globals : Chained(config_base) PathPart(globals) Args(0) HasActions {
    my ($self, $c) = @_; $c->model( q(Config::Globals) )->form; return;
 }
 
@@ -251,7 +258,7 @@ CatalystX::Usul::Controller::Admin::Config - Editor for config files
 
 =head1 Version
 
-0.1.$Revision: 406 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
@@ -270,6 +277,10 @@ CRUD methods for the configuration files
 =head2 config_base
 
 Stash some parameters used by all the other actions which chain off this one
+
+=head2 configuration
+
+Redirects to default configuration page
 
 =head2 buttons_delete
 

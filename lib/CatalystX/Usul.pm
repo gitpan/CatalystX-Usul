@@ -1,10 +1,12 @@
-package CatalystX::Usul;
+# @(#)$Id: Usul.pm 571 2009-06-09 19:41:36Z pjf $
 
-# @(#)$Id: Usul.pm 450 2009-04-12 17:40:41Z pjf $
+package CatalystX::Usul;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 571 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Component CatalystX::Usul::Base);
+
 use Class::C3;
 use Class::Null;
 use File::Spec;
@@ -12,11 +14,8 @@ use IPC::SRLock;
 use Module::Pluggable::Object;
 use Text::Markdown qw(markdown);
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 450 $ =~ /\d+/gmx );
-
-__PACKAGE__->mk_accessors( qw(content_type debug encoding lock log
-                              messages prefix redirect_to secret suid
-                              tabstop tempdir) );
+__PACKAGE__->mk_accessors( qw(debug encoding lock log prefix
+                              redirect_to secret suid tabstop tempdir) );
 
 my $LSB = q([);
 my $NUL = q();
@@ -26,22 +25,20 @@ my $SPC = q( );
 sub new {
    my ($self, $app, @rest) = @_; $app ||= Class::Null->new;
 
+   my $app_conf = $app->config || {};
    my $new      = $self->next::method( $app, @rest );
-   my $app_conf = $app->config                        || {};
    my $prefix   = (split m{ _ }mx, ($app_conf->{suid} || $NUL))[0];
 
-   $new->content_type( $app_conf->{content_type} || q(text/html)           );
-   $new->debug       ( $app->debug               || 0                      );
-   $new->encoding    ( $app_conf->{encoding}     || q(UTF-8)               );
-   $new->log         ( $app->log                 || Class::Null->new       );
-   $new->messages    ( $new->messages            || {}                     );
-   $new->prefix      ( $app_conf->{prefix}       || $prefix                );
-   $new->redirect_to ( $app_conf->{redirect_to}  || q(redirect_to_default) );
-   $new->secret      ( $app_conf->{secret}       || $new->prefix           );
-   $new->suid        ( $app_conf->{suid}         || $NUL                   );
-   $new->tabstop     ( $app_conf->{tabstop}      || 3                      );
-   $new->tempdir     ( $app_conf->{tempdir}      || File::Spec->tmpdir     );
-   $new->lock        ( $new->_lock_obj( $app_conf->{lock} )                );
+   $new->debug      ( $app->debug              || 0                      );
+   $new->encoding   ( $app_conf->{encoding}    || q(UTF-8)               );
+   $new->log        ( $app->log                || Class::Null->new       );
+   $new->prefix     ( $app_conf->{prefix}      || $prefix                );
+   $new->redirect_to( $app_conf->{redirect_to} || q(redirect_to_default) );
+   $new->secret     ( $app_conf->{secret}      || $new->prefix           );
+   $new->suid       ( $app_conf->{suid}        || $NUL                   );
+   $new->tabstop    ( $app_conf->{tabstop}     || 3                      );
+   $new->tempdir    ( $app_conf->{tempdir}     || File::Spec->tmpdir     );
+   $new->lock       ( $new->_lock_obj( $app_conf->{lock} )               );
 
    return $new;
 }
@@ -83,29 +80,32 @@ sub get_action {
    # Return the action for this namespace/name pair
    return $action if ($action = $c->get_action( $name, $namespace ));
 
-   my $msg = 'No action for [_1]/[_2]';
+   my $error = 'No action for [_1]/[_2]';
 
-   $self->log_warn( $self->loc( $msg, $namespace, $name ) );
+   $self->log_warn( $self->loc( $c, $error, $namespace, $name ) );
    return;
 }
 
 *loc = \&localize;
 
 sub localize {
-   my ($self, $key, @rest) = @_; my @args = (); my $text;
+   my ($self, $c, $key, @rest) = @_; my $s = $c->stash; my @args = ();
 
    return unless $key;
 
    $key = q().$key; # Force stringification. I hate Return::Value
 
    # Lookup the message using the supplied key
-   my $message = $self->messages->{ $key };
+   my $messages = $s->{messages} || {};
+   my $message  = $messages->{ $key };
+   my $text;
 
    if ($message and $text = $message->{text}) {
       # Optionally call markdown if required
       if ($message->{markdown}) {
          # TODO: Cache copies of this on demand
-         my $suffix = $self->content_type eq q(text/html) ? q(>) : q( />);
+         my $content_type = $s->{content_type} || q(text/html);
+         my $suffix       = $content_type eq q(text/html) ? q(>) : q( />);
 
          $text = markdown( $text, { empty_element_suffix => $suffix,
                                     tab_width            => $self->tabstop } );
@@ -122,7 +122,6 @@ sub localize {
       push @args, map { $NUL } 0 .. 10;
       $text =~ s{ \[ _ (\d+) \] }{$args[ $1 - 1 ]}gmx;
    }
-   else { $text .= $SPC.(join $SPC, @args) }
 
    return $text;
 }
@@ -152,28 +151,21 @@ sub uri_for {
    # Get the action for the given action path
    return unless ($action = $self->get_action( $c, $action_path ));
 
-   unless ($action->attributes->{Chained}
-           and not $action->attributes->{CaptureArgs}) {
+   my $attrs = $action->attributes;
+
+   if (not $attrs->{Chained} or $attrs->{CaptureArgs}) {
       $error = 'Not a chained endpoint [_1]';
-      $self->log_warn( $self->loc( $error, $action->reverse ) );
+      $self->log_warn( $self->loc( $c, $error, $action->reverse ) );
       return;
    }
 
-   my $chained = $action->attributes->{Chained}->[ 0 ]; my @chain = ();
+   my $chained_path = $attrs->{Chained}->[ 0 ]; my @chain = ();
 
    # Pull out all actions for the chain
-   while ($chained ne $SEP) {
-      for my $dispatch_type (@{ $c->dispatcher->dispatch_types }) {
-         last if ($chained_action = $dispatch_type->{actions}->{ $chained });
-      }
-
-      unless ($chained_action) {
-         $error = "Unable to find action in chain [_1]\n";
-         $self->throw( $self->loc( $error, $chained ) );
-      }
-
+   while ($chained_path ne $SEP) {
+      $chained_action = $self->_get_chained_action( $c, $chained_path );
       unshift @chain, $chained_action;
-      $chained = $chained_action->attributes->{Chained}->[ 0 ];
+      $chained_path = $chained_action->attributes->{Chained}->[ 0 ];
    }
 
    my $params = scalar @rest && ref $rest[ -1 ] eq q(HASH) ? pop @rest : $NUL;
@@ -181,9 +173,9 @@ sub uri_for {
 
    # Now start from the root of the chain, populate captures
    for my $num_caps (map { $_->attributes->{CaptureArgs}->[ 0 ] } @chain) {
-      unless ($num_caps <= scalar @args) {
+      if ($num_caps > scalar @args) {
          $error = 'Insufficient args for [_1]';
-         $self->log_warn( $self->loc( $error, $action->reverse ) );
+         $self->log_warn( $self->loc( $c, $error, $action->reverse ) );
          return;
       }
 
@@ -194,19 +186,42 @@ sub uri_for {
 
    push @args, $params if ($params);
 
-   if ($uri = $c->uri_for( $action, \@captures, @args )) {
-      return $uri unless ($uri =~ m{ $SEP $SEP $first_arg \z }mx);
-
-      # Fix up result in this edge case
-      $uri =~ s{ $SEP $SEP $first_arg \z }{$SEP$first_arg}mx;
-      return bless \$uri, ref $c->req->base;
+   unless ($uri = $c->uri_for( $action, \@captures, @args )) {
+      $self->log_warn( $self->loc( $c, 'No uri for [_1]', $action->reverse ) );
+      return;
    }
 
-   $self->log_warn( $self->loc( 'No uri for [_1]', $action->reverse ) );
-   return;
+   return $uri unless ($uri =~ m{ $SEP $SEP $first_arg \z }mx);
+
+   # Fix up result in this edge case
+   $uri =~ s{ $SEP $SEP $first_arg \z }{$SEP$first_arg}mx;
+   return bless \$uri, ref $c->req->base;
 }
 
 # Private methods
+
+sub _get_chained_action {
+   # Returns the action for a given chained midpoint
+   my ($self, $c, $path) = @_; my $chained_action;
+
+   if ($Catalyst::VERSION < 5.8) {
+      for my $d_type (@{ $c->dispatcher->dispatch_types }) {
+         last if ($chained_action = $d_type->{actions}->{ $path });
+      }
+   }
+   else {
+      my $d_type = $c->dispatcher->dispatch_type( q(Chained) );
+
+      $chained_action = $d_type->{actions}->{ $path } if ($d_type);
+   }
+
+   return $chained_action if ($chained_action);
+
+   my $error = 'Unable to find action in chain [_1]';
+
+   $self->throw( $self->loc( $c, $error, $path ) );
+   return;
+}
 
 sub _lock_obj {
    my ($self, $args) = @_; my $lock;
@@ -234,7 +249,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-0.1.$Revision: 450 $
+0.1.$Revision: 571 $
 
 =head1 Synopsis
 
@@ -302,14 +317,9 @@ means that you should probably inherit from one of them instead
 This class inherits from L<Catalyst::Component> and
 L<CatalystX::Usul::Base>. The Catalyst application context is C<$app>
 and C<$config> is a hash ref whose contents are copied to the created
-object. Defines the following accessors:
+object. Defines the following attributes:
 
 =over 3
-
-=item content_type
-
-The content type of any markup produced by the L<Text::Markdown>
-module. Defaults to I<text/html>
 
 =item debug
 
@@ -328,11 +338,6 @@ where required. This is a singleton object
 =item log
 
 The application context log. Defaults to a L<Class::Null> object
-
-=item messages
-
-A hash ref of messages in the currently selected language. Used by
-L</localize>
 
 =item prefix
 
@@ -375,15 +380,16 @@ class at runtime
    $action = $self->get_action( $c, $action_path );
 
 Provide defaults for the L<get_action|Catalyst/get_action>
-method. Return the action object if one exists
+method. Return the action object if one exists, otherwise log a warning
+and return undef
 
 =head2 loc
 
 =head2 localize
 
-   $local_text = $self->localize( $message, $args );
+   $local_text = $self->localize( $c, $message, @args );
 
-Localizes the message. Optionally calls C<markdown> on the text
+Localizes the message. Optionally calls C<Text::Markdown> on the text
 
 =head2 setup_plugins
 
@@ -398,8 +404,15 @@ Returns an array ref of available plugins
 
 Turns the action path into an action object by calling L</get_action>.
 Calculates the number of capture args by introspecting the dispatcher
-spilts them of from passed args and then calls
+splits them of from passed args and then calls
 L<uri_for|Catalyst/uri_for>
+
+=head2 _get_chained_action
+
+   $action = $self->_get_chained_action( $c, $action_path );
+
+Returns the action object for the given chained midpoint action path. Called
+by L</uri_for>. Irons out the differences between Catalyst versions
 
 =head2 _lock_obj
 
@@ -461,6 +474,10 @@ Patches are welcome
 =head1 Author
 
 Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
+
+=head1 Acknowledgements
+
+Larry Wall - For the Perl programming language
 
 =head1 License and Copyright
 

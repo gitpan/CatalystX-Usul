@@ -1,12 +1,12 @@
-#!/usr/bin/perl
-
-# @(#)$Id: 20uri_for.t 446 2009-04-11 02:53:16Z pjf $
+# @(#)$Id: 20uri_for.t 517 2009-06-01 01:20:25Z pjf $
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 517 $ =~ /\d+/gmx );
 use File::Spec::Functions;
-use FindBin  qw( $Bin );
-use lib (catdir( $Bin, updir, q(lib) ));
+use FindBin qw( $Bin );
+use lib catdir( $Bin, updir, q(lib) );
+
 use Test::More;
 use URI;
 
@@ -48,9 +48,9 @@ my $controller = $context->controller( q(Root) );
 
 isa_ok( $controller, q(MyApp::Controller::Root) );
 
-$controller->messages( { eNoFile => { text => 'File [_1] not found' } } );
+$context->stash->{messages} = { eNoFile => { text => 'File [_1] not found' } };
 
-my $msg = $controller->loc( q(eNoFile), q(dummy) );
+my $msg = $controller->loc( $context, q(eNoFile), q(dummy) );
 
 chomp $msg; ok( $msg eq 'File dummy not found', q(Localize) );
 
@@ -73,3 +73,8 @@ push @args, { key1 => q(value1) };
 ok( $controller->uri_for( $context, q(root/room_closed), @args )
     eq q(http://127.0.0.1/en/room_closed/a/b?key1=value1),
     q(Uri with some params) );
+
+# Local Variables:
+# mode: perl
+# tab-width: 3
+# End:

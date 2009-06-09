@@ -1,13 +1,13 @@
-package CatalystX::Usul::File::Storage::XML::Bare;
+# @(#)$Id: Bare.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: Bare.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::File::Storage::XML::Bare;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::File::Storage::XML);
-use XML::Bare;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
+use XML::Bare;
 
 __PACKAGE__->config( root_name => q(config) );
 
@@ -36,7 +36,8 @@ sub _write_file {
    my ($self, $path, $data) = @_;
 
    unless (-f $path->pathname) {
-      $self->throw( error => q(eNotFound), arg1 => $path->pathname );
+      $self->throw( error => 'File [_1] not found',
+                    args  => [ $path->pathname ] );
    }
 
    my $method = sub {
@@ -159,7 +160,7 @@ CatalystX::Usul::File::Storage::XML::Bare - Read/write XML data storage model
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

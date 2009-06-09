@@ -1,11 +1,13 @@
-#!/usr/bin/perl
-
 # @(#)$Id: 12schema.t 108 2008-06-03 18:21:07Z pjf $
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 108 $ =~ /\d+/gmx );
 use File::Spec::Functions;
-use FindBin  qw( $Bin );
+use FindBin qw( $Bin );
+use lib catdir( $Bin, updir, q(lib) );
+
+use English qw(-no_match_vars);
 use Test::More;
 
 BEGIN {
@@ -16,7 +18,7 @@ BEGIN {
 
 eval { require Test::Kwalitee; };
 
-plan skip_all => 'Test::Kwalitee not installed' if ($@);
+plan skip_all => 'Test::Kwalitee not installed' if ($EVAL_ERROR);
 
 Test::Kwalitee->import();
 

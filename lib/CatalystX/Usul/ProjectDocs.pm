@@ -1,13 +1,13 @@
-package CatalystX::Usul::ProjectDocs;
+# @(#)$Id: ProjectDocs.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: ProjectDocs.pm 403 2009-03-28 04:09:04Z pjf $
+package CatalystX::Usul::ProjectDocs;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(Pod::ProjectDocs);
-use Text::Tabs;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 403 $ =~ /\d+/gmx );
+use Text::Tabs;
 
 my %SCHEME =
    ( Variable_Scalar   => [ '<font color="#CC6600">', '</font>' ],
@@ -34,23 +34,43 @@ my %SCHEME =
      Line              => [ '<font color="#000000">', '</font>' ], );
 
 BEGIN {
-    our $HIGHLIGHTER;
-    eval {
-        require Syntax::Highlight::Perl;
-        $HIGHLIGHTER = Syntax::Highlight::Perl->new;
-    };
-    no warnings q(redefine); ## no critic
-    *Pod::ProjectDocs::Parser::highlighten = $HIGHLIGHTER ? sub {
-       my ($self, $type, $text) = @_;
+   no warnings q(redefine); ## no critic
 
-       $tabstop = 3;
-       $HIGHLIGHTER->set_format( \%SCHEME );
-       $HIGHLIGHTER->define_substitution( q(<) => q(&lt;),
-                                          q(>) => q(&gt;),
-                                          q(&) => q(&amp;) );
+   our $HIGHLIGHTER;
 
-       return $HIGHLIGHTER->format_string( expand( $text ) );
-    } : sub { return $_[2] };
+   eval {
+      require Syntax::Highlight::Perl;
+      $HIGHLIGHTER = Syntax::Highlight::Perl->new;
+   };
+
+   if ($HIGHLIGHTER) {
+      *Pod::ProjectDocs::Parser::highlighten = sub {
+         my ($self, $type, $text) = @_;
+
+         $tabstop = 3;
+         $HIGHLIGHTER->set_format( \%SCHEME );
+         $HIGHLIGHTER->define_substitution( q(<) => q(&lt;),
+                                            q(>) => q(&gt;),
+                                            q(&) => q(&amp;) );
+
+         return $HIGHLIGHTER->format_string( expand( $text ) );
+      }
+   }
+   else {
+      eval {
+         require Syntax::Highlight::Universal;
+         $HIGHLIGHTER = Syntax::Highlight::Universal->new;
+      };
+
+      if ($HIGHLIGHTER) {
+         *Pod::ProjectDocs::Parser::highlighten = sub {
+            my ($self, $type, $text) = @_;
+
+            return $HIGHLIGHTER->highlight( $type, $text );
+         };
+      }
+      else { sub { return $_[2] } }
+   }
 }
 
 1;
@@ -65,7 +85,7 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 
 =head1 Version
 
-0.1.$Revision: 403 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 

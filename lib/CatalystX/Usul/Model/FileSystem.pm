@@ -1,16 +1,16 @@
-package CatalystX::Usul::Model::FileSystem;
+# @(#)$Id: FileSystem.pm 562 2009-06-09 16:11:18Z pjf $
 
-# @(#)$Id: FileSystem.pm 402 2009-03-28 03:09:07Z pjf $
+package CatalystX::Usul::Model::FileSystem;
 
 use strict;
 use warnings;
+use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
+
 use CatalystX::Usul::FileSystem;
 use Class::C3;
 
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 402 $ =~ /\d+/gmx );
-
-__PACKAGE__->mk_accessors( qw(fs_model) );
+__PACKAGE__->mk_accessors( qw(domain_model) );
 
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_; my $s = $c->stash; my $args;
@@ -22,16 +22,16 @@ sub build_per_context_instance {
    $args->{fs_type} = $s->{os}->{fs_type}->{value};
    $args->{fuser  } = $s->{os}->{fuser  }->{value};
 
-   $new->fs_model( CatalystX::Usul::FileSystem->new( $c, $args ) );
+   $new->domain_model( CatalystX::Usul::FileSystem->new( $c, $args ) );
    return $new;
 }
 
 sub get_file_systems {
-   return shift->fs_model->get_file_systems( @_ );
+   return shift->domain_model->get_file_systems( @_ );
 }
 
 sub list_subdirectory {
-   return shift->fs_model->list_subdirectory( @_ );
+   return shift->domain_model->list_subdirectory( @_ );
 }
 
 sub view_file {
@@ -60,7 +60,7 @@ CatalystX::Usul::Model::FileSystem - File system related methods
 
 =head1 Version
 
-0.1.$Revision: 402 $
+0.1.$Revision: 562 $
 
 =head1 Synopsis
 
