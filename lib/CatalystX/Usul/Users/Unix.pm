@@ -1,10 +1,10 @@
-# @(#)$Id: Unix.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Unix.pm 577 2009-06-10 00:15:54Z pjf $
 
 package CatalystX::Usul::Users::Unix;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 577 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Users CatalystX::Usul::Utils);
 
 use CatalystX::Usul::MailAliases;
@@ -498,11 +498,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Identity::Users::Unix - User data store for the Unix OS
+CatalystX::Usul::Users::Unix - User data store for the Unix OS
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 577 $
 
 =head1 Synopsis
 

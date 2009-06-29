@@ -1,10 +1,10 @@
-# @(#)$Id: Authentication.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Authentication.pm 576 2009-06-09 23:23:46Z pjf $
 
 package CatalystX::Usul::Authentication;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
 use parent qw(Class::Accessor::Fast);
 
 __PACKAGE__->mk_accessors( qw(config) );
@@ -52,7 +52,7 @@ CatalystX::Usul::Authentication - Use a Catalyst model as an authentication stor
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 576 $
 
 =head1 Synopsis
 

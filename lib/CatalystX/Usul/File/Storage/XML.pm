@@ -1,15 +1,15 @@
-# @(#)$Id: XML.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: XML.pm 597 2009-06-20 22:05:52Z pjf $
 
 package CatalystX::Usul::File::Storage::XML;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 597 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
+use CatalystX::Usul::File::HashMerge;
 use Class::C3;
 use Hash::Merge qw(merge);
-use List::Util qw(max);
 
 __PACKAGE__->config( extn => q(.xml), lang => q(), path => q(), _dtd => [] );
 
@@ -31,7 +31,7 @@ sub insert {
    $path->touch;
 
    # TODO: Add _arrays attributes from schema definition
-   if ($self->_is_array( $element ) && !$self->_is_in_dtd( $element )) {
+   if ($self->_is_array( $element ) and not $self->_is_in_dtd( $element )) {
       push @{ $self->_dtd }, '<!ELEMENT '.$element.' (ARRAY)*>';
    }
 
@@ -43,8 +43,8 @@ sub load_files {
 }
 
 sub select {
-   my $self = shift;
-   my ($path, $element) = $self->_validate_params;
+   my $self = shift; my ($path, $element) = $self->_validate_params;
+
    my @paths = ( $path );
 
    push @paths, $self->_make_lang_path( $path ) if ($self->lang);
@@ -69,19 +69,22 @@ sub _delete {
    my ($data)  = $self->_read_file( $path );
    my $updated = 0;
 
-   if (exists $data->{ $element } && exists $data->{ $element }->{ $name }) {
-      delete $data->{ $element }->{ $name }; $updated = 1;
+   if (exists $data->{ $element } and exists $data->{ $element }->{ $name }) {
+      delete $data->{ $element }->{ $name };
       $self->_write_file( $path, $data );
+      $updated = 1;
    }
 
    if ($self->lang) {
       my $lang_path = $self->_make_lang_path( $path );
+
       ($data) = $self->_read_file( $lang_path );
 
-      if (exists $data->{ $element }
-          && exists $data->{ $element }->{ $name }) {
-         delete $data->{ $element }->{ $name }; $updated = 1;
+      if (    exists $data->{ $element }
+          and exists $data->{ $element }->{ $name }) {
+         delete $data->{ $element }->{ $name };
          $self->_write_file( $lang_path, $data );
+         $updated = 1;
       }
    }
 
@@ -194,93 +197,6 @@ sub _make_lang_path {
    return $self->io( $self->catfile( $self->dirname( $pathname ), $file ) );
 }
 
-sub _merge_attr {
-   my ($self, $from, $to_ref) = @_;
-
-   my $updated = 0; my $to = ${ $to_ref };
-
-   if ($to && ref $to eq q(ARRAY)) {
-      $updated = $self->_merge_attr_arrays( $from, $to );
-   }
-   elsif ($to && ref $to eq q(HASH)) {
-      $updated = $self->_merge_attr_hashes( $from, $to );
-   }
-   elsif ((!$to && defined $from) || ($to && $to ne $from)) {
-      $updated = 1; ${ $to_ref } = $from;
-   }
-
-   return $updated;
-}
-
-sub _merge_attr_arrays {
-   my ($self, $from, $to) = @_; my $updated = 0;
-
-   for (0 .. $#{ $to }) {
-      if ($from->[ $_ ]) {
-         my $res = $self->_merge_attr( $from->[ $_ ], \$to->[ $_ ] );
-         $updated ||= $res;
-      }
-      elsif ($to->[ $_ ]) {
-         $updated = 1; splice @{ $to }, $_;
-         last;
-      }
-   }
-
-   if (@{ $from } > @{ $to }) {
-      $updated = 1; push @{ $to }, (splice @{ $from }, $#{ $to } + 1);
-   }
-
-   return $updated;
-}
-
-sub _merge_attr_hashes {
-   my ($self, $from, $to) = @_; my $updated = 0;
-
-   for (keys %{ $to }) {
-      if ($from->{ $_ }) {
-         my $res = $self->_merge_attr( $from->{ $_ }, \$to->{ $_ } ) ;
-         $updated ||= $res;
-      }
-      elsif ($to->{ $_ }) {
-         $updated = 1; delete $to->{ $_ };
-      }
-   }
-
-   if (keys %{ $from } > keys %{ $to }) {
-      for (keys %{ $from }) {
-         if ($from->{ $_ } && !exists $to->{ $_ }) {
-            $updated = 1; $to->{ $_ } = $from->{ $_ };
-         }
-      }
-   }
-
-   return $updated;
-}
-
-sub _merge_attrs {
-   my ($self, $overwrite, $condition, $src, $dest) = @_;
-
-   my $updated = 0; ${ $dest } ||= {};
-
-   for my $attr (grep  { not m{ \A _ }mx
-                         and $_ ne q(name)
-                         and $condition->( $_ ) }
-                 keys %{ $src }) {
-      if (defined $src->{ $attr }) {
-         my $res = $self->_merge_attr
-            ( $src->{ $attr }, \${ $dest }->{ $attr } );
-         $updated ||= $res;
-      }
-      elsif (${ $dest }->{ $attr }) {
-         $updated = 1; delete ${ $dest }->{ $attr };
-      }
-   }
-
-   ${ $dest }->{name} = $src->{name} if ($updated);
-
-   return $updated;
-}
-
 sub _read_file {
    my ($self, $path) = @_;
 
@@ -391,17 +307,16 @@ sub _write_file_with_locking {
 sub _write_on_condition {
    my ($self, $overwrite, $element_obj, $path, $element, $condition) = @_;
 
-   my $name    = $element_obj->name;
-   my ($data)  = $self->_read_file( $path );
+   my $name   = $element_obj->name;
+   my ($data) = $self->_read_file( $path );
 
-   if (!$overwrite && exists $data->{ $element }->{ $name }) {
+   if (not $overwrite and exists $data->{ $element }->{ $name }) {
       $self->throw( error => 'File [_1] element [_2] already exists',
                     args  => [ $path->pathname, $name ] );
    }
 
-   my $row_ref = \$data->{ $element }->{ $name };
-   my $updated = $self->_merge_attrs( $overwrite, $condition,
-                                      $element_obj, $row_ref );
+   my $updated = CatalystX::Usul::File::HashMerge->merge
+      ( $element_obj, \$data->{ $element }->{ $name }, $condition );
 
    $self->_write_file( $path, $data ) if ($updated);
 
@@ -420,7 +335,7 @@ CatalystX::Usul::File::Storage::XML - Read/write XML data storage model
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 597 $
 
 =head1 Synopsis
 

@@ -1,10 +1,10 @@
-# @(#)$Id: Entrance.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Entrance.pm 584 2009-06-12 15:25:11Z pjf $
 
 package CatalystX::Usul::Controller::Entrance;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 use Class::C3;
@@ -223,7 +223,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 562 $
+$Revision: 584 $
 
 =head1 Synopsis
 
@@ -300,7 +300,7 @@ Another midpoint, this one is used by documentation endpoints
 Links to the HTML documentation index generated from POD. It can be
 regenerated with the command
 
-   bin/munchies_misc -n -c pod2html
+   bin/munchies_cli -n -c pod2html
 
 =head2 lang
 

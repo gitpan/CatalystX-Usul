@@ -1,17 +1,16 @@
-# @(#)$Id: Exception.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Exception.pm 596 2009-06-16 18:49:50Z pjf $
 
 package CatalystX::Usul::Exception;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 596 $ =~ /\d+/gmx );
 use Exception::Class
    ( 'CatalystX::Usul::Exception::Class' => { fields => [qw(args out rv)] } );
 use base qw(CatalystX::Usul::Exception::Class);
 
-use English    qw(-no_match_vars);
-use List::Util qw(first);
 use Carp;
+use English qw(-no_match_vars);
 
 my $NUL = q();
 
@@ -21,8 +20,6 @@ sub catch {
    my ($self, @rest) = @_; my $e;
 
    return $e if ($e = $self->caught( @rest ));
-
-   return $EVAL_ERROR if (ref $EVAL_ERROR);
 
    return $self->new( args           => [],
                       ignore_package => $IGNORE,
@@ -59,7 +56,7 @@ sub as_string {
 sub throw {
    my ($self, @rest) = @_;
 
-   croak $rest[ 0 ] if ($rest[ 0 ] and ref $rest[ 0 ]);
+   croak $rest[0] if ($rest[0] and ref $rest[0]);
 
    my @args = @rest == 1 ? ( error => $rest[0] ) : @rest;
 
@@ -83,7 +80,7 @@ CatalystX::Usul::Exception - Exception base class
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 596 $
 
 =head1 Synopsis
 

@@ -1,10 +1,10 @@
-# @(#)$Id: Time.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Time.pm 576 2009-06-09 23:23:46Z pjf $
 
 package CatalystX::Usul::Time;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
 
 use DateTime::Format::Epoch;
 use Time::HiRes qw(usleep);
@@ -258,7 +258,7 @@ CatalystX::Usul::Time - Class methods for date and time manipulation
 
 =head1 Version
 
-$Revision: 562 $
+$Revision: 576 $
 
 =head1 Synopsis
 

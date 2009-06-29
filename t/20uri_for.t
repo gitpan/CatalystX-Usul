@@ -1,8 +1,8 @@
-# @(#)$Id: 20uri_for.t 517 2009-06-01 01:20:25Z pjf $
+# @(#)$Id: 20uri_for.t 592 2009-06-14 16:34:11Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 517 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 592 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -12,8 +12,7 @@ use URI;
 
 BEGIN {
    if ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
-       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx
-       || ($ENV{PERL5_CPANPLUS_IS_RUNNING} && $ENV{PERL5_CPAN_IS_RUNNING})) {
+       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx) {
       plan skip_all => q(CPAN Testing stopped);
    }
 
@@ -73,6 +72,9 @@ push @args, { key1 => q(value1) };
 ok( $controller->uri_for( $context, q(root/room_closed), @args )
     eq q(http://127.0.0.1/en/room_closed/a/b?key1=value1),
     q(Uri with some params) );
+
+unlink q(/tmp/ipc_srlock.lck);
+unlink q(/tmp/ipc_srlock.shm);
 
 # Local Variables:
 # mode: perl

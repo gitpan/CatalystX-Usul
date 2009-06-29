@@ -1,17 +1,17 @@
-# @(#)$Id: Levels.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Levels.pm 591 2009-06-13 13:34:41Z pjf $
 
 package CatalystX::Usul::Model::Config::Levels;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 use Class::C3;
 
 __PACKAGE__->config
-   ( create_msg_key    => 'Namespace [_2] created',
-     delete_msg_key    => 'Namespace [_2] deleted',
+   ( create_msg_key    => 'Namespace [_1] created',
+     delete_msg_key    => 'Namespace [_1] deleted',
      file              => q(default),
      keys_attr         => q(level),
      schema_attributes => {
@@ -19,7 +19,7 @@ __PACKAGE__->config
         defaults       => { acl => [ q(any) ], state => 0, text => q() },
         element        => q(levels),
         lang_dep       => { qw(text 1 tip 1) }, },
-     update_msg_key    => 'Namespace [_2] updated', );
+     update_msg_key    => 'Namespace [_1] updated', );
 
 __PACKAGE__->mk_accessors( qw(file) );
 
@@ -36,13 +36,20 @@ sub get_list {
 }
 
 sub set_state {
-   my ($self, $args) = @_; my ($msg_args, $state);
+   my ($self, $args) = @_;
 
-   $state = $self->query_value( q(state) );
+   my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
+   my $state  = $self->query_value( q(state) ) || 0;
+
    $args->{fields} = { state => $state };
    $self->update( $args );
-   $msg_args = [ $args->{name}, $state ? q(closed) : q(open) ];
-   $self->add_result_msg( q(setLevelState), $msg_args );
+   $self->clear_result;
+
+   my $user     = $self->context->stash->{user};
+   my $msg      = 'Namespace [_1] state set to [_2] by [_3]';
+   my @msg_args = ( $args->{name}, $states{ $state }, $user );
+
+   $self->add_result_msg( $msg, @msg_args );
    return;
 }
 
@@ -58,7 +65,7 @@ CatalystX::Usul::Model::Config::Levels - Class definition for the levels configu
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 591 $
 
 =head1 Synopsis
 

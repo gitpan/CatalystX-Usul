@@ -1,10 +1,10 @@
-# @(#)$Id: Schema.pm 566 2009-06-09 19:34:27Z pjf $
+# @(#)$Id: Schema.pm 580 2009-06-11 16:44:10Z pjf $
 
 package CatalystX::Usul::Schema;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 566 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 580 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
 use Crypt::CBC;
@@ -41,11 +41,12 @@ sub connect_info {
 }
 
 sub create_ddl {
-   my ($self, $dbh, $dir, $version, $unlink) = @_;
+   my ($self, $dbh, $version, $dir, $unlink) = @_;
 
    if ($unlink) {
       for my $db (@{ $self->databases }) {
-         my $path = $dbh->ddl_filename( $db, $dir.q(/), $version );
+         my $path = $dbh->ddl_filename( $db, $version, $dir );
+
          unlink $path if (-f $path);
       }
    }
@@ -53,7 +54,7 @@ sub create_ddl {
    $dbh->storage->create_ddl_dir( $dbh,
                                   $self->databases,
                                   $version,
-                                  $dir.q(/),
+                                  $dir,
                                   $self->attrs );
    return 0;
 }
@@ -153,7 +154,7 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-0.1.$Revision: 566 $
+0.3.$Revision: 580 $
 
 =head1 Synopsis
 

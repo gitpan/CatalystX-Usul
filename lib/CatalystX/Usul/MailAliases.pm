@@ -1,10 +1,10 @@
-# @(#)$Id: MailAliases.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: MailAliases.pm 584 2009-06-12 15:25:11Z pjf $
 
 package CatalystX::Usul::MailAliases;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
 
 use Class::C3;
@@ -29,7 +29,7 @@ sub new {
    my $new      = $self->next::method( $app, @rest );
    my $aliases  = $self->catfile(    $app_conf->{ctrldir}, q(aliases) );
    my $prog     = $self->catfile(    $app_conf->{binsdir},
-                                  lc $app_conf->{prefix }.q(_misc) );
+                                  lc $app_conf->{prefix }.q(_cli) );
 
    $new->file( $aliases ) unless ($new->file);
    $new->prog( $prog    ) unless ($new->prog);
@@ -268,7 +268,7 @@ CatalystX::Usul::MailAliases - Manipulate the mail aliases file
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 584 $
 
 =head1 Synopsis
 

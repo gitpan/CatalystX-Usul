@@ -1,10 +1,10 @@
-# @(#)$Id: Programs.pm 566 2009-06-09 19:34:27Z pjf $
+# @(#)$Id: Programs.pm 612 2009-06-29 13:39:56Z pjf $
 
 package CatalystX::Usul::Programs;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 566 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 612 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
 
 use CatalystX::Usul::InflateSymbols;
@@ -27,11 +27,13 @@ use XML::Simple;
 use YAML::Syck;
 
 my $BRK    = q(: );
+my @EXTNS  = qw(.pl .pm .t);
 my $NO     = q(n);
 my $NUL    = q();
 my $PREFIX = q(/opt);
 my $QUIT   = q(q);
 my $SPC    = q( );
+my $WIDTH  = 80;
 my $YES    = q(y);
 
 sub new {
@@ -62,22 +64,22 @@ sub new {
 }
 
 sub add_leader {
-   my ($self, $text, $args) = @_; my ($leader, $res);
+   my ($self, $text, $args) = @_; $args ||= {};
 
-   $res    = $NUL; $text = $NUL.$text; chomp $text;
    $text   = $self->loc( $self, $text, @{ $args->{args} || [] } );
-   $text ||= '[no message]';
-   $leader = exists $args->{noLead} || exists $args->{no_lead}
-           ? $NUL : (ucfirst $self->name).$BRK;
+   $text ||= '[no message]'; $text = $NUL.$text; chomp $text;
+
+   my $leader = exists $args->{noLead} || exists $args->{no_lead}
+              ? $NUL : (ucfirst $self->name).$BRK;
 
    if ($args->{fill}) {
-      $text = autoformat $text, { right => 79 - length $leader };
+      my $width = $args->{width} || $WIDTH;
+
+      $text = autoformat $text, { right => $width - 1 - length $leader };
    }
 
-   $res = join "\n", map { (m{ \A $leader }mx ? $NUL : $leader).$_ }
+   return join "\n", map { (m{ \A $leader }mx ? $NUL : $leader).$_ }
                      split  m{ \n }mx, $text;
-
-   return $res;
 }
 
 sub anykey {
@@ -89,7 +91,7 @@ sub anykey {
 }
 
 sub config {
-   return shift;
+   my $self = shift; return $self;
 }
 
 sub dispatch {
@@ -123,14 +125,14 @@ sub dispatch {
       else {
          unless (defined $rv) {
             if ($EVAL_ERROR) { $self->error( $EVAL_ERROR ) }
-            else { $self->error( "Undefined error in $method" ) }
+            else { $self->error( "Method $method undefined error" ) }
 
             $rv = -1;
          }
       }
    }
    else {
-      $self->error( "Cannot call method $method from class ".(ref $self) );
+      $self->error( "Method $method not defined in class ".(ref $self) );
       $rv = -1;
    }
 
@@ -155,9 +157,8 @@ sub error {
 }
 
 sub fatal {
-   my ($self, $text, $args) = @_; my ($file, $line);
+   my ($self, $text, $args) = @_; my (undef, $file, $line) = caller 0;
 
-   (undef, $file, $line) = caller 0;
    $text  = $self->add_leader( $text, $args );
    $text .= ' at '.abs_path( $file ).' line '.$line;
 
@@ -217,7 +218,7 @@ sub get_meta {
    my ($self, $path) = @_;
 
    unless ($path and -f $path) {
-      $path = $self->catfile( $self->appldir, 'META.yml' );
+      $path = $self->catfile( $self->appldir, q(META.yml) );
    }
 
    my @fields   = ( qw(abstract author name version) );
@@ -266,18 +267,15 @@ sub output {
 }
 
 sub prompt {
-   my ($self, @data) = @_;
-   my ($cntl, %cntl, $default, $echo, $input, $len, $newlines);
-   my ($next, $onechar, $prompt);
+   my ($self, @args) = @_; my ($len, $newlines, $next, $text);
 
-   my $IN = \*STDIN; my $OUT = \*STDOUT;
-
-   for (my $i = 0; $i < @data; $i++) {
-      if    ($data[ $i ] eq q(-1)) { $onechar = 1 }
-      elsif ($data[ $i ] eq q(-d)) { $default = $data[ $i + 1 ]; $i++ }
-      elsif ($data[ $i ] eq q(-e)) { $echo    = $data[ $i + 1 ]; $i++ }
-      elsif ($data[ $i ] eq q(-p)) { $prompt  = $data[ $i + 1 ]; $i++ }
-   }
+   my $IN      = \*STDIN;
+   my $OUT     = \*STDOUT;
+   my $args    = $self->_get_prompt_args( \@args );
+   my $default = $args->{default};
+   my $echo    = $args->{echo   };
+   my $onechar = $args->{onechar};
+   my $input   = $NUL;
 
    unless (is_interactive()) {
       return $default if ($ENV{PERL_MM_USE_DEFAULT});
@@ -285,11 +283,10 @@ sub prompt {
       return scalar <$IN>;
    }
 
-   ($cntl, %cntl)  = $self->_get_control_chars( $IN );
-   local $SIG{INT} = sub { $self->_restore_mode( $IN ); exit };
-   print {$OUT} $prompt
-      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
-   $input = $NUL;
+   my ($cntl, %cntl) = $self->_get_control_chars( $IN );
+   local $SIG{INT}   = sub { $self->_restore_mode( $IN ); exit };
+
+   $self->_print_fh( $OUT, $args->{prompt} );
    $self->_raw_mode( $IN );
 
    while (1) {
@@ -301,8 +298,7 @@ sub prompt {
          elsif ($next eq $cntl{ERASE}) {
             if ($len = length $input) {
                $input = substr $input, 0, $len - 1;
-               print {$OUT} "\b \b"
-                  or $self->throw( error => 'IO error [_1]', args =>[$ERRNO] );
+               $self->_print_fh( $OUT, "\b \b" );
             }
 
             next;
@@ -318,11 +314,8 @@ sub prompt {
 
             if ($next eq "\n") {
                if ($input eq "\n" and $default) {
-                  print {$OUT} ('['.(defined $echo
-                                     ? $echo x length $default
-                                     : $default).']')."\n"
-                     or $self->throw( error => 'IO error [_1]',
-                                      args  =>[ $ERRNO ] );
+                  $text = defined $echo ? $echo x length $default : $default;
+                  $self->_print_fh( $OUT, "[${text}]\n" );
                   $self->_restore_mode( $IN );
 
                   return $onechar ? substr $default, 0, 1 : $default;
@@ -330,10 +323,7 @@ sub prompt {
 
                $newlines .= "\n";
             }
-            else {
-               print {$OUT} (defined $echo ? $echo : $next)
-                  or $self->throw( error => 'IO error [_1]', args =>[$ERRNO] );
-            }
+            else { $self->_print_fh( $OUT, defined $echo ? $echo : $next ) }
          }
          else { $input .= $next }
       }
@@ -341,10 +331,7 @@ sub prompt {
       if ($onechar or not defined $next or $input =~ m{ \Q$RS\E \z }mx) {
          chomp $input; $self->_restore_mode( $IN );
 
-         if (defined $newlines) {
-            print {$OUT} $newlines
-               or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
-         }
+         $self->_print_fh( $OUT, $newlines ) if (defined $newlines);
 
          return $onechar ? substr $input, 0, 1 : $input;
       }
@@ -358,7 +345,7 @@ sub stash {
 }
 
 sub usage {
-   my ($self, $verbose) = @_; my ($cmd, $name, $parser, $tempfile);
+   my ($self, $verbose) = @_;
 
    if ($verbose < 2) {
       pod2usage( { -input   => $self->pathname,
@@ -366,14 +353,15 @@ sub usage {
       exit 0; # Never reached
    }
 
-   $name   = $self->basename( $self->script, qw(.pl) );
-   $parser = Pod::Man->new( center  => $self->doc_title,
-                            name    => $name,
-                            release => 'Version '.$main::VERSION,
-                            section => q(3m) );
-   $tempfile = $self->tempfile;
+   my $name     = $self->basename( $self->script, @EXTNS );
+   my $parser   = Pod::Man->new( center  => $self->doc_title,
+                                 name    => $name,
+                                 release => 'Version '.$main::VERSION,
+                                 section => q(3m) );
+   my $tempfile = $self->tempfile;
+   my $cmd      = 'cat '.$tempfile->pathname.' | nroff -man';
+
    $parser->parse_from_file( $self->pathname, $tempfile->pathname );
-   $cmd = 'cat '.$tempfile->pathname.' | nroff -man';
    system $cmd;
    exit 0;
 }
@@ -392,24 +380,24 @@ sub warning {
 
 sub yorn {
    # General yes or no input routine
-   my ($self, $question, $default, $quit, $width, $newline) = @_;
-   my ($advice, $left_x, $left_prompt, $right_prompt, $prompt);
-   my ($result, $right_x, $total);
+   my ($self, $question, $default, $quit, $width, $newline) = @_; my $result;
 
-   $quit         = $quit    ? $QUIT : q();
-   $default      = $default ? $YES  : $NO;
-   $advice       = $quit    ? "($YES/$NO, $quit) " : "($YES/$NO) ";
-   $right_prompt = $advice.q([).$default.q(]);
-   $left_prompt  = $question;
+   $quit    = $quit    ? $QUIT : $NUL;
+   $default = $default ? $YES  : $NO;
+
+   my $advice       = $quit ? "($YES/$NO, $quit) " : "($YES/$NO) ";
+   my $right_prompt = $advice.q([).$default.q(]);
+   my $left_prompt  = $question;
 
    if (defined $width) {
-      $total        = $width || $self->pwidth || 40;
-      $right_x      = length $right_prompt;
-      $left_x       = $total - $right_x;
-      $left_prompt  = sprintf '%-*s', $left_x, $question;
+      my $total    = $width || $self->pwidth || 40;
+      my $right_x  = length $right_prompt;
+      my $left_x   = $total - $right_x;
+
+      $left_prompt = sprintf '%-*s', $left_x, $question;
    }
 
-   $prompt  = $left_prompt.$SPC.$right_prompt.$BRK;
+   my $prompt = $left_prompt.$SPC.$right_prompt.$BRK;
 
    $prompt .= "\n" if (defined $newline && $newline == 1);
 
@@ -437,9 +425,9 @@ sub _bootstrap {
    $self->{silent  }  = $args->{silent } ? 1 : 0;
 
    $self->{script  }  = $self->basename( $args->{script} || $PROGRAM_NAME );
-   my $base           = $self->basename( lc $self->{script}, qw(.pl .pm));
-   $self->{prefix  }  = $args->{prefix  } || (split m{ _ }mx, $base)[0];
-   $self->{appclass}  = $args->{appclass} || $self->{prefix};
+   my $stem           = $self->basename( lc $self->{script}, @EXTNS );
+   $self->{prefix  }  = $args->{prefix  } || (split m{ _ }mx, $stem)[0];
+   $self->{appclass}  = $args->{appclass} || ucfirst $self->{prefix};
    $self->{home    }  = $self->_get_homedir( $self->{appclass}, $args );
 
    # Now we know where the config file should be we can try parsing it
@@ -458,10 +446,10 @@ sub _bootstrap {
    $self->{binsdir   } = $inflator->binsdir;
    $self->{libsdir   } = $inflator->libsdir;
    $self->{debug     } = $cfg->{debug};
-   my $dir             = '__appldir('.$self->catdir( q(var), q(etc) ).')__';
-   $self->{ctrldir   } = $self->_inflate( $cfg->{ctrldir    } || $dir );
-   $dir                = '__appldir('.$self->catdir( q(var), q(db) ).')__';
-   $self->{dbasedir  } = $self->_inflate( $cfg->{dbasedir   } || $dir );
+   my $dir             = '__appldir('.$self->catdir( qw(var etc) ).')__';
+   $self->{ctrldir   } = $self->_inflate( $cfg->{ctrldir}     || $dir );
+   $dir                = '__appldir('.$self->catdir( qw(var db) ).')__';
+   $self->{dbasedir  } = $self->_inflate( $cfg->{dbasedir}    || $dir );
    $self->{doc_title } = $cfg->{doc_title}                    || $NUL;
    $self->{encoding  } = $cfg->{encoding}                     || q(UTF-8);
    $self->{hostname  } = hostname;
@@ -470,37 +458,35 @@ sub _bootstrap {
    $self->{log       } = undef;
    $self->{log_level } = $cfg->{log_level}                    || 6;
    $self->{logname   } = $ENV{USER}                           || $ENV{LOGNAME};
-   $dir                = '__appldir(logs)__';
+   $dir                = '__appldir('.$self->catdir( qw(var logs) ).')__';
    $self->{logsdir   } = $self->_inflate( $cfg->{logsdir}     || $dir );
    $self->{messages  } = {};
    $self->{method    } = $NUL;
    $self->{mode      } = oct ($cfg->{mode}                    || q(027) );
-   $self->{name      }
-      = (split m{ _ }mx, $self->basename( $self->{script}, qw(.pl .pm) ))[1]
-         || $self->basename( $self->{script}, qw(.pl .pm) );
+   $self->{name      } = (split m{ _ }mx, $stem)[1]           || $stem;
    $self->{no_thrash } = $cfg->{no_thrash}                    || 3;
    $self->{os        } = {};
    $self->{owner     } = $self->{prefix}                      || q(root);
    $self->{parms     } = {};
    $self->{pwidth    } = 60;
-   $dir                = '__appldir('.$self->catdir( q(var), q(root) ).')__';
-   $self->{root      } = $self->_inflate( $cfg->{root      }  || $dir );
-   $dir                = '__appldir('.$self->catdir( q(var), q(run) ).')__';
-   $self->{rundir    } = $self->_inflate( $cfg->{rundir    }  || $dir );
-   $path               = '__appldir('.$self->catdir( q(var), q(tmp),
+   $dir                = '__appldir('.$self->catdir( qw(var root) ).')__';
+   $self->{root      } = $self->_inflate( $cfg->{root}        || $dir );
+   $dir                = '__appldir('.$self->catdir( qw(var run) ).')__';
+   $self->{rundir    } = $self->_inflate( $cfg->{rundir}      || $dir );
+   $path               = '__appldir('.$self->catdir( qw(var tmp),
                                                      q(config_cache) ).')__';
    $self->{share_file} = $self->_inflate( $cfg->{share_file}  || $path );
    $self->{secret    } = $cfg->{secret}                     || $self->{prefix};
    $self->{shell     } = $cfg->{shell}                        || q(/bin/pdksh);
    $self->{ssh_id    } = $NUL;
-   $path               = '__binsdir('.($self->{prefix}).'_suid)__';
-   $self->{suid      } = $self->_inflate( $cfg->{suid      }  || $path );
-   $dir                = '__appldir('.$self->catdir( q(var), q(tmp) ).')__';
-   $dir                = $self->_inflate( $cfg->{tempdir   }  || $dir );
+   $path               = '__binsdir('.$self->{prefix}.'_admin)__';
+   $self->{suid      } = $self->_inflate( $cfg->{suid}        || $path );
+   $dir                = '__appldir('.$self->catdir( q(var tmp) ).')__';
+   $dir                = $self->_inflate( $cfg->{tempdir}     || $dir );
    $self->{tempdir   } = -d $dir ? $dir : File::Spec->tmpdir;
    ($self->{tempdir} ) = $self->{tempdir} =~ m{ \A ([[:print:]]+) \z }msx;
    $dir                = '__appldir(var)__';
-   $self->{vardir    } = $self->_inflate( $cfg->{vardir    }  || $dir );
+   $self->{vardir    } = $self->_inflate( $cfg->{vardir}      || $dir );
    $self->{vars      } = {};
    $self->{version   } = $VERSION;
 
@@ -541,30 +527,31 @@ sub _get_control_chars {
 
 sub _get_homedir {
    my ($self, $class, $args) = @_;
-   my ($app_prefix, $dir_path, $path, $prefix, $well_known);
 
-   $path = $ENV{ $args->{evar} || $self->env_prefix( $class ).q(_HOME) };
+   my $path = $ENV{ $args->{evar} || $self->env_prefix( $class ).q(_HOME) };
 
    return $path if ($path && -d $path);
 
-   $app_prefix = $self->app_prefix( $class );
-   $path       = $self->catfile( File::Spec->rootdir,
-                                 q(etc), q(default), $app_prefix );
-   $well_known = $args->{install} || $path;
-   $path       = undef;
+   my $app_prefix = $self->app_prefix( $class );
+
+   $path = $self->catfile( $NUL, qw(etc default), $app_prefix );
+
+   my $well_known = $args->{install} || $path; $path = undef;
 
    if (-f $well_known) {
       for (grep { !m{ \A \# }mx } $self->io( $well_known )->chomp->getlines) {
-         $path = $_; last;
+         if (length $_) { $path = $_; last }
       }
    }
 
    return $path if ($path && -d $path);
 
-   $path     = $self->catdir( $PREFIX, $self->class2appdir( $class ) );
-   $prefix   = $args->{prefix} || $path;
-   $dir_path = $self->catdir( split m{ :: }mx, $class );
-   $path     = $self->catdir( $prefix, q(default), q(lib), $dir_path );
+   $path = $self->catdir( $PREFIX, $self->class2appdir( $class ) );
+
+   my $prefix   = $args->{prefix} || $path;
+   my $dir_path = $self->catdir( split m{ :: }mx, $class );
+
+   $path = $self->catdir( $prefix, qw(default lib), $dir_path );
 
    return $path if (-d $path);
 
@@ -575,6 +562,19 @@ sub _get_homedir {
    }
 
    return File::Spec->tmpdir;
+}
+
+sub _get_prompt_args {
+   my ($self, $data) = @_; my $args = {};
+
+   for (my $i = 0; $i < @{ $data }; $i++) {
+      if    ($data->[ $i ] eq q(-1)) { $args->{onechar} = 1 }
+      elsif ($data->[ $i ] eq q(-d)) { $args->{default} = $data->[ ++$i ] }
+      elsif ($data->[ $i ] eq q(-e)) { $args->{echo   } = $data->[ ++$i ] }
+      elsif ($data->[ $i ] eq q(-p)) { $args->{prompt } = $data->[ ++$i ] }
+   }
+
+   return $args;
 }
 
 sub _inflate {
@@ -692,6 +692,14 @@ sub _new_log_object {
                              mode     => q(append) );
 }
 
+sub _print_fh {
+   my ($self, $handle, $text) = @_;
+
+   print {$handle} $text
+      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
+   return;
+}
+
 sub _raw_mode {
    my ($self, $handle) = @_; ReadMode q(raw), $handle; return;
 }
@@ -728,7 +736,7 @@ CatalystX::Usul::Programs - Provide support for command line programs
 
 =head1 Version
 
-0.1.$Revision: 566 $
+0.3.$Revision: 612 $
 
 =head1 Synopsis
 

@@ -1,10 +1,10 @@
-# @(#)$Id: Navigation.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Navigation.pm 590 2009-06-13 12:48:05Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Navigation;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 590 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 my $NUL = q();
@@ -43,7 +43,7 @@ sub access_control : Chained(navigation_base) Args HasActions {
 sub access_control_set : ActionFor(access_control.set) {
    my ($self, $c) = @_;
 
-   my ($model, $file, $name) = $self->_get_parameters( $c );
+   my ($model, $file, $name) = $self->_get_action_parameters( $c );
 
    $model->set_state( { file => $file, name => $name } );
    return 1;
@@ -139,7 +139,7 @@ CatalystX::Usul::Controller::Admin::Navigation - Menu maintenance actions
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 590 $
 
 =head1 Synopsis
 

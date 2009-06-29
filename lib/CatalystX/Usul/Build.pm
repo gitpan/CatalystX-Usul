@@ -1,10 +1,10 @@
-# @(#)$Id: Build.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Build.pm 579 2009-06-10 10:46:22Z pjf $
 
 package CatalystX::Usul::Build;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 579 $ =~ /\d+/gmx );
 use parent qw(Module::Build);
 
 use CatalystX::Usul::Programs;
@@ -192,14 +192,11 @@ sub replace {
 
 sub repository {
    # Accessor for the SVN repository information
-   my $class = shift;
-   my $file  = SVN::Class->svn_file( q(.svn) );
+   my $class = shift; my $file = SVN::Class->svn_file( q(.svn) );
 
-   return unless ($file);
+   return unless ($file); my $info = $file->info;
 
-   my $info = $file->info;
-
-   return $info ? $info->root : undef;
+   return $info && $info->root !~ m{ \A file: }mx ? $info->root : undef;
 }
 
 sub skip_pattern {
@@ -791,7 +788,7 @@ CatalystX::Usul::Build - M::B utility methods
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 579 $
 
 =head1 Synopsis
 

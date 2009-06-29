@@ -1,10 +1,10 @@
-# @(#)$Id: Users.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Users.pm 576 2009-06-09 23:23:46Z pjf $
 
 package CatalystX::Usul::Model::Users;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
 use Class::C3;
@@ -846,7 +846,7 @@ CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 576 $
 
 =head1 Synopsis
 

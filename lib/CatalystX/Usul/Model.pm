@@ -1,32 +1,34 @@
-# @(#)$Id: Model.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Model.pm 589 2009-06-13 12:24:29Z pjf $
 
 package CatalystX::Usul::Model;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 589 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
 
 use Class::C3;
 use Data::Validation;
 use Scalar::Util qw(blessed refaddr weaken);
 
-__PACKAGE__->config( screensaver => q(xdg-screensaver lock),
-                     scrub_chars => q([\'\"/\:]) );
-
 __PACKAGE__->mk_encoding_methods( qw(_get_req_array _get_req_value) );
 
 __PACKAGE__->mk_accessors( qw(context screensaver scrubbing scrub_chars) );
 
 sub new {
-   my ($self, $app, @rest) = @_; my $class = ref $self || $self;
+   my ($self, $app, $config) = @_; my $class = ref $self || $self;
 
    $class->_setup_plugins( $app );
 
-   my $new      = $self->next::method( $app, @rest );
-   my $app_conf = $app->config || {};
+   my $ac          = $app->config || {};
+   my $new         = $self->next::method( $app, $config );
+   my $scrubbing   = $new->scrubbing   || $ac->{scrubbing  } || 0;
+   my $scrub_chars = $new->scrub_chars || $ac->{scrub_chars} || q([\'\"/\:]);
 
-   $new->scrubbing( $app_conf->{scrubbing} || $new->scrubbing || 0 );
+   $new->scrubbing  ( $scrubbing   );
+   $new->scrub_chars( $scrub_chars );
+
+   $new->screensaver( q(xdg-screensaver lock) );
 
    return $new;
 }
@@ -116,11 +118,9 @@ sub query_value {
 }
 
 sub scrub {
-   my ($self, $value) = @_;
+   my ($self, $value) = @_; my $pattern = $self->scrub_chars;
 
    return unless (defined $value);
-
-   my $pattern = $self->scrub_chars;
 
    $value =~ s{ $pattern }{}gmx;
 
@@ -200,7 +200,7 @@ CatalystX::Usul::Model - Application independent common model methods
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 589 $
 
 =head1 Synopsis
 

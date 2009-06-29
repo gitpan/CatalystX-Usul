@@ -1,10 +1,10 @@
-# @(#)$Id: Suid.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Suid.pm 577 2009-06-10 00:15:54Z pjf $
 
 package CatalystX::Usul::Users::Suid;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 577 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Users::Unix);
 
 use Crypt::PasswdMD5;
@@ -446,7 +446,7 @@ CatalystX::Usul::Users::Suid - Set uid root methods for account manipulation
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 577 $
 
 =head1 Synopsis
 
@@ -532,7 +532,7 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Model::Identity::Users::Unix>
+=item L<CatalystX::Usul::Users::Unix>
 
 =item L<Crypt::PasswdMD5>
 

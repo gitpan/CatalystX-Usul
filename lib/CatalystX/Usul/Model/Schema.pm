@@ -1,21 +1,21 @@
-# @(#)$Id: Schema.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Schema.pm 583 2009-06-12 14:17:22Z pjf $
 
 package CatalystX::Usul::Model::Schema;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 583 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Model::DBIC::Schema
               CatalystX::Usul::Model
               CatalystX::Usul::Schema);
 
 use Class::C3;
 
-sub new {
-   my ($self, $app, @rest) = @_;
+sub build_per_context_instance {
+   my ($self, $c, @rest) = @_;
 
-   my $new   = $self->next::method( $app, @rest );
-   my $model = CatalystX::Usul::Model->new( $app, @rest );
+   my $new   = $self->next::method( $c, @rest );
+   my $model = $c->model( q(Base) );
 
    $new->{ $_ } = $model->{ $_ } for (keys %{ $model });
 
@@ -49,7 +49,7 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 583 $
 
 =head1 Synopsis
 
@@ -79,7 +79,7 @@ Aggregates the methods from the three classes it inherits from
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 build_per_context_instance
 
 Adds the attributes from L<CatalystX::Usul::Model> to the ones from
 L<Catalyst::Model::DBIC::Schema>

@@ -2,7 +2,7 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    0.1.$Revision: 571 $
+    0.3.$Revision: 613 $
 
 Synopsis
        use base qw(CatalystX::Usul);
@@ -125,8 +125,8 @@ Subroutines/Methods
     Calculates the number of capture args by introspecting the dispatcher
     splits them of from passed args and then calls uri_for
 
-  _get_chained_action
-       $action = $self->_get_chained_action( $c, $action_path );
+  _guess_chained_action
+       $action = $self->_guess_chained_action( $c, $action_path );
 
     Returns the action object for the given chained midpoint action path.
     Called by "uri_for". Irons out the differences between Catalyst versions

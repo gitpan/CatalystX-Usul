@@ -1,10 +1,10 @@
-# @(#)$Id: Roles.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Roles.pm 576 2009-06-09 23:23:46Z pjf $
 
 package CatalystX::Usul::Roles;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
 __PACKAGE__->mk_accessors( qw(user_domain _cache _id2name _user2role) );
@@ -116,7 +116,7 @@ CatalystX::Usul::Roles - Manage the roles and their members
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 576 $
 
 =head1 Synopsis
 

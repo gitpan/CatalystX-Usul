@@ -1,24 +1,24 @@
-# @(#)$Id: Rooms.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Rooms.pm 591 2009-06-13 13:34:41Z pjf $
 
 package CatalystX::Usul::Model::Config::Rooms;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 use Class::C3;
 
 __PACKAGE__->config
-   ( create_msg_key    => 'Action [_1] / [_2] created',
-     delete_msg_key    => 'Action [_1] / [_2] deleted',
+   ( create_msg_key    => 'Action [_1]/[_2] created',
+     delete_msg_key    => 'Action [_1]/[_2] deleted',
      keys_attr         => q(room),
      schema_attributes => {
         attributes     => [ qw(acl keywords quick_link state text tip) ],
         defaults       => { acl => [ q(any) ], state => 0, text => q() },
         element        => q(rooms),
         lang_dep       => { qw(keywords 1 text 1 tip 1) } },
-     update_msg_key    => 'Action [_1] / [_2] updated', );
+     update_msg_key    => 'Action [_1]/[_2] updated', );
 
 __PACKAGE__->mk_accessors( qw(rooms) );
 
@@ -31,16 +31,20 @@ sub delete {
 }
 
 sub set_state {
-   my ($self, $args) = @_; my ($msg_args, $state);
+   my ($self, $args) = @_;
 
    my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
+   my $state  = $self->query_value( q(state) ) || 0;
 
-   $state = $self->query_value( q(state) ) || 0;
    $args->{fields} = { state => $state };
    $self->update( $args );
    $self->clear_result;
-   $msg_args = [ $args->{file}.q( / ).$args->{name}, $states{ $state } ];
-   $self->add_result_msg( q(setRoomState), $msg_args );
+
+   my $user     = $self->context->stash->{user};
+   my $msg      = 'Action [_1]/[_2] state set to [_3] by [_4]';
+   my @msg_args = ( $args->{file}, $args->{name}, $states{ $state }, $user );
+
+   $self->add_result_msg( $msg, @msg_args );
    return;
 }
 
@@ -56,7 +60,7 @@ CatalystX::Usul::Model::Config::Rooms - Class definition for the room configurat
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 591 $
 
 =head1 Synopsis
 

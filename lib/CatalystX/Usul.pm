@@ -1,10 +1,10 @@
-# @(#)$Id: Usul.pm 571 2009-06-09 19:41:36Z pjf $
+# @(#)$Id: Usul.pm 613 2009-06-29 17:13:01Z pjf $
 
 package CatalystX::Usul;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 571 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 613 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Component CatalystX::Usul::Base);
 
 use Class::C3;
@@ -23,22 +23,23 @@ my $SEP = q(/);
 my $SPC = q( );
 
 sub new {
-   my ($self, $app, @rest) = @_; $app ||= Class::Null->new;
+   my ($self, $app, $config) = @_; $app ||= Class::Null->new;
 
-   my $app_conf = $app->config || {};
-   my $new      = $self->next::method( $app, @rest );
-   my $prefix   = (split m{ _ }mx, ($app_conf->{suid} || $NUL))[0];
+   my $ac     = $app->config || {};
+   my $new    = $self->next::method( $app, $config );
+   my $prefix = (split m{ _ }mx, ($ac->{suid} || $NUL))[0];
 
-   $new->debug      ( $app->debug              || 0                      );
-   $new->encoding   ( $app_conf->{encoding}    || q(UTF-8)               );
-   $new->log        ( $app->log                || Class::Null->new       );
-   $new->prefix     ( $app_conf->{prefix}      || $prefix                );
-   $new->redirect_to( $app_conf->{redirect_to} || q(redirect_to_default) );
-   $new->secret     ( $app_conf->{secret}      || $new->prefix           );
-   $new->suid       ( $app_conf->{suid}        || $NUL                   );
-   $new->tabstop    ( $app_conf->{tabstop}     || 3                      );
-   $new->tempdir    ( $app_conf->{tempdir}     || File::Spec->tmpdir     );
-   $new->lock       ( $new->_lock_obj( $app_conf->{lock} )               );
+   $new->debug      ( $app->debug        || 0                      );
+   $new->encoding   ( $ac->{encoding   } || q(UTF-8)               );
+   $new->log        ( $app->log          || Class::Null->new       );
+   $new->prefix     ( $ac->{prefix     } || $prefix                );
+   $new->redirect_to( $ac->{redirect_to} || q(redirect_to_default) );
+   $new->secret     ( $ac->{secret     } || $new->prefix           );
+   $new->suid       ( $ac->{suid       } || $NUL                   );
+   $new->tabstop    ( $ac->{tabstop    } || 3                      );
+   $new->tempdir    ( $ac->{tempdir    } || File::Spec->tmpdir     );
+
+   $new->lock( $new->_lock_obj( $ac->{lock} ) );
 
    return $new;
 }
@@ -163,7 +164,7 @@ sub uri_for {
 
    # Pull out all actions for the chain
    while ($chained_path ne $SEP) {
-      $chained_action = $self->_get_chained_action( $c, $chained_path );
+      $chained_action = $self->_guess_chained_action( $c, $chained_path );
       unshift @chain, $chained_action;
       $chained_path = $chained_action->attributes->{Chained}->[ 0 ];
    }
@@ -184,7 +185,7 @@ sub uri_for {
 
    my $first_arg = $captures[ 0 ] || $args[ 0 ] || $NUL;
 
-   push @args, $params if ($params);
+   push @args, { %{ $params } } if ($params);
 
    unless ($uri = $c->uri_for( $action, \@captures, @args )) {
       $self->log_warn( $self->loc( $c, 'No uri for [_1]', $action->reverse ) );
@@ -200,7 +201,7 @@ sub uri_for {
 
 # Private methods
 
-sub _get_chained_action {
+sub _guess_chained_action {
    # Returns the action for a given chained midpoint
    my ($self, $c, $path) = @_; my $chained_action;
 
@@ -212,12 +213,13 @@ sub _get_chained_action {
    else {
       my $d_type = $c->dispatcher->dispatch_type( q(Chained) );
 
-      $chained_action = $d_type->{actions}->{ $path } if ($d_type);
+      # Oops, there goes the encapsulation again
+      $chained_action = $d_type->{_actions}->{ $path } if ($d_type);
    }
 
    return $chained_action if ($chained_action);
 
-   my $error = 'Unable to find action in chain [_1]';
+   my $error = 'Action path [_1] not in a chained endpoint';
 
    $self->throw( $self->loc( $c, $error, $path ) );
    return;
@@ -249,7 +251,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-0.1.$Revision: 571 $
+0.3.$Revision: 613 $
 
 =head1 Synopsis
 
@@ -407,9 +409,9 @@ Calculates the number of capture args by introspecting the dispatcher
 splits them of from passed args and then calls
 L<uri_for|Catalyst/uri_for>
 
-=head2 _get_chained_action
+=head2 _guess_chained_action
 
-   $action = $self->_get_chained_action( $c, $action_path );
+   $action = $self->_guess_chained_action( $c, $action_path );
 
 Returns the action object for the given chained midpoint action path. Called
 by L</uri_for>. Irons out the differences between Catalyst versions

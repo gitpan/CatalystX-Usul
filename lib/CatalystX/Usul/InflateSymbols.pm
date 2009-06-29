@@ -1,10 +1,10 @@
-# @(#)$Id: InflateSymbols.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: InflateSymbols.pm 612 2009-06-29 13:39:56Z pjf $
 
 package CatalystX::Usul::InflateSymbols;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 612 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Base);
 
 use Config;
@@ -14,30 +14,23 @@ use File::Spec;
 __PACKAGE__->mk_accessors( qw(_application) );
 
 sub new {
-   my ($proto, $app) = @_;
+   my ($self, $app) = @_;
 
-   return bless { _application => $app }, ref $proto || $proto;
+   return bless { _application => $app }, ref $self || $self;
 }
 
 sub appldir {
    my $self = shift; my $conf = $self->_application->config; my $dir;
 
    if (!$conf->{appldir} || $conf->{appldir} =~ m{ __APPLDIR__ }mx) {
-   TRY: {
-      $dir = $ENV{ $self->env_prefix( $conf->{name} ).q(_APPL) };
-
-      last TRY if ($dir and -d $dir);
-
       $dir = $self->dirname( $Config{sitelibexp} );
 
       if ($conf->{home} =~ m{ \A $dir }mx) {
          $dir = $self->catdir( File::Spec->rootdir,
                                'var', $conf->{prefix}, 'default' );
-         last TRY if ($dir and -d $dir);
       }
+      else { $dir = $self->home2appl( $conf->{home} ) }
 
-      $dir = $self->home2appl( $conf->{home} );
-   } # TRY
       $conf->{appldir} = abs_path( $dir );
    }
 
@@ -86,7 +79,7 @@ CatalystX::Usul::InflateSymbols - Return paths to installation directories
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 612 $
 
 =head1 Synopsis
 

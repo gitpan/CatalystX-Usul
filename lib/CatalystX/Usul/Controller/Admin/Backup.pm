@@ -1,15 +1,15 @@
-# @(#)$Id: Backup.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Backup.pm 584 2009-06-12 15:25:11Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Backup;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 __PACKAGE__->config( device_class => q(Tapes),
                      fs_class     => q(FileSystem),
-                     logfile      => q(misc.log),
+                     logfile      => q(cli.log),
                      namespace    => q(admin) );
 
 __PACKAGE__->mk_accessors( qw(device_class fs_class logfile) );
@@ -66,7 +66,7 @@ CatalystX::Usul::Controller::Admin::Backup - Tape device backups
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 584 $
 
 =head1 Synopsis
 

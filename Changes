@@ -1,5 +1,13 @@
 Revision history for CatalystX::Usul
 
+0.3.613  29/06/2009
+         - Split out File::HashMerge as a seperate class
+         - Use Class::MOP in Base::ensure_class_loaded
+         - Renamed suid to admin and misc to cli
+         - Adpated for Catalyst 5.8. Package config no longer inherits
+         - Suppresed repository resource if svn is file://
+         - Removed last references to Identity::Users
+
 0.2.571  09/06/2009
          - Squeezed a domain model out of the identity model
          - Much improved OO-fu in Build.pm

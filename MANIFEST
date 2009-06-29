@@ -19,6 +19,7 @@ lib/CatalystX/Usul/Encoding.pm
 lib/CatalystX/Usul/Exception.pm
 lib/CatalystX/Usul/File.pm
 lib/CatalystX/Usul/File/Element.pm
+lib/CatalystX/Usul/File/HashMerge.pm
 lib/CatalystX/Usul/File/IO.pm
 lib/CatalystX/Usul/File/List.pm
 lib/CatalystX/Usul/File/ResultSet.pm
@@ -92,6 +93,7 @@ t/02pod.t
 t/03podcoverage.t
 t/04critic.t
 t/05kwalitee.t
+t/06yaml.t
 t/10base.t
 t/11utils.t
 t/12schema.t

@@ -1,10 +1,10 @@
-# @(#)$Id: Base.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Base.pm 611 2009-06-27 02:56:27Z pjf $
 
 package CatalystX::Usul::Base;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 611 $ =~ /\d+/gmx );
 use parent qw(Class::Accessor::Fast
               Class::Accessor::Grouped
               CatalystX::Usul::Encoding);
@@ -12,7 +12,7 @@ use parent qw(Class::Accessor::Fast
 use CatalystX::Usul::Exception;
 use CatalystX::Usul::File::IO;
 use CatalystX::Usul::Time;
-use Class::Inspector;
+use Class::MOP;
 use Digest qw();
 use English qw(-no_match_vars);
 use File::Spec;
@@ -67,7 +67,7 @@ sub create_token {
    my ($self, $seed) = @_; my ($candidate, $digest, $digest_name);
 
    unless ($digest_name = __PACKAGE__->get_inherited( q(digest) )) {
-      for $candidate (qw(SHA-1 SHA-256 MD5)) {
+      for $candidate (qw(SHA-256 SHA-1 MD5)) {
          last if ($digest = eval { Digest->new( $candidate ) });
       }
 
@@ -98,21 +98,24 @@ sub distname {
 }
 
 sub ensure_class_loaded {
-   my ($self, $class, $opts) = @_; my $error;
+   my ($self, $class, $opts) = @_; my $error; $opts ||= {};
 
-   return 1 if (!$opts->{ignore_loaded} && Class::Inspector->loaded( $class ));
+   my $is_class_loaded = sub { Class::MOP::is_class_loaded( $class ) };
 
-   ## no critic
-   {  local $EVAL_ERROR; eval "require $class;"; $error = $EVAL_ERROR; }
-   ## critic
+   return 1 if (not $opts->{ignore_loaded} and $is_class_loaded->());
+
+   {  local $EVAL_ERROR = undef;
+      eval { Class::MOP::load_class( $class ) };
+      $error = $EVAL_ERROR;
+   }
 
    $self->throw( $error ) if ($error);
 
-   unless (Class::Inspector->loaded( $class )) {
-      $self->throw( error => 'Class [_1] failed to load', args => [ $class ] );
-   }
+   return 1 if ($is_class_loaded->());
 
-   return 1;
+   $error = 'Class [_1] loaded but package undefined';
+   $self->throw( error => $error, args => [ $class ] );
+   return;
 }
 
 sub env_prefix {
@@ -179,18 +182,17 @@ sub load_component {
    ## no critic
    for my $parent (reverse @parents) {
       $self->ensure_class_loaded( $parent );
-      {   no strict q(refs);
+      {  no strict q(refs);
 
-          unless ($child eq $parent || $child->isa( $parent )) {
-             unshift @{ "${child}::ISA" }, $parent;
-          }
+         unless ($child eq $parent || $child->isa( $parent )) {
+            unshift @{ "${child}::ISA" }, $parent;
+         }
       }
    }
 
    unless (exists $Class::C3::MRO{ $child }) {
       eval "package $child; import Class::C3;";
    }
-
    ## critic
    return;
 }
@@ -299,7 +301,7 @@ CatalystX::Usul::Base - Base class utility methods
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 611 $
 
 =head1 Synopsis
 
@@ -591,7 +593,7 @@ None
 
 =item L<Class::Accessor::Grouped>
 
-=item L<Class::Inspector>
+=item L<Class::MOP>
 
 =item L<Digest>
 

@@ -1,8 +1,8 @@
-# @(#)$Id: 10base.t 497 2009-05-26 12:59:33Z pjf $
+# @(#)$Id: 10base.t 612 2009-06-29 13:39:56Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 497 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 612 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -13,8 +13,7 @@ use Test::More;
 
 BEGIN {
    if ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
-       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx
-       || ($ENV{PERL5_CPANPLUS_IS_RUNNING} && $ENV{PERL5_CPAN_IS_RUNNING})) {
+       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx) {
       plan skip_all => q(CPAN Testing stopped);
    }
 
@@ -51,8 +50,13 @@ ok( $ref->class2appdir( q(App::Munchies) ) eq q(app-munchies),
 ok( $ref->classfile( q(App::Munchies) ) eq catfile( qw(App Munchies.pm) ),
     q(classfile) );
 
-ok( $ref->create_token( q(test) )
-    eq q(a94a8fe5ccb19ba61c4c0873d391e987982fbbd3), q(create_token) );
+my $token = $ref->create_token( q(test) );
+
+ok( $token
+    eq q(9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08)
+    || $token eq q(a94a8fe5ccb19ba61c4c0873d391e987982fbbd3)
+    || $token eq q(098f6bcd4621d373cade4e832627b4f6),
+    q(create_token) );
 
 ok( $ref->dirname( catfile( qw(dir1 file1) ) ) eq q(dir1), q(dirname) );
 

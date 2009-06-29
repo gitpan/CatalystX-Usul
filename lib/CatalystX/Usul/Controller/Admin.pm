@@ -1,17 +1,17 @@
-# @(#)$Id: Admin.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Admin.pm 584 2009-06-12 15:25:11Z pjf $
 
 package CatalystX::Usul::Controller::Admin;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 use Class::C3;
 
 my $SEP = q(/);
 
-__PACKAGE__->config( security_logfile => q(suid.log), );
+__PACKAGE__->config( security_logfile => q(admin.log), );
 
 __PACKAGE__->mk_accessors( qw(security_logfile) );
 
@@ -95,7 +95,7 @@ CatalystX::Usul::Controller::Admin - Administration controller methods
 
 =head1 Version
 
-$Revision: 562 $
+$Revision: 584 $
 
 =head1 Synopsis
 

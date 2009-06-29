@@ -1,10 +1,10 @@
-# @(#)$Id: Controller.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Controller.pm 589 2009-06-13 12:24:29Z pjf $
 
 package CatalystX::Usul::Controller;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 589 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul Catalyst::Controller);
 
 use CatalystX::Usul::PersistentState;
@@ -13,7 +13,7 @@ use Config;
 use HTTP::Headers::Util qw(split_header_words);
 use List::Util qw(first);
 
-__PACKAGE__->mk_accessors( qw(namespace phase) );
+__PACKAGE__->mk_accessors( qw(phase) );
 
 my $HASH = chr 35;
 my $NUL  = q();
@@ -22,19 +22,19 @@ my $SPC  = q( );
 my $TTS  = q( ~ );
 
 sub new {
-   my ($self, $app, @rest) = @_; my $class = ref $self || $self;
+   my ($self, $app, $config) = @_; my $class = ref $self || $self;
 
    $class->_setup_plugins( $app );
 
-   my $new = $class->next::method( $app, @rest );
-
+   my $ac      = $app->config || {};
+   my $new     = $self->next::method( $app, $config );
    # Determine phase number from install path
-   my $appldir = $new->basename( $app->config->{appldir} || $NUL ) || $NUL;
+   my $appldir = $new->basename( $ac->{appldir} || $NUL ) || $NUL;
    my ($phase) = $appldir =~ m{ \A v \d+ \. \d+ p (\d+) \z }msx;
 
    $new->phase( $phase || 3 );
    # This replaces what would have happened in Catalyst::Controller->new
-   $new->_application( $app );
+   $new->_application( $app ) if ($Catalyst::VERSION < 0.08);
 
    return $new;
 }
@@ -176,21 +176,14 @@ sub begin {
 
    my $namespace = $c->action->namespace || $NUL;
    my $name      = $c->action->name      || $NUL;
-   my $uri       = $self->uri_for( $c, $namespace.$SEP.$name, $s->{lang} );
-   my $mark      = join $HASH, split m{ $SEP }mx, $c->action;
-   my $help      = q(root).$SEP.q(help);
 
    # Stuff some basic information into the stash
    $s->{application} = q(unknown) unless ($s->{application});
-   $s->{assets     } = $c->uri_for( $SEP.$cfg->{skins}.$SEP.$s->{skin} ).$SEP;
    $s->{body       } = 1;
    $s->{class      } = $self->prefix;
    $s->{dhtml      } = 1;
    $s->{domain     } = $req->uri->host;
    $s->{encoding   } = $self->encoding;
-   $s->{form       } = { action => $uri, name => $name };
-   $s->{help_url   } = $self->uri_for( $c, $help, $s->{lang}, $mark );
-   $s->{help_url   } =~ s{ %23 }{$HASH}mx;
    $s->{host_port  } = $req->uri->host_port;
    $s->{host       } = (split m{ \. }mx, ucfirst $s->{domain})[0];
    $s->{is_popup   } = q(false);
@@ -203,12 +196,21 @@ sub begin {
    $s->{root       } = $cfg->{root};
    $s->{sess_path  } = $SEP;
    $s->{skindir    } = $cfg->{skindir};
-   $s->{static     } = $c->uri_for( $SEP.q(static) ).$SEP;
    $s->{title      } = $s->{application}.$SPC.(ucfirst $namespace);
    $s->{token      } = $cfg->{token};
    $s->{version    } = eval { $self->version };
-   $s->{url        } = $self->uri_for( $c, $namespace, $s->{lang} ).$SEP;
 
+   # Generate and stash some uris
+   my $help = q(root).$SEP.q(help);
+   my $mark = join $HASH, split m{ $SEP }mx, $c->action;
+   my $uri  = $self->uri_for( $c, $namespace.$SEP.$name, $s->{lang} );
+
+   $s->{assets     } = $c->uri_for( $SEP.$cfg->{skins}.$SEP.$s->{skin} ).$SEP;
+   $s->{form       } = { action => $uri, name => $name };
+   $s->{help_url   } = $self->uri_for( $c, $help, $s->{lang}, $mark );
+   $s->{help_url   } =~ s{ %23 }{$HASH}mx;
+   $s->{static     } = $c->uri_for( $SEP.q(static) ).$SEP;
+   $s->{url        } = $self->uri_for( $c, $namespace, $s->{lang} ).$SEP;
    return;
 }
 
@@ -225,15 +227,19 @@ sub deserialize {
 
 sub end {
    # Last controller method called by Catalyst
-   my ($self, $c) = @_;
+   my ($self, $c) = @_; my $errors;
 
    $self->maybe::next::method( $c );
 
    if (scalar @{ $c->error }) {
-      my $model = $c->model( q(Base) );
+      for my $e (@{ $c->error }) {
+         if (ref $e eq $self->exception_class) {
+            $errors .= $self->loc( $c, $e->as_string, @{ $e->args } );
+         }
+         else { $errors .= $self->loc( $c, $e ) }
+      }
 
-      $model->add_error_msg( $_ ) for (@{ $c->error });
-
+      $self->error_page( $c, $errors );
       $c->clear_errors;
    }
 
@@ -245,8 +251,8 @@ sub error_page {
    # Display an error message
    my ($self, $c, @rest) = @_; my $s = $c->stash; my $e;
 
-   my $model = $c->model( q(Navigation) );
    my $msg   = $self->loc( $c, @rest );
+   my $model = $c->model( q(Navigation) );
 
    $s->{subHeading} = ucfirst $msg;
    $self->log_error( (ref $self).$SPC.$msg );
@@ -281,7 +287,7 @@ sub get_language {
 
    my @candidates = map    { (split m{ ; }mx, $_)[ 0 ] }
                     split m{ , }mx,
-                    lc $req->headers->{ 'accept-language' } || $NUL;
+                    lc $req->headers->{ q(accept-language) } || $NUL;
    my $lang       = first  { __is_language( $_, \@languages ) } @candidates;
 
    return $lang || $cfg->{language} || q(en);
@@ -343,8 +349,8 @@ sub load_stash_per_request {
 
    # Merge the hashes from each file in order. My phase allows for multiple
    # installations of the same version for different purposes
-   my $files = [ 'os_'.$Config{osname}, 'phase'.$self->phase,
-                 'default',             'default_'.$s->{lang} ];
+   my $files = [ q(os_).$Config{osname}, q(phase).$self->phase,
+                 q(default),             q(default_).$s->{lang} ];
 
    # Add a controller specific file to the list
    if ($namespace = $c->action->namespace) {
@@ -353,7 +359,9 @@ sub load_stash_per_request {
 
    my $config = eval { $c->model( q(Config) )->load_files( @{ $files } ) };
 
-   if ($e = $self->catch) { $self->error_page( $c, $e->as_string ) }
+   if ($e = $self->catch) {
+      $self->error_page( $c, $e->as_string, @{ $e->args } );
+   }
    else {
       # Copy the config to the stash
       while (my ($key, $value) = each %{ $config }) {
@@ -508,7 +516,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 589 $
 
 =head1 Synopsis
 

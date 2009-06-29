@@ -1,10 +1,10 @@
-# @(#)$Id: JSON.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: JSON.pm 576 2009-06-09 23:23:46Z pjf $
 
 package CatalystX::Usul::View::JSON;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::View);
 
 use Class::C3;
@@ -34,7 +34,7 @@ CatalystX::Usul::View::JSON - Render JSON response to an XMLHttpRequest
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 576 $
 
 =head1 Synopsis
 

@@ -1,18 +1,18 @@
-# @(#)$Id: Credentials.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Credentials.pm 591 2009-06-13 13:34:41Z pjf $
 
 package CatalystX::Usul::Model::Config::Credentials;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 use CatalystX::Usul::Schema;
 use Class::C3;
 
 __PACKAGE__->config
-   ( create_msg_key    => q(Credentials [_1] / [_2] created),
-     delete_msg_key    => q(Credentials [_1] / [_2] deleted),
+   ( create_msg_key    => q(Credentials [_1]/[_2] created),
+     delete_msg_key    => q(Credentials [_1]/[_2] deleted),
      keys_attr         => q(acct),
      schema_attributes => {
         attributes     => [ qw(driver host password port user) ],
@@ -20,7 +20,7 @@ __PACKAGE__->config
         element        => q(credentials),
         lang_dep       => undef, },
      typelist          => {},
-     update_msg_key    => q(Credentials [_1] / [_2] updated) );
+     update_msg_key    => q(Credentials [_1]/[_2] updated) );
 
 __PACKAGE__->mk_accessors( qw(ctrldir) );
 
@@ -140,7 +140,7 @@ CatalystX::Usul::Model::Config::Credentials - Database connection definitions
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 591 $
 
 =head1 Synopsis
 

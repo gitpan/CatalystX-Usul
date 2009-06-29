@@ -1,4 +1,4 @@
-# @(#)$Id: 02pod.t 579 2009-06-10 10:46:22Z pjf $
+# @(#)$Id: 06yaml.t 579 2009-06-10 10:46:22Z pjf $
 
 use strict;
 use warnings;
@@ -7,20 +7,22 @@ use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
 
-use English qw( -no_match_vars );
+use English qw(-no_match_vars);
 use Test::More;
 
 BEGIN {
    if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
-      plan skip_all => 'POD test only for developers';
+      plan skip_all => 'YAML test only for developers';
    }
 }
 
-eval { use Test::Pod 1.14; };
+eval { require Test::YAML::Meta; };
 
-plan skip_all => 'Test::Pod 1.14 required' if ($EVAL_ERROR);
+plan skip_all => 'Test::YAML::Meta not installed' if ($EVAL_ERROR);
 
-all_pod_files_ok();
+Test::YAML::Meta->import();
+
+meta_yaml_ok();
 
 # Local Variables:
 # mode: perl

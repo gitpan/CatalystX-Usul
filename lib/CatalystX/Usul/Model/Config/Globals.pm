@@ -1,10 +1,10 @@
-# @(#)$Id: Globals.pm 562 2009-06-09 16:11:18Z pjf $
+# @(#)$Id: Globals.pm 591 2009-06-13 13:34:41Z pjf $
 
 package CatalystX::Usul::Model::Config::Globals;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.2.%d', q$Rev: 562 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 __PACKAGE__->config( create_msg_key    => q(Globals [_2] created),
@@ -17,7 +17,7 @@ __PACKAGE__->config( create_msg_key    => q(Globals [_2] created),
                         element        => q(globals),
                         lang_dep       => {}, },
                      typelist          => {},
-                     update_msg_key    => q(Globals [_2] updated), );
+                     update_msg_key    => q(Globals [_1] updated), );
 
 __PACKAGE__->mk_accessors( qw(file) );
 
@@ -95,7 +95,7 @@ CatalystX::Usul::Model::Config::Globals - Class definition for global configurat
 
 =head1 Version
 
-0.1.$Revision: 562 $
+0.3.$Revision: 591 $
 
 =head1 Synopsis
 
