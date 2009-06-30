@@ -1,5 +1,11 @@
 Revision history for CatalystX::Usul
 
+0.3.625  30/06/2009
+         - DB password encryption no longer userid dependent
+         - Users::DBIC should release lock if cannot connect to database
+         - Build.pm undefined values in _set_config fixed. Bypassed
+           the ask more question. Undefined on 358
+
 0.3.613  29/06/2009
          - Split out File::HashMerge as a seperate class
          - Use Class::MOP in Base::ensure_class_loaded

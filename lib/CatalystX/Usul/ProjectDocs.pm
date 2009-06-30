@@ -1,10 +1,10 @@
-# @(#)$Id: ProjectDocs.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: ProjectDocs.pm 616 2009-06-30 11:06:46Z pjf $
 
 package CatalystX::Usul::ProjectDocs;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 616 $ =~ /\d+/gmx );
 use parent qw(Pod::ProjectDocs);
 
 use Text::Tabs;
@@ -47,11 +47,11 @@ BEGIN {
       *Pod::ProjectDocs::Parser::highlighten = sub {
          my ($self, $type, $text) = @_;
 
-         $tabstop = 3;
          $HIGHLIGHTER->set_format( \%SCHEME );
          $HIGHLIGHTER->define_substitution( q(<) => q(&lt;),
                                             q(>) => q(&gt;),
                                             q(&) => q(&amp;) );
+         $tabstop = 3; # Text::Tabs
 
          return $HIGHLIGHTER->format_string( expand( $text ) );
       }
@@ -69,7 +69,9 @@ BEGIN {
             return $HIGHLIGHTER->highlight( $type, $text );
          };
       }
-      else { sub { return $_[2] } }
+      else {
+         *Pod::ProjectDocs::Parser::highlighten = sub { return $_[2] };
+      }
    }
 }
 
@@ -85,7 +87,7 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.3.$Revision: 616 $
 
 =head1 Synopsis
 

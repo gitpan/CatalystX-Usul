@@ -1,6 +1,6 @@
 ---
 name: CatalystX-Usul
-version: 0.3.613
+version: 0.3.625
 author:
   - 'Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>'
 abstract: A base class for Catalyst MVC components
@@ -102,7 +102,7 @@ recommends:
 provides:
   CatalystX::Usul:
     file: lib/CatalystX/Usul.pm
-    version: 0.3.613
+    version: 0.3.625
   CatalystX::Usul::Action:
     file: lib/CatalystX/Usul/Action.pm
     version: 0.3.576
@@ -114,7 +114,7 @@ provides:
     version: 0.3.611
   CatalystX::Usul::Build:
     file: lib/CatalystX/Usul/Build.pm
-    version: 0.3.579
+    version: 0.3.624
   CatalystX::Usul::Controller:
     file: lib/CatalystX/Usul/Controller.pm
     version: 0.3.589
@@ -294,7 +294,7 @@ provides:
     version: 0.3.612
   CatalystX::Usul::ProjectDocs:
     file: lib/CatalystX/Usul/ProjectDocs.pm
-    version: 0.3.576
+    version: 0.3.616
   CatalystX::Usul::Response:
     file: lib/CatalystX/Usul/Response.pm
     version: 0.3.576
@@ -309,7 +309,7 @@ provides:
     version: 0.3.576
   CatalystX::Usul::Schema:
     file: lib/CatalystX/Usul/Schema.pm
-    version: 0.3.580
+    version: 0.3.622
   CatalystX::Usul::Shells:
     file: lib/CatalystX/Usul/Shells.pm
     version: 0.3.576
@@ -327,7 +327,7 @@ provides:
     version: 0.3.576
   CatalystX::Usul::Users::DBIC:
     file: lib/CatalystX/Usul/Users/DBIC.pm
-    version: 0.3.576
+    version: 0.3.619
   CatalystX::Usul::Users::Suid:
     file: lib/CatalystX/Usul/Users/Suid.pm
     version: 0.3.577

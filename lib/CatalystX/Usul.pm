@@ -1,10 +1,10 @@
-# @(#)$Id: Usul.pm 613 2009-06-29 17:13:01Z pjf $
+# @(#)$Id: Usul.pm 625 2009-06-30 16:32:54Z pjf $
 
 package CatalystX::Usul;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 613 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 625 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Component CatalystX::Usul::Base);
 
 use Class::C3;
@@ -251,7 +251,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-0.3.$Revision: 613 $
+0.3.$Revision: 625 $
 
 =head1 Synopsis
 

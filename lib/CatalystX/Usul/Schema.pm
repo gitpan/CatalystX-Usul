@@ -1,10 +1,10 @@
-# @(#)$Id: Schema.pm 580 2009-06-11 16:44:10Z pjf $
+# @(#)$Id: Schema.pm 622 2009-06-30 16:26:14Z pjf $
 
 package CatalystX::Usul::Schema;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 580 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 622 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
 use Crypt::CBC;
@@ -154,7 +154,7 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-0.3.$Revision: 580 $
+0.3.$Revision: 622 $
 
 =head1 Synopsis
 
@@ -303,81 +303,20 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
 # End:
 
 __DATA__
- 	 	 	 	 	 	 	 			   	  	
-    	  		
-		 	  	 	
- 			 		  
-			  	  	
-		 				 	
-   	   		
- 	  	 		 
- 			 		 	
-			 	    
-  			 	 	
-  		  	  
-			   		 
-		 	 		  
-   	 	   
- 	 		    
- 	 	    	
- 	 			 		
-  			 	 	
-  		     
- 	  	    
- 	 		   	
-	 	 		 		
- 	 	  		 
- 	 			   
-	 			   	
-    	   	
-	 		 	 	 
- 		 	    
-		 		   	
-	    	 		
- 		 			  
-	 		     
-	 	    		
-	  	     
-		 	 	  	
-	 	 			  
-	   			 	
-     	 		
- 				 		 
-		  			  
- 	 			  	
-		 		 	  
-  		 	 		
- 		 	 	  
-		  			 	
-  			  	 
-  	 		 	 
- 	 		 	 	
-		  	   	
-		 	     
-	 	  			 
- 		 	 	  
-		   	 		
-	     			
- 			 			 
-	 	 			 	
-  	 		   
-	  		    
-  	    	 
- 	   	  	
- 	 	 	   
-	 	     	
-   		  	 
-					 	 	
- 	 	 	 		
-  	 	 	 	
-   	  	  
-	 	 					
- 	 	  	  
-	   	   	
- 	  	 	  
- 			 	  	
-		  	  	 
+			  	   
+  		 	 	 
  		 	 			
-  	  	 		
-     	 	 
-   
+  	   			
+ 	     	 
+		 				 	
+	 		  			
+   	 			 
+ 			 		 	
+    		 	 
+		 		 	 	
+  		  			
+ 	  			  
+	   	 		 
+	  	 		 	
+ 	  		 	 
+			  	  

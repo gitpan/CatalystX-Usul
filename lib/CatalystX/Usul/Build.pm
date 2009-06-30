@@ -1,10 +1,10 @@
-# @(#)$Id: Build.pm 579 2009-06-10 10:46:22Z pjf $
+# @(#)$Id: Build.pm 624 2009-06-30 16:32:23Z pjf $
 
 package CatalystX::Usul::Build;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 579 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 624 $ =~ /\d+/gmx );
 use parent qw(Module::Build);
 
 use CatalystX::Usul::Programs;
@@ -34,6 +34,8 @@ my $ATTRS    = [ qw(style new_prefix ver phase create_ugrps
                     apache_user setuid_root create_schema credentials
                     run_cmd make_default restart_apache built ask) ];
 my $CFG_FILE = q(build.xml);
+my $PHASE    = 2;
+my $NUL      = q();
 
 # Around these M::B actions
 
@@ -211,7 +213,7 @@ sub skip_pattern {
 # Questions
 
 sub get_apache_user {
-   my ($self, $cfg) = @_; my $user = $cfg->{apache_user};
+   my ($self, $cfg) = @_; my $user = $cfg->{apache_user} || q(www-data);
 
    if ($cfg->{ask} and $cfg->{create_ugrps}) {
       my $cli = $self->cli; my $text;
@@ -227,9 +229,11 @@ sub get_apache_user {
 }
 
 sub get_ask {
-   my ($self, $cfg) = @_; my $cli = $self->cli;
+   my ($self, $cfg) = @_;
 
-   return $cli->yorn( 'Ask questions in future', 0, 1, 0 );
+   return 0 unless ($cfg->{ask});
+
+   return $self->cli->yorn( 'Ask questions in future', 0, 1, 0 );
 }
 
 sub get_built {
@@ -237,7 +241,7 @@ sub get_built {
 }
 
 sub get_create_schema {
-   my ($self, $cfg) = @_; my $create = $cfg->{create_schema};
+   my ($self, $cfg) = @_; my $create = $cfg->{create_schema} || 0;
 
    if ($cfg->{ask}) {
       my $cli = $self->cli; my $text;
@@ -251,7 +255,7 @@ sub get_create_schema {
 }
 
 sub get_create_ugrps {
-   my ($self, $cfg) = @_; my $create = $cfg->{create_ugrps};
+   my ($self, $cfg) = @_; my $create = $cfg->{create_ugrps} || 0;
 
    if ($cfg->{ask}) {
       my $cli = $self->cli; my $text;
@@ -267,7 +271,7 @@ sub get_create_ugrps {
 }
 
 sub get_credentials {
-   my ($self, $cfg) = @_; my $credentials = $cfg->{credentials};
+   my ($self, $cfg) = @_; my $credentials = $cfg->{credentials} || {};
 
    if ($cfg->{ask} && $cfg->{create_schema}) {
       my $cli     = $self->cli;
@@ -286,7 +290,7 @@ sub get_credentials {
                       host     => q(localhost),
                       port     => q(_field),
                       user     => q(_field),
-                      password => q() };
+                      password => $NUL };
       my $value;
 
       for my $fld (qw(name driver host port user password)) {
@@ -312,7 +316,7 @@ sub get_credentials {
 }
 
 sub get_make_default {
-   my ($self, $cfg) = @_; my $make_default = $cfg->{make_default};
+   my ($self, $cfg) = @_; my $make_default = $cfg->{make_default} || 0;
 
    if ($cfg->{ask}) {
       my $text = 'Make this the default version';
@@ -326,7 +330,7 @@ sub get_make_default {
 sub get_new_prefix {
    my ($self, $cfg) = @_; my $style = $cfg->{style};
 
-   my $prefix = $self->notes( q(prefix) );
+   my $prefix = $self->notes( q(prefix) ) || q(/opt);
 
    if ($cfg->{ask} and $style eq q(normal)) {
       my $cli = $self->cli; my $text;
@@ -340,13 +344,9 @@ sub get_new_prefix {
 }
 
 sub get_phase {
-   my ($self, $cfg) = @_; my $phase = $cfg->{phase};
+   my ($self, $cfg) = @_; my $cli = $self->cli; my $text;
 
-   my $cli = $self->cli; my $text;
-
-   unless ($phase) {
-      ($phase) = ($self->notes( q(applrel) ) =~ m{ \A v .* p (\d+) \z }mx);
-   }
+   my $phase = $cfg->{phase} || $PHASE;
 
    if ($cfg->{ask}) {
       $text  = 'Phase number determines at run time the purpose of the ';
@@ -363,7 +363,7 @@ sub get_phase {
 }
 
 sub get_restart_apache {
-   my ($self, $cfg) = @_; my $restart = $cfg->{restart_apache};
+   my ($self, $cfg) = @_; my $restart = $cfg->{restart_apache} || 0;
 
    if ($cfg->{ask}) {
       $restart = $self->cli->yorn( 'Restart web server', $restart, 1, 0 );
@@ -373,7 +373,7 @@ sub get_restart_apache {
 }
 
 sub get_run_cmd {
-   my ($self, $cfg) = @_; my $run_cmd = $cfg->{run_cmd};
+   my ($self, $cfg) = @_; my $run_cmd = $cfg->{run_cmd} || 0;
 
    if ($cfg->{ask}) {
       my $cli = $self->cli; my $text;
@@ -388,7 +388,7 @@ sub get_run_cmd {
 }
 
 sub get_setuid_root {
-   my ($self, $cfg) = @_; my $setuid = $cfg->{setuid_root};
+   my ($self, $cfg) = @_; my $setuid = $cfg->{setuid_root} || 0;
 
    if ($cfg->{ask}) {
       my $cli = $self->cli; my $text;
@@ -404,7 +404,7 @@ sub get_setuid_root {
 }
 
 sub get_style {
-   my ($self, $cfg) = @_; my $style = $cfg->{style};
+   my ($self, $cfg) = @_; my $style = $cfg->{style} || q(normal);
 
    return $style unless ($cfg->{ask});
 
@@ -424,9 +424,9 @@ sub get_style {
 sub get_ver {
    my $self = shift;
 
-   my ($version) = ($self->notes( q(applrel) ) =~ m{ \A v(.*)p(\d+) \z }mx);
+   my ($major, $minor) = split m{ \. }mx, $self->dist_version;
 
-   return $version;
+   return $major.q(.).$minor;
 }
 
 # Actions
@@ -544,19 +544,22 @@ sub link_files {
    my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
 
    for my $ref (@{ $cfg->{link_files} }) {
-      my $from = $self->_abs_path( $base, $ref->{from} );
-      my $path = $self->_abs_path( $base, $ref->{to  } );
+      my $from = $self->_abs_path( $base, $ref->{from} ) || $NUL;
+      my $path = $self->_abs_path( $base, $ref->{to  } ) || $NUL;
 
-      if (-e $from) {
-         unlink $path if (-e $path && -l $path);
+      if ($from and $path) {
+         if (-e $from) {
+            unlink $path if (-l $path);
 
-         if (! -e $path) {
-            $cli->info( "Symlinking $from to $path" );
-            symlink $from, $path;
+            if (! -e $path) {
+               $cli->info( "Symlinking $from to $path" );
+               symlink $from, $path;
+            }
+            else { $cli->info( "Already exists $path" ) }
          }
-         else { $cli->info( "Already exists $path" ) }
+         else { $cli->info( "Does not exist $from" ) }
       }
-      else { $cli->info( "Does not exist $from" ) }
+      else { $cli->info( "Link from $from or to $path undefined" ) }
    }
 
    return;
@@ -734,7 +737,7 @@ sub _set_base {
    my ($self, $cfg) = @_; my $cli = $self->cli; my $base;
 
    if ($cfg->{style} and $cfg->{style} eq q(perl)) {
-      $base = $cli->catdir( q(), q(var),
+      $base = $cli->catdir( $NUL, q(var),
                             $cli->class2appdir( $self->module_name ),
                             q(v).$cfg->{ver}.q(p).$cfg->{phase} );
       $self->install_path( var => $base );
@@ -766,9 +769,10 @@ sub _set_config {
    $cli->fatal( 'No config to set' ) unless (defined $cfg);
 
    eval {
-      XML::Simple->new( NoAttr     => 1,
-                        OutputFile => $path,
-                        RootName   => q(config) )->xml_out( $cfg );
+      my $xs = XML::Simple->new
+         ( NoAttr => 1, OutputFile => $path, RootName => q(config) );
+
+      $xs->xml_out( $cfg );
    };
 
    $cli->fatal( $EVAL_ERROR ) if ($EVAL_ERROR);
@@ -788,7 +792,7 @@ CatalystX::Usul::Build - M::B utility methods
 
 =head1 Version
 
-0.3.$Revision: 579 $
+0.3.$Revision: 624 $
 
 =head1 Synopsis
 

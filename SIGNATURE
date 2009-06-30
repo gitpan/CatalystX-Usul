@@ -14,17 +14,17 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 be48e0fc7252d25c40e1f2c994e5261da20ebb1b Changes
+SHA1 80e2edd6e998f001664290481fb6394651937df6 Changes
 SHA1 0190f62d6871f7927dcc90e40797c0f20645ddea LICENSE
 SHA1 a86d71dcee15fb623239df203ca1fac9c62d9859 MANIFEST
-SHA1 320da6705bcae56e61faec1eb49efbb3792d296e META.yml
+SHA1 1d86e0a0a772d90f63f5d4e5211e696f225b0044 META.yml
 SHA1 6d5ec22e54e80b4bd4094385aa7b08c26cc5534a Makefile.PL
-SHA1 3068855dd0c37569fa12d1cbf030fe8427a872f9 README
-SHA1 0137218039919266fff34eeb9d77de9c0625df63 lib/CatalystX/Usul.pm
+SHA1 f9cd7272855844c5b832acc7a36bf81fac643567 README
+SHA1 1dd85382d318f656c9e993d9844d8c61c4e34ee1 lib/CatalystX/Usul.pm
 SHA1 15158b4d45e5bb3fc4180f6e34abed0067f1f480 lib/CatalystX/Usul/Action.pm
 SHA1 3856caf992a46e4f6ae0629d595520a966966080 lib/CatalystX/Usul/Authentication.pm
 SHA1 89eb4f38f9be5f85937c6ff09a50c17690b716e7 lib/CatalystX/Usul/Base.pm
-SHA1 53f2586933b9db1b6e0f937db6db20d7a4185a1d lib/CatalystX/Usul/Build.pm
+SHA1 acc27099947a519e64655fbfde3c00c7c996bfce lib/CatalystX/Usul/Build.pm
 SHA1 33df0ba4e639138393b4ddad9906c52a2dfeda89 lib/CatalystX/Usul/Controller.pm
 SHA1 33df6fd497d4c929f32b2444cb6f93a1d4806b9f lib/CatalystX/Usul/Controller/Admin.pm
 SHA1 90cf5a7bded98fee9d6718b11ac15158e1e0cc32 lib/CatalystX/Usul/Controller/Admin/Backup.pm
@@ -84,18 +84,18 @@ SHA1 b8279b0080229c403844cec83e370831256f52c1 lib/CatalystX/Usul/Plugin/Controll
 SHA1 ade7a7fa2d3282f93287e1a915033b530443d418 lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
 SHA1 0c3732cd19a0d16a70c84c5e77e44fb02705f369 lib/CatalystX/Usul/Process.pm
 SHA1 5f573386474c0445ee70818843bdfa1d33cfa7b1 lib/CatalystX/Usul/Programs.pm
-SHA1 5345c36488d75aca35121a8fee546cb371c82e03 lib/CatalystX/Usul/ProjectDocs.pm
+SHA1 118c4d10f1b4803a8ff30e326e0af38a633d9ff2 lib/CatalystX/Usul/ProjectDocs.pm
 SHA1 da7f2347cc0ffb61234320a10009d20934ab072d lib/CatalystX/Usul/Response.pm
 SHA1 9d354c8a4254f9fd23e5846fe4d6686df0108680 lib/CatalystX/Usul/Roles.pm
 SHA1 f95c1d19f3cb6b7fa8700ad8d7c3fe9a6155e51c lib/CatalystX/Usul/Roles/DBIC.pm
 SHA1 3a71f8ab7d69cf857820676d971d4fc5e855c099 lib/CatalystX/Usul/Roles/Unix.pm
-SHA1 e284795900380f24567faa1e8af2a8fd93d38493 lib/CatalystX/Usul/Schema.pm
+SHA1 d04291b43c36bb756d0bbf9b66f8f00b0dbb2da1 lib/CatalystX/Usul/Schema.pm
 SHA1 6fbe27de6de1ca4252d53288cfc27e3bfc7d9603 lib/CatalystX/Usul/Shells.pm
 SHA1 5c6e86c8ef01a2c854671bd6be0a4704cdaaa3b0 lib/CatalystX/Usul/Table.pm
 SHA1 1051c7ae8e7a76d0ccbb1f67bd63f0530f81824f lib/CatalystX/Usul/TapeDevice.pm
 SHA1 30a69da3fcce2c31ff7693f52098d0d47a900e0b lib/CatalystX/Usul/Time.pm
 SHA1 9d1f3b88a87e9d000c5b1fa9505d2db131cb72b9 lib/CatalystX/Usul/Users.pm
-SHA1 a41fa7e6f98057a2c049364469ee5e2fd98136fb lib/CatalystX/Usul/Users/DBIC.pm
+SHA1 142d2cce6721adc76e07514bbb324434ed04487d lib/CatalystX/Usul/Users/DBIC.pm
 SHA1 ebeed6db1a83a855ce847d74ca8741599cc95042 lib/CatalystX/Usul/Users/Suid.pm
 SHA1 bea95e4228e244da8936b03f3a02b7f8c5283bd6 lib/CatalystX/Usul/Users/Unix.pm
 SHA1 2ffa762b74af1cb5010762f523ca67c34e3df06f lib/CatalystX/Usul/Utils.pm
@@ -122,11 +122,11 @@ SHA1 e0d6ed47583fc30c28edf515bbc4f82c0f45fd55 t/test.xml
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.6 (GNU/Linux)
 
-iQEcBAEBAgAGBQJKSPh7AAoJEK492j4Im1BpWxYH/ij26I3/ufDwPdIWpWTAeLky
-DtHjih4+si5FHvpLeed5wdetmLs/j7ZS2N2AUx98oKd5Kwnp82FXMjcCMl1DcckT
-Mn8YSSGcXeaa+DAmS7766ryY/JPsJRYRDWFpZGIlAlyoHAVY31P5GqgJt3cV5r+i
-9So7HiEhaAYR6R04mtDWo40WGg9KhxzJhtW4kT4VFnXVX9oktENZjVgM7t0TmUCP
-W1d44ttlgjHvqr52lukjWwss/Tv6xIVHi6GYbD/BrEULfeihukvKInfIWc18UIPb
-S9rMuyaZLexf2RRiLcdoIA4H+elB7gADCSFn6h5VJkRXoJuQJyLFJotMybEiy4w=
-=zvLd
+iQEcBAEBAgAGBQJKSj5KAAoJEK492j4Im1BpWoMIAIqleNTa3QrBmc7ujkOBfpjg
+yFv8H/3bT/HSfYTxXC9HkeO0vbEa7ez4e65DegmO78yrwHFZ1ZmV91r0sRaBVQdk
+tGzvRwjMEOEL2asGHHmbXu2MxTg+Lloy0YCJiLmxEgmXmLVsP7P1qOzzWCOP7r78
+0J3KSKDw6QBoDqdAlDJA9LV1nqyyl9JD7RGTto3fZrNdKSRSijTNW7eXmLXuvFO5
+9co7UDeCkZykFPfKMLLm6MW5gCd8E+Y6NWvSIXt45VaiHmPB5h4TN8cgmyZ7CBIR
+WY+83U7spiaBtOqsYD8lBnne2L3G3Jq5elqrI2+uZxMSL6rWA8s+6tyWUNkyiJE=
+=zxj2
 -----END PGP SIGNATURE-----

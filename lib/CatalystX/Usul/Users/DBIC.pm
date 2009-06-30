@@ -1,10 +1,10 @@
-# @(#)$Id: DBIC.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: DBIC.pm 619 2009-06-30 11:54:42Z pjf $
 
 package CatalystX::Usul::Users::DBIC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 619 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Users);
 
 use Crypt::PasswdMD5;
@@ -266,22 +266,29 @@ sub _load {
 
    $self->_cache( {} );
 
-   my $user_col = $FIELD_MAP{username};
-   my $rs       = $self->dbic_user_model->search();
-   my $src      = $rs->result_source;
+   eval {
+      my $user_col = $FIELD_MAP{username};
+      my $rs       = $self->dbic_user_model->search();
+      my $src      = $rs->result_source;
 
-   while (defined ($user_obj = $rs->next)) {
-      $user = $user_obj->$user_col;
+      while (defined ($user_obj = $rs->next)) {
+         $user = $user_obj->$user_col;
 
-      for $field (values %FIELD_MAP) {
-         if ($src->has_column( $field )) {
-            $self->_cache->{ $user }->{ $field } = $user_obj->$field;
+         for $field (values %FIELD_MAP) {
+            if ($src->has_column( $field )) {
+               $self->_cache->{ $user }->{ $field } = $user_obj->$field;
+            }
          }
       }
-   }
+   };
+
+   my $e = $self->catch;
 
    $cache = { %{ $self->_cache } }; $self->_dirty( 0 );
    $self->lock->reset( k => __PACKAGE__ );
+
+   $self->throw( $e ) if ($e);
+
    return ($cache);
 }
 
@@ -306,7 +313,7 @@ CatalystX::Usul::Users::DBIC - Database user storage
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.3.$Revision: 619 $
 
 =head1 Synopsis
 
