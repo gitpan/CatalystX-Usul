@@ -1,10 +1,10 @@
-# @(#)$Id: Time.pm 985 2011-06-11 13:34:05Z pjf $
+# @(#)$Id: Time.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Time;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 985 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 use Date::Format  ();
 use DateTime::Format::Epoch;
@@ -265,7 +265,7 @@ CatalystX::Usul::Time - Class methods for date and time manipulation
 
 =head1 Version
 
-$Revision: 985 $
+$Revision: 1139 $
 
 =head1 Synopsis
 

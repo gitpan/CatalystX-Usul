@@ -1,10 +1,10 @@
-# @(#)$Id: UserManager.pm 941 2011-04-04 10:42:58Z pjf $
+# @(#)$Id: UserManager.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Controller::Admin::UserManager;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 941 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 use CatalystX::Usul::Constants;
@@ -144,7 +144,7 @@ CatalystX::Usul::Controller::Admin::UserManager - User account management
 
 =head1 Version
 
-0.4.$Revision: 941 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

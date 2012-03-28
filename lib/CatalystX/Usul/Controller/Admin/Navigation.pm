@@ -1,10 +1,10 @@
-# @(#)$Id: Navigation.pm 930 2011-03-13 14:56:24Z pjf $
+# @(#)$Id: Navigation.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Navigation;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 930 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 use CatalystX::Usul::Constants;
@@ -110,7 +110,7 @@ CatalystX::Usul::Controller::Admin::Navigation - Menu maintenance actions
 
 =head1 Version
 
-0.4.$Revision: 930 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

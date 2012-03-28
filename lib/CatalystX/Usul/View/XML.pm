@@ -1,10 +1,10 @@
-# @(#)$Id: XML.pm 1093 2011-12-30 00:24:43Z pjf $
+# @(#)$Id: XML.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::View::XML;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1093 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::View);
 
 use XML::Simple;
@@ -54,7 +54,7 @@ CatalystX::Usul::View::XML - Render XML response to an XMLHttpRequest
 
 =head1 Version
 
-0.4.$Revision: 1093 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

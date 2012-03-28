@@ -1,10 +1,10 @@
-# @(#)$Id: JSON.pm 1012 2011-06-22 16:10:58Z pjf $
+# @(#)$Id: JSON.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::View::JSON;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1012 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::View);
 
 use MRO::Compat;
@@ -36,7 +36,7 @@ CatalystX::Usul::View::JSON - Render JSON response to an XMLHttpRequest
 
 =head1 Version
 
-0.4.$Revision: 1012 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

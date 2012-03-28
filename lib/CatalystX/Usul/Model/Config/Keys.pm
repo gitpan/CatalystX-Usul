@@ -1,10 +1,10 @@
-# @(#)$Id: Keys.pm 1065 2011-10-26 13:22:21Z pjf $
+# @(#)$Id: Keys.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Model::Config::Keys;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1065 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 __PACKAGE__->config
@@ -32,7 +32,7 @@ CatalystX::Usul::Model::Config::Keys - Class definition for keys configuration e
 
 =head1 Version
 
-0.4.$Revision: 1065 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

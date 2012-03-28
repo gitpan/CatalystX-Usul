@@ -1,10 +1,10 @@
-# @(#)$Id: Controller.pm 1118 2012-03-11 23:28:22Z pjf $
+# @(#)$Id: Controller.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Controller;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1118 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Controller CatalystX::Usul);
 
 use Config;
@@ -574,7 +574,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version 0.4.$Rev: 1118 $
+This document describes CatalystX::Usul::Controller version 0.5.$Rev: 1139 $
 
 =head1 Synopsis
 

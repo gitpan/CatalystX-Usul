@@ -1,10 +1,10 @@
-# @(#)$Id: UserProfiles.pm 1097 2012-01-28 23:31:29Z pjf $
+# @(#)$Id: UserProfiles.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Model::UserProfiles;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
 use CatalystX::Usul::Constants;
@@ -174,7 +174,7 @@ CatalystX::Usul::Model::UserProfiles - CRUD methods for user account profiles
 
 =head1 Version
 
-0.4.$Revision: 1097 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

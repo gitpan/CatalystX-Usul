@@ -1,10 +1,10 @@
-# @(#)$Id: Session.pm 959 2011-04-23 13:27:40Z pjf $
+# @(#)$Id: Session.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Model::Session;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 959 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model CatalystX::Usul::IPC);
 
 use CatalystX::Usul::Constants;
@@ -126,7 +126,7 @@ CatalystX::Usul::Model::Session - Current session information
 
 =head1 Version
 
-0.4.$Revision: 959 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

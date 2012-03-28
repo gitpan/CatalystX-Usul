@@ -1,10 +1,10 @@
-# @(#)$Id: Entrance.pm 1095 2012-01-11 16:27:56Z pjf $
+# @(#)$Id: Entrance.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Controller::Entrance;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1095 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 use CatalystX::Usul::Constants;
@@ -163,7 +163,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 1095 $
+$Revision: 1139 $
 
 =head1 Synopsis
 

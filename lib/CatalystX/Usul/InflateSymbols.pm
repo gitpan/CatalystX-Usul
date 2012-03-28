@@ -1,10 +1,10 @@
-# @(#)$Id: InflateSymbols.pm 1072 2011-10-29 18:51:11Z pjf $
+# @(#)$Id: InflateSymbols.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::InflateSymbols;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1072 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
 
 use CatalystX::Usul::Constants;
@@ -118,7 +118,7 @@ CatalystX::Usul::InflateSymbols - Return paths to installation directories
 
 =head1 Version
 
-0.4.$Revision: 1072 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

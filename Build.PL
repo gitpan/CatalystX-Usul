@@ -1,15 +1,15 @@
-# @(#)$Id: Build.PL 1130 2012-03-24 08:41:13Z pjf $
+# @(#)$Id: Build.PL 1139 2012-03-28 23:49:18Z pjf $
 
 use strict;
 use warnings;
 use inc::Bob; # Module::Build subclass
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1130 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 Bob->new( {
    module     => q(CatalystX::Usul),
    home_page  => q(http://www.roxsoft.co.uk),
    requires   => {
-      'perl'                                       => 5.008,
+      'perl'                                       => 5.010,
       'attributes'                                 => 0.09,
       'namespace::autoclean'                       => 0.09,
       'parent'                                     => 0.221,

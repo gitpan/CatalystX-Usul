@@ -1,10 +1,10 @@
-# @(#)$Id: PersistentState.pm 1091 2011-12-13 23:21:44Z pjf $
+# @(#)$Id: PersistentState.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Plugin::Controller::PersistentState;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1091 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 
@@ -208,7 +208,7 @@ CatalystX::Usul::Plugin::Controller::PersistentState - Set/Get state information
 
 =head1 Version
 
-0.4.$Revision: 1091 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

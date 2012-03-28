@@ -1,10 +1,10 @@
-# @(#)$Id: Processes.pm 873 2010-08-02 17:57:04Z pjf $
+# @(#)$Id: Processes.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Processes;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 873 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 __PACKAGE__->config( namespace     => q(admin),
@@ -40,7 +40,7 @@ CatalystX::Usul::Controller::Admin::Processes - Process table manipulation
 
 =head1 Version
 
-0.4.$Revision: 873 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

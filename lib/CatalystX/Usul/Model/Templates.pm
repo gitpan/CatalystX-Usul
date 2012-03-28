@@ -1,10 +1,10 @@
-# @(#)$Id: Templates.pm 1083 2011-11-26 22:17:41Z pjf $
+# @(#)$Id: Templates.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Model::Templates;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 1083 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent q(CatalystX::Usul::Model);
 
 use CatalystX::Usul::Constants;
@@ -125,7 +125,7 @@ CatalystX::Usul::Model::Templates - Edit page templates
 
 =head1 Version
 
-0.1.$Revision: 1083 $
+0.1.$Revision: 1139 $
 
 =head1 Synopsis
 

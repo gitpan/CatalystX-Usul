@@ -1,10 +1,10 @@
-# @(#)$Id: Help.pm 1123 2012-03-14 23:26:02Z pjf $
+# @(#)$Id: Help.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Model::Help;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1123 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model CatalystX::Usul::Email);
 
 use CatalystX::Usul::Constants;
@@ -272,7 +272,7 @@ CatalystX::Usul::Model::Help - Provides data for help pages
 
 =head1 Version
 
-0.4.$Revision: 1123 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

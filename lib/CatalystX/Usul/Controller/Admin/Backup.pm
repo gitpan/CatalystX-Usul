@@ -1,10 +1,10 @@
-# @(#)$Id: Backup.pm 953 2011-04-18 03:12:03Z pjf $
+# @(#)$Id: Backup.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Backup;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 953 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 __PACKAGE__->config( device_class => q(TapeBackup),
@@ -57,7 +57,7 @@ CatalystX::Usul::Controller::Admin::Backup - Tape device backups
 
 =head1 Version
 
-0.4.$Revision: 953 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

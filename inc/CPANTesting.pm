@@ -1,4 +1,4 @@
-# @(#)$Id: CPANTesting.pm 1134 2012-03-28 11:05:50Z pjf $
+# @(#)$Id: CPANTesting.pm 1136 2012-03-28 19:44:56Z pjf $
 
 package CPANTesting;
 
@@ -11,6 +11,7 @@ sub broken {
    $uname     =~ m{ bandsman      }mx and return 'Stopped Horne';
    $uname     =~ m{ higgsboson    }mx and return 'Stopped dcollins';
    $uname     =~ m{ profvince.com }mx and return 'Stopped vpit';
+   $uname     =~ m{ fremen        }mx and return 'Stopped Bingo';
    $ENV{PATH} =~ m{ \A /home/sand }mx and return 'Stopped Konig';
    return 0;
 }

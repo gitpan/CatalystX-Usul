@@ -1,10 +1,10 @@
-# @(#)$Id: ListSessions.pm 1109 2012-02-22 13:35:58Z pjf $
+# @(#)$Id: ListSessions.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::TraitFor::ListSessions;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1109 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 use Moose::Role;
 
@@ -24,7 +24,7 @@ CatalystX::Usul::TraitFor::ListSessions - List Catalyst sessions
 
 =head1 Version
 
-0.4.$Revision: 1109 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

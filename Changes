@@ -1,5 +1,8 @@
 Revision history for CatalystX::Usul
 
+0.5.1139 2012-03-29
+         - Upped min Perl ver to 5.10
+
 0.4.1133 2012-03-28
          - Updated inc::Bob. Added inc::CPANTesting
          - Added language select

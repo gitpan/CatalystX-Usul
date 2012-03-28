@@ -1,10 +1,10 @@
-# @(#)$Id: Encoding.pm 1062 2011-10-23 01:23:45Z pjf $
+# @(#)$Id: Encoding.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Encoding;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1062 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(is_arrayref is_hashref);
@@ -83,7 +83,7 @@ CatalystX::Usul::Encoding - Create additional methods for different encodings
 
 =head1 Version
 
-$Revision: 1062 $
+$Revision: 1139 $
 
 =head1 Synopsis
 

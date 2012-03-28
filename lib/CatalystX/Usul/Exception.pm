@@ -1,10 +1,10 @@
-# @(#)$Id: Exception.pm 1091 2011-12-13 23:21:44Z pjf $
+# @(#)$Id: Exception.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Exception;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1091 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 use Exception::Class
    'CatalystX::Usul::Exception::Base' => {
@@ -119,7 +119,7 @@ CatalystX::Usul::Exception - Exception base class
 
 =head1 Version
 
-0.4.$Revision: 1091 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

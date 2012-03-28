@@ -103,8 +103,8 @@ t/10functions.t
 t/11ipc.t
 t/12schema.t
 t/14config.t
-t/16exception.t
 t/18programs.t
+t/19exception.t
 t/20controller.t
 t/21l10n.t
 t/22file.t

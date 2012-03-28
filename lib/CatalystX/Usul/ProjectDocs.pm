@@ -1,10 +1,10 @@
-# @(#)$Id: ProjectDocs.pm 980 2011-05-30 01:30:43Z pjf $
+# @(#)$Id: ProjectDocs.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::ProjectDocs;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 980 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 
 use English qw(-no_match_vars);
 use Class::Null;
@@ -77,7 +77,7 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 
 =head1 Version
 
-0.4.$Revision: 980 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

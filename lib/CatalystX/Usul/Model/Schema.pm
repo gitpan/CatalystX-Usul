@@ -1,10 +1,10 @@
-# @(#)$Id: Schema.pm 994 2011-06-17 21:41:16Z pjf $
+# @(#)$Id: Schema.pm 1139 2012-03-28 23:49:18Z pjf $
 
 package CatalystX::Usul::Model::Schema;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 994 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Model::DBIC::Schema
               CatalystX::Usul::Model
               CatalystX::Usul::Schema);
@@ -51,7 +51,7 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-0.4.$Revision: 994 $
+0.5.$Revision: 1139 $
 
 =head1 Synopsis
 

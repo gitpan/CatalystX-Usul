@@ -1,8 +1,8 @@
-# @(#)$Id: 16exception.t 1092 2011-12-16 20:38:17Z pjf $
+# @(#)$Id: 19exception.t 1139 2012-03-28 23:49:18Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1092 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
 use File::Spec::Functions qw( catdir catfile tmpdir updir );
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -33,7 +33,10 @@ ok( ref $error eq $ref->exception_class, 'exception is right class' );
 
 ok( $error->rv, 'has non zero return value' );
 
-ok( $error->message =~ m{ no \s+ such \s+ file }imx, 'message matches' );
+my $match = $error->message =~ m{ no \s+ such \s+ file }imx
+         || $error->message =~ m{ not \s+ found }imx;
+
+ok( $match, 'message matches' ); ! $match and warn $error->message."\n";
 
 my $path = catfile( $ref->tempdir, basename( $PROGRAM_NAME, q(.t) ).q(.log) );
 
