@@ -1,22 +1,19 @@
-# @(#)$Id: Buttons.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Buttons.pm 1091 2011-12-13 23:21:44Z pjf $
 
 package CatalystX::Usul::Model::Config::Buttons;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1091 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 __PACKAGE__->config
-   ( create_msg_key    => q(Button [_1]/[_2] created),
-     delete_msg_key    => q(Button [_1]/[_2] deleted),
-     keys_attr         => q(button),
-     schema_attributes => { attributes => [ qw(error help prompt) ],
-                            defaults   => { help => q() },
-                            element    => q(buttons),
-                            lang_dep   => { qw(error 1 help 1 prompt 1) } },
-     typelist          => { help => q(textarea) },
-     update_msg_key    => q(Button [_1]/[_2] updated), );
+   ( classes        => { help => q(ifield autosize) },
+     create_msg_key => 'Button [_1]/[_2] created',
+     delete_msg_key => 'Button [_1]/[_2] deleted',
+     keys_attr      => q(buttons),
+     typelist       => { help => q(textarea) },
+     update_msg_key => 'Button [_1]/[_2] updated', );
 
 1;
 
@@ -30,7 +27,7 @@ CatalystX::Usul::Model::Config::Buttons - Class definition for buttons
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 1091 $
 
 =head1 Synopsis
 

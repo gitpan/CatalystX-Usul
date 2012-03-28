@@ -1,71 +1,110 @@
-# @(#)$Id: Exception.pm 596 2009-06-16 18:49:50Z pjf $
+# @(#)$Id: Exception.pm 1091 2011-12-13 23:21:44Z pjf $
 
 package CatalystX::Usul::Exception;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 596 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1091 $ =~ /\d+/gmx );
+
 use Exception::Class
-   ( 'CatalystX::Usul::Exception::Class' => { fields => [qw(args out rv)] } );
-use base qw(CatalystX::Usul::Exception::Class);
+   'CatalystX::Usul::Exception::Base' => {
+      fields => [ qw(args leader out rv) ] };
+
+use base qw(CatalystX::Usul::Exception::Base);
 
 use Carp;
-use English qw(-no_match_vars);
+use MRO::Compat;
+use CatalystX::Usul::Constants;
+use English      qw(-no_match_vars);
+use Scalar::Util qw(blessed);
 
-my $NUL = q();
+our $IGNORE = [ __PACKAGE__, qw(CatalystX::Usul::IPC) ];
 
-our $IGNORE = [ __PACKAGE__ ];
+sub new {
+   my ($self, @args) = @_; my $args = __arg_list( @args );
 
-sub catch {
-   my ($self, @rest) = @_; my $e;
+   my $level  = 3; exists $args->{level} and $level = delete $args->{level};
+   my ($package, $line) = (caller( $level ))[ 0, 2 ];
+   my $leader = "${package}[${line}]: ";
 
-   return $e if ($e = $self->caught( @rest ));
-
-   return $self->new( args           => [],
-                      ignore_package => $IGNORE,
-                      out            => $NUL,
-                      rv             => 1,
-                      show_trace     => 0,
-                      error          => $EVAL_ERROR ) if ($EVAL_ERROR);
-
-   return;
-}
-
-sub as_string {
-   my ($self, $verbosity, $offset) = @_; $verbosity ||= 1; $offset ||= 1;
-
-   my ($l_no, %seen); my $text = $NUL.$self->message; # I hate Return::Value
-
-   return $text if ($verbosity < 2 and not $self->show_trace);
-
-   my $i = $verbosity > 2 ? 0 : $offset; my $frame = undef;
-
-   while (defined ($frame = $self->trace->frame( $i++ ))) {
-      my $line = "\n".$frame->package.' line '.$frame->line;
-
-      if ($verbosity > 2) { $text .= $line; next }
-
-      last if (($l_no = $seen{ $frame->package }) && $l_no == $frame->line);
-
-      $seen{ $frame->package } = $frame->line;
+   if (__is_one_of_us( $args->{error} )) {
+      $args->{error}->{leader} = $leader; return $args->{error};
    }
 
-   return $text;
+   $args->{error} .= NUL;
+
+   return $self->next::method( args           => [],
+                               error          => 'Error unknown',
+                               ignore_package => $IGNORE,
+                               leader         => $leader,
+                               out            => NUL,
+                               rv             => 1,
+                               %{ $args } );
+}
+
+sub catch {
+   my ($self, @args) = @_; my $args = __arg_list( @args );
+
+   $args->{error} ||= $EVAL_ERROR; $args->{error} or return;
+
+   return __is_one_of_us( $args->{error} )
+        ? $args->{error} : $self->new( $args );
+}
+
+sub full_message {
+   my $self = shift; my $text = $self->error or return;
+
+   # Expand positional parameters of the form [_<n>]
+   0 > index $text, LOCALIZE and return $self->leader.$text;
+
+   my @args = @{ $self->args }; push @args, map { NUL } 0 .. 10;
+
+   $text =~ s{ \[ _ (\d+) \] }{$args[ $1 - 1 ]}gmx;
+
+   return $self->leader.$text;
+}
+
+sub stacktrace {
+   my ($self, $skip) = @_; my ($l_no, @lines, %seen, $subr);
+
+   for my $frame (reverse $self->trace->frames) {
+      unless ($l_no = $seen{ $frame->package } and $l_no == $frame->line) {
+         $subr and push @lines, join SPC, $subr, 'line', $frame->line;
+         $seen{ $frame->package } = $frame->line;
+      }
+
+      $subr = $frame->subroutine;
+   }
+
+   defined $skip or $skip = 1; pop @lines while ($skip--);
+
+   return wantarray ? reverse @lines : (join "\n", reverse @lines)."\n";
 }
 
 sub throw {
    my ($self, @rest) = @_;
 
-   croak $rest[0] if ($rest[0] and ref $rest[0]);
+   croak __is_one_of_us( $rest[ 0 ] ) ? $rest[ 0 ] : $self->new( @rest );
+}
 
-   my @args = @rest == 1 ? ( error => $rest[0] ) : @rest;
+sub throw_on_error {
+   my ($self, @rest) = @_;
 
-   croak $self->new( args           => [],
-                     ignore_package => $IGNORE,
-                     out            => $NUL,
-                     rv             => 1,
-                     show_trace     => 0,
-                     @args );
+   my $e; $e = $self->catch( @rest ) and $self->throw( $e );
+
+   return;
+}
+
+# Private subroutines
+
+sub __arg_list {
+   return $_[ 0 ] && ref $_[ 0 ] eq HASH ? { %{ $_[ 0 ] } }
+        : $_[ 0 ] && defined $_[ 1 ]     ? { @_ }
+                                         : { error => $_[ 0 ] };
+}
+
+sub __is_one_of_us {
+   return $_[ 0 ] && blessed $_[ 0 ] && $_[ 0 ]->isa( __PACKAGE__ );
 }
 
 1;
@@ -80,18 +119,24 @@ CatalystX::Usul::Exception - Exception base class
 
 =head1 Version
 
-0.3.$Revision: 596 $
+0.4.$Revision: 1091 $
 
 =head1 Synopsis
 
    use base qw(CatalystX::Usul);
 
+   use Try::Tiny;
+
    sub some_method {
-      my $self = shift; my $e;
+      my $self = shift;
 
-      eval { this_will_fail }
+      eval  { this_will_fail };
+      $self->throw_on_error;
 
-      $self->throw( $e ) if ($e = $self->catch);
+      OR
+
+      try   { this_will_fail }
+      catch { $self->throw( $_ ) };
    }
 
 =head1 Description
@@ -101,47 +146,41 @@ semantics. Inherits from L<Exception::Class>
 
 =head1 Subroutines/Methods
 
+=head2 new
+
+Create an exception object. You probably do not want to call this directly,
+but indirectly through L</catch> and L</throw>
+
+Calls the L</full_message> method if asked to serialize
+
 =head2 catch
 
 Catches and returns a thrown exception or generates a new exception if
-I<EVAL_ERROR> has been set
+I<EVAL_ERROR> has been set. Returns either an exception object or undef
 
-=head2 as_string
+=head2 full_message
 
-   warn $e->as_string( $verbosity, $offset );
+This is what the object stringifies to
 
-Serialise the exception to a string. The passed parameters; I<verbosity>
-and I<offset> determine how much output is returned.
+=head2 stacktrace
 
-The I<verbosity> parameter can be:
+   $lines = $e->stacktrace( $num_lines_to_skip );
 
-=over 3
-
-=item 1
-
-The default value. Only show a stack trace if C<< $self->show_trace >> is true
-
-=item 2
-
-Always show the stack trace and start at frame I<offset> which
-defaults to 1. The stack trace stops when the first duplicate output
-line is detected
-
-=item 3
-
-Always shows the complete stack trace starting at frame 0
-
-=back
+Return the stack trace. Defaults to skipping one (the first) line of output
 
 =head2 throw
 
 Create (or re-throw) an exception to be caught by the catch above. If
-the passed parameter is a reference it is re-thrown. If a single scalar
-is passed it is taken to be an error message code, a new exception is
-created with all other parameters taking their default values. If more
-than one parameter is passed the it is treated as a list and used to
-instantiate the new exception. The 'error' parameter must be provided
-in this case
+the passed parameter is a blessed reference it is re-thrown. If a
+single scalar is passed it is taken to be an error message code, a new
+exception is created with all other parameters taking their default
+values. If more than one parameter is passed the it is treated as a
+list and used to instantiate the new exception. The 'error' parameter
+must be provided in this case
+
+=head2 throw_on_error
+
+Calls L</catch> and if the was an exception L</throw>s it
 
 =head1 Diagnostics
 
@@ -158,7 +197,9 @@ should be suppressed in the stack trace output
 
 =item L<Exception::Class>
 
-=item L<List::Util>
+=item L<MRO::Compat>
+
+=item L<Scalar::Util>
 
 =back
 

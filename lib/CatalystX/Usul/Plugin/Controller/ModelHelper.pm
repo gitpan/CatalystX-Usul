@@ -1,41 +1,34 @@
-# @(#)$Id: ModelHelper.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: ModelHelper.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Plugin::Controller::ModelHelper;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 
-my $SEP = q(/);
+use CatalystX::Usul::Constants;
 
-sub add_sidebar_panel {
-   # Add an Ajax call to the side bar accordion widget
-   my ($self, $c, @rest) = @_; my $e;
-
-   my $pno = eval { $c->model( q(Base) )->add_sidebar_panel( @rest ) };
-
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   return $pno;
+sub add_header {
+   my ($self, $c) = @_; return $c->stash->{nav_model}->add_header;
 }
 
 sub check_field {
    # Process Ajax calls to validate form field values
-   my ($self, $c) = @_; $c->model( q(Base) )->check_field_wrapper; return;
+   my ($self, $c) = @_;
+
+   return $c->model( $self->model_base_class )->check_field_wrapper;
 }
 
 sub close_footer {
    # Prevent the footer div from displaying
    my ($self, $c) = @_; my $s = $c->stash;
 
-   if ($s->{fstate}) {
-      if ($self->can( q(set_cookies) )) {
-         $self->set_cookie( $c, { name => $s->{cname},
-                                  key  => q(footer), value => q(false) } );
-      }
-
-      $s->{fstate} = 0;
+   if ($s->{footer}->{state}) {
+      $self->can( q(set_cookies) )
+         and $self->set_cookie( $c, { name  => $s->{cookie_prefix}.q(_state),
+                                      key   => q(footer),
+                                      value => q(false) } );
+      $s->{footer}->{state} = FALSE;
    }
 
    return;
@@ -46,32 +39,10 @@ sub close_sidebar {
    my ($self, $c) = @_; my $s = $c->stash;
 
    if ($s->{sbstate}) {
-      if ($self->can( q(delete_cookie) )) {
-         $self->delete_cookie( $c, { name => $s->{cname},
-                                     key  => q(sidebar) } );
-      }
-
-      $s->{sbstate} = 0;
-   }
-
-   return;
-}
-
-sub common {
-   # Most controllers will want to add these things to the stash
-   my ($self, $c, $footer_model, $header_model) = @_; my $e;
-
-   $footer_model ||= $c->model( q(Base) );
-   $header_model ||= $c->model( q(Navigation) );
-
-   eval {
-      $header_model->add_header;
-      $footer_model->add_footer;
-   };
-
-   if ($e = $self->catch) {
-      $self->error_page( $c, $e->as_string );
-      $c->detach; # Never returns
+      $self->can( q(delete_cookie) )
+         and $self->delete_cookie( $c, { name => $s->{cookie_prefix}.q(_state),
+                                         key  => q(sidebar) } );
+      $s->{sbstate} = FALSE;
    }
 
    return;
@@ -79,40 +50,27 @@ sub common {
 
 sub default {
    # Award the luser a 404
-   my ($self, $c) = @_; my $s = $c->stash; my $e;
+   my ($self, $c) = @_; my $action = $c->action; $c->res->redirect and return;
 
-   return if ($c->res->redirect);
+   $c->stash->{request_path} = $c->req->path;
 
-   my $model = $c->model( q(Navigation) );
+   $self->add_header( $c ); $self->reset_nav_menu( $c, q(back) );
 
-   eval {
-      $model->clear_controls;
-      $model->add_menu_back;
-      $model->simple_page( q(default) );
-   };
+   $action->namespace( NUL ); $action->name( q(default) );
 
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   $s->{request_path} = $c->req->path;
-   $c->action->reverse( q(default) );
    $c->res->status( 404 );
    return;
 }
 
 sub help {
    # Generate the context sensitive help from the POD in the code
-   my ($self, $c, @args) = @_; my $e;
+   my ($self, $c, $name) = @_; $name = ucfirst ($name || q(root));
 
-   my $model = $c->model( q(Help) );
+   $self->add_header( $c ); $c->stash( is_popup => q(true) );
 
-   eval {
-      $model->add_header;
-      $model->get_help( @args );
-   };
+   my $module = $c->config->{name}.q(::Controller::).$name;
 
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
-   $self->set_popup( $c );
+   $c->model( $self->help_class )->module_docs( $module, $name );
    return;
 }
 
@@ -120,9 +78,12 @@ sub open_footer {
    # Force the footer into the open state
    my ($self, $c) = @_; my $s = $c->stash;
 
-   if (not $s->{fstate} and $self->can( q(set_cookie) )) {
-      $self->set_cookie( $c, { name => $s->{cname},
-                               key  => q(footer), value => q(true) } );
+   unless ($s->{footer}->{state}) {
+      $self->can( q(set_cookie) )
+         and $self->set_cookie( $c, { name  => $s->{cookie_prefix}.q(_state),
+                                      key   => q(footer),
+                                      value => q(true) } );
+      $s->{footer}->{state} = TRUE;
    }
 
    return;
@@ -132,47 +93,57 @@ sub open_sidebar {
    # Force the side bar into an open state
    my ($self, $c) = @_; my $s = $c->stash;
 
-   if (not $s->{sbstate} and $self->can( q(set_cookie) )) {
-      $self->set_cookie( $c, { key   => q(sidebar), name => $s->{cname},
-                               value => $s->{assets}.q(pushedpin.gif) } );
-   }
-
+   not $s->{sbstate} and $self->can( q(set_cookie) )
+      and $self->set_cookie( $c, { name  => $s->{cookie_prefix}.q(_state),
+                                   key   => q(sidebar),
+                                   value => q(pushedpin_icon) } );
    return;
 }
 
-sub overview {
-   # Respond to the ajax call for some info about the side bar accordion
-   my ($self, $c) = @_; my $e;
+sub reset_nav_menu {
+   my ($self, $c, $key, $args) = @_; $key ||= NUL;
 
-   eval { $c->model( q(Help) )->overview };
+   my $nav = $c->stash->{nav_model}; $nav->clear_controls;
 
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
+   if    ($key eq q(back) ) { $nav->add_menu_back ( $args ) }
+   elsif ($key eq q(blank)) { $nav->add_menu_blank( $args ) }
+   elsif ($key eq q(close)) { $nav->add_menu_close( $args ) }
 
-   return;
+   return $nav;
 }
 
 sub select_sidebar_panel {
    my ($self, $c, $pno) = @_;
 
-   if ($self->can( q(set_cookie) )) {
-      $self->set_cookie( $c, { name  => $c->stash->{cname},
-                               key   => q(sidebarPanel), value => $pno } );
-   }
-
+   $self->can( q(set_cookie) ) and $self->set_cookie( $c, {
+      name  => $c->stash->{cookie_prefix}.q(_state),
+      key   => q(sidebarPanel),
+      value => $pno } );
    return;
 }
 
 sub set_popup {
-   my ($self, $c, $args) = @_; my $model = $c->model( q(Navigation) ); my $e;
+   my ($self, $c, @rest) = @_;
 
-   eval {
-      $model->clear_controls;
-      $model->add_menu_close( $args );
-   };
-
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
+   $self->add_header( $c ); $self->reset_nav_menu( $c, @rest );
    $c->stash( is_popup => q(true) );
+   return;
+}
+
+sub set_identity_model {
+   my ($self, $c) = @_; my $model_name;
+
+   my $model = $c->model( $self->realm_class );
+   my $realm = $self->get_uri_query_params( $c )->{realm}
+            || $model->default_realm;
+
+   ($model_name, $realm)
+          = $model->get_identity_model_name( $self->realm_class, $realm );
+   $model = $c->model( $model_name );
+
+   $c->stash( role_model => $model->roles,
+              user_model => $model->users,
+              user_realm => $realm );
    return;
 }
 
@@ -188,17 +159,15 @@ CatalystX::Usul::Plugin::Controller::ModelHelper - Convenience methods for commo
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
    package CatalystX::Usul;
-   use parent qw(Catalyst::Component CatalystX::Usul::Base);
+   use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
 
    package CatalystX::Usul::Controller;
-   use parent qw(CatalystX::Usul
-                 CatalystX::Usul::ModelHelper
-                 Catalyst::Controller);
+   use parent qw(Catalyst::Controller CatalystX::Usul);
 
    package YourApp::Controller::YourController;
    use parent qw(CatalystX::Usul::Controller);
@@ -209,15 +178,9 @@ Many convenience methods for common model calls
 
 =head1 Subroutines/Methods
 
-=head2 add_result
+=head2 add_header
 
-Add a message to the results div
-
-=head2 add_sidebar_panel
-
-Calls method of the same name in the base model class to stuff the
-stash with the data necessary to create a panel in the accordion
-widget on the sidebar
+Calls method of the same name on the navigation model
 
 =head2 check_field
 
@@ -231,16 +194,6 @@ Forces the footer to not be displayed when the page is rendered
 =head2 close_sidebar
 
 Forces the sidebar to not be displayed when the page is rendered
-
-=head2 common
-
-Sets stash values for the navigation menus, tools menus, the footer,
-quick links and recovers the keys for the current form
-from the session store
-
-Calls L<add_header|CatalystX::Usul::Model::Navigation>
-
-Calls L<add_footer|CatalystX::Usul::Model>
 
 =head2 default
 
@@ -262,10 +215,6 @@ the footer to appear in the generated page
 Sets the key/value pair in the browser state cookie that will cause
 the sidebar to appear in the generated page
 
-=head2 overview
-
-Generates some blurb for the Overview panel of the sidebar accordion widget
-
 =head2 query_array
 
 Exposes the method of the same name in the base model class
@@ -274,9 +223,24 @@ Exposes the method of the same name in the base model class
 
 Exposes the method of the same name in the base model class
 
+=head2 reset_nav_menu
+
+   $model_obj = $self->reset_nav_menu( $c, $key );
+
+Calls L<add_header|CatalystX::Usul::Model::Navigation/add_header> and
+L<clear_controls|CatalystX::Usul::Model::Navigation/clear_controls> on
+the stashed C<nav_model>.  Optionally calls an C<add_menu_*> method on
+the stashed C<nav_model> if C<$key> is one of; I<back>, I<blank>, or
+C<close>. Returns the stashed C<nav_model> object
+
 =head2 select_sidebar_panel
 
 Set the cookie that controls which sidebar panel is visible
+
+=head2 set_identity_model
+
+Stashes currently selected realm name. Determines and stashes the current
+user and roles models based on the current realm
 
 =head2 set_popup
 

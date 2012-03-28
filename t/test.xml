@@ -1,3 +1,4 @@
+<!ELEMENT credentials (ARRAY)*>
 <config>
   <credentials>
     <name>library</name>

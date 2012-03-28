@@ -1,5 +1,39 @@
 Revision history for CatalystX::Usul
 
+0.4.1133 2012-03-28
+         - Updated inc::Bob. Added inc::CPANTesting
+         - Added language select
+         - Updated Moose / Class::MOP / MRO::Compat dependencies
+         - Switched to using GNU Gettext po files for L10N
+         - Updated inc::Bob
+         - Moved authenticate methods from controller to user interface model
+         - No longer uses xml config files for message catalog
+         - Config model strips carriage returns from posted forms
+         - Turned more methods from Base into functions
+         - Create_token now function
+         - Added editing of Gettext po files
+         - Refactored Controller replaced methods with functions
+         - Users::UnixAdmin updates the project text
+         - Users model no longer uses HTML::Accessors
+         - Moved boilerplate M::B subclass code to inc/Bob.pm
+         - Suppressed Konig CPAN testing again
+         - Updated exception handling class
+         - Now using TryCatch
+         - Added optional Tree field to sitemap
+         - Created CX::Usul::Constants
+         - Build.pm no longer uses notes field
+         - Refactored localize. Removed markdown
+
+0.3.636  05/07/2009
+         - Switched to C::P::ContextualUriFor
+
+0.3.632
+         - Only call self uri_for
+         - Refactored uri_for
+         - Changed the way default_action works in get_action. Now
+           defaults to default
+         - Refactored Build.pm
+
 0.3.625  30/06/2009
          - DB password encryption no longer userid dependent
          - Users::DBIC should release lock if cannot connect to database

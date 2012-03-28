@@ -1,361 +1,395 @@
 ---
-name: CatalystX-Usul
-version: 0.3.625
+abstract: 'A base class for Catalyst MVC components'
 author:
   - 'Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>'
-abstract: A base class for Catalyst MVC components
-license: perl
-resources:
-  bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=CatalystX-Usul
-  homepage: http://www.roxsoft.co.uk
-  license: http://dev.perl.org/licenses/
+build_requires:
+  Class::Null: 1.09
+  Exception::Class: 1.23
+  Test::More: 0.74
 configure_requires:
-  ExtUtils::MakeMaker: 6.42
-  version: 0.74
+  Module::Build: 0.37
+  version: 0.87
+dynamic_config: 1
+generated_by: 'Module::Build version 0.38, CPAN::Meta::Converter version 2.112621'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: CatalystX-Usul
+no_index:
+  directory:
+    - examples
+    - inc
+    - t
+provides:
+  CatalystX::Usul:
+    file: lib/CatalystX/Usul.pm
+    version: v0.4.1133
+  CatalystX::Usul::Action:
+    file: lib/CatalystX/Usul/Action.pm
+    version: v0.4.1095
+  CatalystX::Usul::Admin:
+    file: lib/CatalystX/Usul/Admin.pm
+    version: v0.5.1123
+  CatalystX::Usul::Authentication:
+    file: lib/CatalystX/Usul/Authentication.pm
+    version: v0.4.730
+  CatalystX::Usul::Base:
+    file: lib/CatalystX/Usul/Base.pm
+    version: v0.4.1095
+  CatalystX::Usul::Build:
+    file: lib/CatalystX/Usul/Build.pm
+    version: v0.4.1092
+  CatalystX::Usul::CLI:
+    file: lib/CatalystX/Usul/CLI.pm
+    version: v0.5.1097
+  CatalystX::Usul::Captcha:
+    file: lib/CatalystX/Usul/Captcha.pm
+    version: v0.4.975
+  CatalystX::Usul::Config:
+    file: lib/CatalystX/Usul/Config.pm
+    version: v0.4.1082
+  CatalystX::Usul::Constants:
+    file: lib/CatalystX/Usul/Constants.pm
+    version: v0.4.1127
+  CatalystX::Usul::Controller:
+    file: lib/CatalystX/Usul/Controller.pm
+    version: v0.4.1118
+  CatalystX::Usul::Controller::Admin:
+    file: lib/CatalystX/Usul/Controller/Admin.pm
+    version: v0.4.1095
+  CatalystX::Usul::Controller::Admin::Backup:
+    file: lib/CatalystX/Usul/Controller/Admin/Backup.pm
+    version: v0.4.953
+  CatalystX::Usul::Controller::Admin::Config:
+    file: lib/CatalystX/Usul/Controller/Admin/Config.pm
+    version: v0.4.1056
+  CatalystX::Usul::Controller::Admin::Locks:
+    file: lib/CatalystX/Usul/Controller/Admin/Locks.pm
+    version: v0.4.1062
+  CatalystX::Usul::Controller::Admin::Navigation:
+    file: lib/CatalystX/Usul/Controller/Admin/Navigation.pm
+    version: v0.4.930
+  CatalystX::Usul::Controller::Admin::Processes:
+    file: lib/CatalystX/Usul/Controller/Admin/Processes.pm
+    version: v0.4.873
+  CatalystX::Usul::Controller::Admin::RoleManager:
+    file: lib/CatalystX/Usul/Controller/Admin/RoleManager.pm
+    version: v0.4.891
+  CatalystX::Usul::Controller::Admin::UserManager:
+    file: lib/CatalystX/Usul/Controller/Admin/UserManager.pm
+    version: v0.4.941
+  CatalystX::Usul::Controller::Entrance:
+    file: lib/CatalystX/Usul/Controller/Entrance.pm
+    version: v0.4.1095
+  CatalystX::Usul::Controller::Root:
+    file: lib/CatalystX/Usul/Controller/Root.pm
+    version: v0.4.1116
+  CatalystX::Usul::Email:
+    file: lib/CatalystX/Usul/Email.pm
+    version: v0.4.1062
+  CatalystX::Usul::Encoding:
+    file: lib/CatalystX/Usul/Encoding.pm
+    version: v0.4.1062
+  CatalystX::Usul::Exception:
+    file: lib/CatalystX/Usul/Exception.pm
+    version: v0.4.1091
+  CatalystX::Usul::File:
+    file: lib/CatalystX/Usul/File.pm
+    version: v0.4.1087
+  CatalystX::Usul::FileSystem:
+    file: lib/CatalystX/Usul/FileSystem.pm
+    version: v0.4.1097
+  CatalystX::Usul::Functions:
+    file: lib/CatalystX/Usul/Functions.pm
+    version: v0.4.1127
+  CatalystX::Usul::IPC:
+    file: lib/CatalystX/Usul/IPC.pm
+    version: v0.4.1091
+  CatalystX::Usul::IPC::Response:
+    file: lib/CatalystX/Usul/IPC/Response.pm
+    version: v0.4.730
+  CatalystX::Usul::InflateSymbols:
+    file: lib/CatalystX/Usul/InflateSymbols.pm
+    version: v0.4.1072
+  CatalystX::Usul::L10N:
+    file: lib/CatalystX/Usul/L10N.pm
+    version: v0.4.1098
+  CatalystX::Usul::Log:
+    file: lib/CatalystX/Usul/Log.pm
+    version: v0.4.1062
+  CatalystX::Usul::Model:
+    file: lib/CatalystX/Usul/Model.pm
+    version: v0.4.1128
+  CatalystX::Usul::Model::Config:
+    file: lib/CatalystX/Usul/Model/Config.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Config::Buttons:
+    file: lib/CatalystX/Usul/Model/Config/Buttons.pm
+    version: v0.4.1091
+  CatalystX::Usul::Model::Config::Credentials:
+    file: lib/CatalystX/Usul/Model/Config/Credentials.pm
+    version: v0.4.959
+  CatalystX::Usul::Model::Config::Fields:
+    file: lib/CatalystX/Usul/Model/Config/Fields.pm
+    version: v0.4.1076
+  CatalystX::Usul::Model::Config::Globals:
+    file: lib/CatalystX/Usul/Model/Config/Globals.pm
+    version: v0.4.1062
+  CatalystX::Usul::Model::Config::Keys:
+    file: lib/CatalystX/Usul/Model/Config/Keys.pm
+    version: v0.4.1065
+  CatalystX::Usul::Model::Config::Levels:
+    file: lib/CatalystX/Usul/Model/Config/Levels.pm
+    version: v0.4.891
+  CatalystX::Usul::Model::Config::Messages:
+    file: lib/CatalystX/Usul/Model/Config/Messages.pm
+    version: v0.4.1084
+  CatalystX::Usul::Model::Config::Rooms:
+    file: lib/CatalystX/Usul/Model/Config/Rooms.pm
+    version: v0.4.891
+  CatalystX::Usul::Model::FileSystem:
+    file: lib/CatalystX/Usul/Model/FileSystem.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Help:
+    file: lib/CatalystX/Usul/Model/Help.pm
+    version: v0.4.1123
+  CatalystX::Usul::Model::Identity:
+    file: lib/CatalystX/Usul/Model/Identity.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Imager:
+    file: lib/CatalystX/Usul/Model/Imager.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::MailAliases:
+    file: lib/CatalystX/Usul/Model/MailAliases.pm
+    version: v0.4.1062
+  CatalystX::Usul::Model::Navigation:
+    file: lib/CatalystX/Usul/Model/Navigation.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Process:
+    file: lib/CatalystX/Usul/Model/Process.pm
+    version: v0.4.1062
+  CatalystX::Usul::Model::Roles:
+    file: lib/CatalystX/Usul/Model/Roles.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Schema:
+    file: lib/CatalystX/Usul/Model/Schema.pm
+    version: v0.4.994
+  CatalystX::Usul::Model::Session:
+    file: lib/CatalystX/Usul/Model/Session.pm
+    version: v0.4.959
+  CatalystX::Usul::Model::TapeBackup:
+    file: lib/CatalystX/Usul/Model/TapeBackup.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Templates:
+    file: lib/CatalystX/Usul/Model/Templates.pm
+    version: v0.1.1083
+  CatalystX::Usul::Model::UserProfiles:
+    file: lib/CatalystX/Usul/Model/UserProfiles.pm
+    version: v0.4.1097
+  CatalystX::Usul::Model::Users:
+    file: lib/CatalystX/Usul/Model/Users.pm
+    version: v0.4.1097
+  CatalystX::Usul::Plugin::Controller::Cookies:
+    file: lib/CatalystX/Usul/Plugin/Controller/Cookies.pm
+    version: v0.4.915
+  CatalystX::Usul::Plugin::Controller::ModelHelper:
+    file: lib/CatalystX/Usul/Plugin/Controller/ModelHelper.pm
+    version: v0.4.1097
+  CatalystX::Usul::Plugin::Controller::PersistentState:
+    file: lib/CatalystX/Usul/Plugin/Controller/PersistentState.pm
+    version: v0.4.1091
+  CatalystX::Usul::Plugin::Controller::TokenValidation:
+    file: lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
+    version: v0.4.1095
+  CatalystX::Usul::Plugin::Model::StashHelper:
+    file: lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
+    version: v0.4.1116
+  CatalystX::Usul::Programs:
+    file: lib/CatalystX/Usul/Programs.pm
+    version: v0.4.1127
+  CatalystX::Usul::ProjectDocs:
+    file: lib/CatalystX/Usul/ProjectDocs.pm
+    version: v0.4.980
+  CatalystX::Usul::Roles:
+    file: lib/CatalystX/Usul/Roles.pm
+    version: v0.4.1097
+  CatalystX::Usul::Roles::DBIC:
+    file: lib/CatalystX/Usul/Roles/DBIC.pm
+    version: v0.4.1097
+  CatalystX::Usul::Roles::Simple:
+    file: lib/CatalystX/Usul/Roles/Simple.pm
+    version: v0.4.1097
+  CatalystX::Usul::Roles::Unix:
+    file: lib/CatalystX/Usul/Roles/Unix.pm
+    version: v0.4.1097
+  CatalystX::Usul::Schema:
+    file: lib/CatalystX/Usul/Schema.pm
+    version: v0.4.1126
+  CatalystX::Usul::Shells:
+    file: lib/CatalystX/Usul/Shells.pm
+    version: v0.4.1097
+  CatalystX::Usul::Table:
+    file: lib/CatalystX/Usul/Table.pm
+    version: v0.4.1065
+  CatalystX::Usul::TapeBackup:
+    file: lib/CatalystX/Usul/TapeBackup.pm
+    version: v0.4.1097
+  CatalystX::Usul::Time:
+    file: lib/CatalystX/Usul/Time.pm
+    version: v0.4.985
+  CatalystX::Usul::TraitFor::Engine::DumpInfo:
+    file: lib/CatalystX/Usul/TraitFor/Engine/DumpInfo.pm
+    version: v0.4.1106
+  CatalystX::Usul::TraitFor::ListSessions:
+    file: lib/CatalystX/Usul/TraitFor/ListSessions.pm
+    version: v0.4.1109
+  CatalystX::Usul::TraitFor::LogRequest:
+    file: lib/CatalystX/Usul/TraitFor/LogRequest.pm
+    version: v0.4.1109
+  CatalystX::Usul::UserProfiles:
+    file: lib/CatalystX/Usul/UserProfiles.pm
+    version: v0.4.838
+  CatalystX::Usul::Users:
+    file: lib/CatalystX/Usul/Users.pm
+    version: v0.4.1097
+  CatalystX::Usul::Users::DBIC:
+    file: lib/CatalystX/Usul/Users/DBIC.pm
+    version: v0.4.1097
+  CatalystX::Usul::Users::Simple:
+    file: lib/CatalystX/Usul/Users/Simple.pm
+    version: v0.4.1097
+  CatalystX::Usul::Users::Unix:
+    file: lib/CatalystX/Usul/Users/Unix.pm
+    version: v0.4.1097
+  CatalystX::Usul::Users::UnixAdmin:
+    file: lib/CatalystX/Usul/Users/UnixAdmin.pm
+    version: v0.4.1062
+  CatalystX::Usul::View:
+    file: lib/CatalystX/Usul/View.pm
+    version: v0.4.1097
+  CatalystX::Usul::View::HTML:
+    file: lib/CatalystX/Usul/View/HTML.pm
+    version: v0.4.1097
+  CatalystX::Usul::View::JSON:
+    file: lib/CatalystX/Usul/View/JSON.pm
+    version: v0.4.1012
+  CatalystX::Usul::View::Serializer:
+    file: lib/CatalystX/Usul/View/Serializer.pm
+    version: v0.4.1062
+  CatalystX::Usul::View::XML:
+    file: lib/CatalystX/Usul/View/XML.pm
+    version: v0.4.1093
+recommends:
+  CPAN: 1.9205
+  Crypt::PassGen: 0.05
+  GD::SecurityImage: 1.7
+  IPC::Run: 0.84
+  Pod::ProjectDocs: 0.36
+  Proc::ProcessTable: 0.4
+  Syntax::Highlight::Perl: 1
+  local::lib: 1.008004
 requires:
   Cache::FastMmap: 1.09
   Carp: 0
-  Catalyst: 5.7015
-  Catalyst::Engine::Apache: 1.11
-  Catalyst::Model::DBIC::Schema: 0.2
-  Catalyst::Plugin::Authentication: 0.10006
-  Catalyst::Plugin::ConfigComponents: 0.4.115
+  Catalyst: 5.9001
+  Catalyst::Action::RenderView: 0.16
+  Catalyst::Model::DBIC::Schema: 0.48
+  Catalyst::Plugin::Authentication: 0.10016
+  Catalyst::Plugin::ConfigComponents: v0.5.0
   Catalyst::Plugin::ConfigLoader: 0.19
-  Catalyst::Plugin::FillInForm: 0.06
-  Catalyst::Plugin::InflateMore: 0.2.66
-  Catalyst::Plugin::Log::Handler: 0.07
-  Catalyst::Plugin::Session::State::Cookie: 0.09
-  Catalyst::Plugin::Session::Store::FastMmap: 0.05
-  Catalyst::Plugin::Static::Simple: 0.2
-  Catalyst::View::TT: 0.26
+  Catalyst::Plugin::InflateMore: v0.3.0
+  Catalyst::Plugin::Log::Handler: 0.08
+  Catalyst::Plugin::Session: 0.31
+  Catalyst::Plugin::Session::State::Cookie: 0.17
+  Catalyst::Plugin::Session::Store::FastMmap: 0.14
+  Catalyst::Plugin::Static::Simple: 0.29
+  Catalyst::View::TT: 0.34
+  CatalystX::Component::Traits: 0.16
   Class::Accessor::Grouped: 0.08002
-  Class::C3: 0.19
-  Class::MOP: 0.84
+  Class::Inspector: 1.24
+  Class::Null: 1.09
   Crypt::CBC: 2.3
-  Crypt::PassGen: 0.05
+  Crypt::Eksblowfish: 0.009
   Crypt::Twofish: 2.12
   DBIx::Class: 0.08009
   Data::Pageset: 1.03
+  Data::Printer: 0.24
   Data::Serializer: 0.46
-  Data::Validation: 0.4.114
+  Data::Validation: v0.6.0
   Date::Format: 2.22
   DateTime::Format::Epoch: 0.11
   Digest::SHA1: 2.11
-  Email::MIME: 1.861
-  Email::MIME::Creator: 1.454
-  Email::MIME::Modifier: 1.444
-  Email::Send: 2.192
+  Email::Date::Format: 1.002
+  Email::MIME: 1.9
+  Email::Sender: 0.09338
   Encode: 2.12
   Encode::Guess: 2
   Exception::Class: 1.23
+  File::DataClass: v0.7.343
   File::Find: 1.1
+  File::HomeDir: 0.89
   File::Path: 2.07
   File::Remove: 0.34
   File::Temp: 0.2
   Getopt::Mixed: 1.008
-  HTML::Accessors: 0.2.77
-  HTML::FormWidgets: 0.5.200
+  Git::Class: 0.03
+  HTML::FillInForm: 2
+  HTML::FormWidgets: v0.11.0
+  HTTP::Date: 5.831
+  HTTP::DetectUserAgent: 0.02
   HTTP::Headers::Util: 1.13
   Hash::Merge: 0.08
   IO::Dir: 1.06
   IO::File: 1.14
-  IO::Interactive: 0.0.3
+  IO::Interactive: v0.0.3
+  IPC::Cmd: 0.42
   IPC::Open3: 1.02
-  IPC::SRLock: 0.3.137
+  IPC::SRLock: v0.6.0
   IPC::SysV: 1.04
   Imager: 0.65
   JSON: 2.12
   Lingua::EN::NameParse: 1.24
-  Lingua::Flags: 0.04
-  Log::Handler: 0.11
+  Log::Handler: 0.63
   MIME::Types: 1.23
-  Module::Build: 0.2805
+  Module::Build: 0.37
+  Module::CoreList: 2.24
+  Module::Load::Conditional: 0.26
+  Module::Metadata: 1.000004
   Module::Pluggable::Object: 3.6
+  Moose: 2.0402
+  MooseX::ClassAttribute: 0.18
+  MooseX::MethodAttributes: 0.24
+  MooseX::Role::Parameterized: 0.19
+  MooseX::Role::WithOverloading: 0.08
+  MooseX::Traits::Pluggable: 0.1
   POSIX: 1.09
   Path::Class: 0.16
-  Proc::ProcessTable: 0.4
+  Perl::Version: 1.009
+  Pod::Eventual: 0.09333
+  Pod::Man: 2.22
+  Pod::Parser: 1.37
   SQL::Translator: 0.09001
   SVN::Class: 0.12
+  Safe: 2.27
+  Scalar::Util: 1.19
   Template: 2.18
   Term::ReadKey: 2.3
   Text::Autoformat: 1.13
-  Text::Markdown: 1.0.20
   Text::Tabs: 2005.0824
+  Text::Wrap: 2005.082401
   Time::Elapsed: 0.1
   Time::Zone: 2.22
-  Unix::GroupFile: 0.06
-  XML::Bare: 0.3
+  TryCatch: 1.002
   XML::Simple: 2.14
   YAML::Syck: 1.05
+  attributes: 0.09
+  namespace::autoclean: 0.09
   parent: 0.221
   perl: 5.008
-  version: 0.74
-build_requires:
-  Exception::Class: 1.23
-  Test::More: 0.74
-recommends:
-  CPAN: 1.9205
-  Catalyst::Engine::HTTP::Prefork: 0.01
-  Catalyst::Plugin::Captcha: 0.03
-  Pod::ProjectDocs: 0.36
-  Syntax::Highlight::Perl: 1
-provides:
-  CatalystX::Usul:
-    file: lib/CatalystX/Usul.pm
-    version: 0.3.625
-  CatalystX::Usul::Action:
-    file: lib/CatalystX/Usul/Action.pm
-    version: 0.3.576
-  CatalystX::Usul::Authentication:
-    file: lib/CatalystX/Usul/Authentication.pm
-    version: 0.3.576
-  CatalystX::Usul::Base:
-    file: lib/CatalystX/Usul/Base.pm
-    version: 0.3.611
-  CatalystX::Usul::Build:
-    file: lib/CatalystX/Usul/Build.pm
-    version: 0.3.624
-  CatalystX::Usul::Controller:
-    file: lib/CatalystX/Usul/Controller.pm
-    version: 0.3.589
-  CatalystX::Usul::Controller::Admin:
-    file: lib/CatalystX/Usul/Controller/Admin.pm
-    version: 0.3.584
-  CatalystX::Usul::Controller::Admin::Backup:
-    file: lib/CatalystX/Usul/Controller/Admin/Backup.pm
-    version: 0.3.584
-  CatalystX::Usul::Controller::Admin::Config:
-    file: lib/CatalystX/Usul/Controller/Admin/Config.pm
-    version: 0.3.576
-  CatalystX::Usul::Controller::Admin::Locks:
-    file: lib/CatalystX/Usul/Controller/Admin/Locks.pm
-    version: 0.3.576
-  CatalystX::Usul::Controller::Admin::Navigation:
-    file: lib/CatalystX/Usul/Controller/Admin/Navigation.pm
-    version: 0.3.590
-  CatalystX::Usul::Controller::Admin::Processes:
-    file: lib/CatalystX/Usul/Controller/Admin/Processes.pm
-    version: 0.3.576
-  CatalystX::Usul::Controller::Admin::RoleManager:
-    file: lib/CatalystX/Usul/Controller/Admin/RoleManager.pm
-    version: 0.3.576
-  CatalystX::Usul::Controller::Admin::UserManager:
-    file: lib/CatalystX/Usul/Controller/Admin/UserManager.pm
-    version: 0.3.576
-  CatalystX::Usul::Controller::Entrance:
-    file: lib/CatalystX/Usul/Controller/Entrance.pm
-    version: 0.3.584
-  CatalystX::Usul::Controller::Root:
-    file: lib/CatalystX/Usul/Controller/Root.pm
-    version: 0.3.576
-  CatalystX::Usul::Encoding:
-    file: lib/CatalystX/Usul/Encoding.pm
-    version: 0.3.576
-  CatalystX::Usul::Exception:
-    file: lib/CatalystX/Usul/Exception.pm
-    version: 0.3.596
-  CatalystX::Usul::File:
-    file: lib/CatalystX/Usul/File.pm
-    version: 0.3.576
-  CatalystX::Usul::File::Element:
-    file: lib/CatalystX/Usul/File/Element.pm
-    version: 0.3.576
-  CatalystX::Usul::File::HashMerge:
-    file: lib/CatalystX/Usul/File/HashMerge.pm
-    version: 0.3.597
-  CatalystX::Usul::File::IO:
-    file: lib/CatalystX/Usul/File/IO.pm
-    version: 0.3.576
-  CatalystX::Usul::File::List:
-    file: lib/CatalystX/Usul/File/List.pm
-    version: 0.3.576
-  CatalystX::Usul::File::ResultSet:
-    file: lib/CatalystX/Usul/File/ResultSet.pm
-    version: 0.3.576
-  CatalystX::Usul::File::ResultSource:
-    file: lib/CatalystX/Usul/File/ResultSource.pm
-    version: 0.3.576
-  CatalystX::Usul::File::Schema:
-    file: lib/CatalystX/Usul/File/Schema.pm
-    version: 0.3.576
-  CatalystX::Usul::File::Storage:
-    file: lib/CatalystX/Usul/File/Storage.pm
-    version: 0.3.576
-  CatalystX::Usul::File::Storage::XML:
-    file: lib/CatalystX/Usul/File/Storage/XML.pm
-    version: 0.3.597
-  CatalystX::Usul::File::Storage::XML::Bare:
-    file: lib/CatalystX/Usul/File/Storage/XML/Bare.pm
-    version: 0.3.576
-  CatalystX::Usul::File::Storage::XML::Simple:
-    file: lib/CatalystX/Usul/File/Storage/XML/Simple.pm
-    version: 0.3.576
-  CatalystX::Usul::FileSystem:
-    file: lib/CatalystX/Usul/FileSystem.pm
-    version: 0.3.576
-  CatalystX::Usul::InflateSymbols:
-    file: lib/CatalystX/Usul/InflateSymbols.pm
-    version: 0.3.612
-  CatalystX::Usul::MailAliases:
-    file: lib/CatalystX/Usul/MailAliases.pm
-    version: 0.3.584
-  CatalystX::Usul::Model:
-    file: lib/CatalystX/Usul/Model.pm
-    version: 0.3.589
-  CatalystX::Usul::Model::Config:
-    file: lib/CatalystX/Usul/Model/Config.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Config::Buttons:
-    file: lib/CatalystX/Usul/Model/Config/Buttons.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Credentials:
-    file: lib/CatalystX/Usul/Model/Config/Credentials.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Fields:
-    file: lib/CatalystX/Usul/Model/Config/Fields.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Globals:
-    file: lib/CatalystX/Usul/Model/Config/Globals.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Keys:
-    file: lib/CatalystX/Usul/Model/Config/Keys.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Levels:
-    file: lib/CatalystX/Usul/Model/Config/Levels.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Messages:
-    file: lib/CatalystX/Usul/Model/Config/Messages.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Pages:
-    file: lib/CatalystX/Usul/Model/Config/Pages.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::Config::Rooms:
-    file: lib/CatalystX/Usul/Model/Config/Rooms.pm
-    version: 0.3.591
-  CatalystX::Usul::Model::FileSystem:
-    file: lib/CatalystX/Usul/Model/FileSystem.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Help:
-    file: lib/CatalystX/Usul/Model/Help.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Identity:
-    file: lib/CatalystX/Usul/Model/Identity.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Imager:
-    file: lib/CatalystX/Usul/Model/Imager.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::MailAliases:
-    file: lib/CatalystX/Usul/Model/MailAliases.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Navigation:
-    file: lib/CatalystX/Usul/Model/Navigation.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Process:
-    file: lib/CatalystX/Usul/Model/Process.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Roles:
-    file: lib/CatalystX/Usul/Model/Roles.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Schema:
-    file: lib/CatalystX/Usul/Model/Schema.pm
-    version: 0.3.583
-  CatalystX::Usul::Model::Session:
-    file: lib/CatalystX/Usul/Model/Session.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Tapes:
-    file: lib/CatalystX/Usul/Model/Tapes.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::UserProfiles:
-    file: lib/CatalystX/Usul/Model/UserProfiles.pm
-    version: 0.3.576
-  CatalystX::Usul::Model::Users:
-    file: lib/CatalystX/Usul/Model/Users.pm
-    version: 0.3.576
-  CatalystX::Usul::PersistentState:
-    file: lib/CatalystX/Usul/PersistentState.pm
-    version: 0.3.576
-  CatalystX::Usul::Plugin::Controller::Cookies:
-    file: lib/CatalystX/Usul/Plugin/Controller/Cookies.pm
-    version: 0.3.576
-  CatalystX::Usul::Plugin::Controller::ModelHelper:
-    file: lib/CatalystX/Usul/Plugin/Controller/ModelHelper.pm
-    version: 0.3.576
-  CatalystX::Usul::Plugin::Controller::TokenValidation:
-    file: lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
-    version: 0.3.576
-  CatalystX::Usul::Plugin::Model::StashHelper:
-    file: lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
-    version: 0.3.576
-  CatalystX::Usul::Process:
-    file: lib/CatalystX/Usul/Process.pm
-    version: 0.3.576
-  CatalystX::Usul::Programs:
-    file: lib/CatalystX/Usul/Programs.pm
-    version: 0.3.612
-  CatalystX::Usul::ProjectDocs:
-    file: lib/CatalystX/Usul/ProjectDocs.pm
-    version: 0.3.616
-  CatalystX::Usul::Response:
-    file: lib/CatalystX/Usul/Response.pm
-    version: 0.3.576
-  CatalystX::Usul::Roles:
-    file: lib/CatalystX/Usul/Roles.pm
-    version: 0.3.576
-  CatalystX::Usul::Roles::DBIC:
-    file: lib/CatalystX/Usul/Roles/DBIC.pm
-    version: 0.3.576
-  CatalystX::Usul::Roles::Unix:
-    file: lib/CatalystX/Usul/Roles/Unix.pm
-    version: 0.3.576
-  CatalystX::Usul::Schema:
-    file: lib/CatalystX/Usul/Schema.pm
-    version: 0.3.622
-  CatalystX::Usul::Shells:
-    file: lib/CatalystX/Usul/Shells.pm
-    version: 0.3.576
-  CatalystX::Usul::Table:
-    file: lib/CatalystX/Usul/Table.pm
-    version: 0.3.576
-  CatalystX::Usul::TapeDevice:
-    file: lib/CatalystX/Usul/TapeDevice.pm
-    version: 0.3.576
-  CatalystX::Usul::Time:
-    file: lib/CatalystX/Usul/Time.pm
-    version: 0.3.576
-  CatalystX::Usul::Users:
-    file: lib/CatalystX/Usul/Users.pm
-    version: 0.3.576
-  CatalystX::Usul::Users::DBIC:
-    file: lib/CatalystX/Usul/Users/DBIC.pm
-    version: 0.3.619
-  CatalystX::Usul::Users::Suid:
-    file: lib/CatalystX/Usul/Users/Suid.pm
-    version: 0.3.577
-  CatalystX::Usul::Users::Unix:
-    file: lib/CatalystX/Usul/Users/Unix.pm
-    version: 0.3.577
-  CatalystX::Usul::Utils:
-    file: lib/CatalystX/Usul/Utils.pm
-    version: 0.3.576
-  CatalystX::Usul::View:
-    file: lib/CatalystX/Usul/View.pm
-    version: 0.3.576
-  CatalystX::Usul::View::HTML:
-    file: lib/CatalystX/Usul/View/HTML.pm
-    version: 0.3.576
-  CatalystX::Usul::View::JSON:
-    file: lib/CatalystX/Usul/View/JSON.pm
-    version: 0.3.576
-  CatalystX::Usul::View::Serializer:
-    file: lib/CatalystX/Usul/View/Serializer.pm
-    version: 0.3.576
-  CatalystX::Usul::View::XML:
-    file: lib/CatalystX/Usul/View/XML.pm
-    version: 0.3.576
-no_index:
-  directory:
-    - t
-generated_by: Module::Build version 0.31
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
+  version: 0.87
+resources:
+  bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=CatalystX-Usul
+  homepage: http://www.roxsoft.co.uk
+  license: http://dev.perl.org/licenses/
+version: 0.4.1133

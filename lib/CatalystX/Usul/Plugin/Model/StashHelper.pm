@@ -1,57 +1,52 @@
-# @(#)$Id: StashHelper.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: StashHelper.pm 1116 2012-03-11 23:05:42Z pjf $
 
 package CatalystX::Usul::Plugin::Model::StashHelper;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1116 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(exception is_arrayref is_hashref throw);
+use Class::Null;
 use Data::Pageset;
-use Lingua::Flags;
-use Time::Elapsed qw(elapsed);
-
-my $DOTS = chr 8230;
-my $NUL  = q();
-my $SEP  = q(/);
-my $SPC  = q( );
-my $TTS  = q( ~ );
+use Scalar::Util  qw(blessed);
+use TryCatch;
 
 # Core stash helper methods
 
 sub stash_content {
-   # Push the content onto the item list for the given stash id
-   my ($self, $content, $id, $clear) = @_;
+   # Push/unshift the content onto the item list for the given stash id
+   my ($self, $content, $id, $clear, $stack_dirn) = @_;
 
-   return unless ($content and $id);
+   $content or return; $id ||= q(sdata); $clear ||= q(clear_form);
 
    my $s = $self->context->stash;
 
-   eval { $self->$clear() } if ($clear and not defined $s->{ $id });
+   unless (defined $s->{ $id }) { try { $self->$clear() } catch {} }
 
-   my $item = { content => $content, id => $id };
+   my $count = @{ $s->{ $id }->{items} || [] };
+   my $item  = { content => $content, id => $id.$count };
 
-   if (ref $content eq q(HASH) and $content->{class}) {
-      $item->{class} = $content->{class};
-   }
+   if ($stack_dirn) { unshift @{ $s->{ $id }->{items} }, $item }
+   else { push @{ $s->{ $id }->{items} }, $item }
 
-   push @{ $s->{ $id }->{items} }, $item;
-   $s->{ $id }->{count} = @{ $s->{ $id }->{items} };
+   $s->{ $id }->{count} = $count + 1;
    return;
 }
 
 sub stash_meta {
    # Set attribute value pairs for the given stash id
-   my ($self, $data, $id, $clear) = @_;
+   my ($self, $content, $id, $clear) = @_;
 
-   $id ||= q(sdata); $clear ||= q(clear_form);
+   $content or return; $id ||= q(sdata); $clear ||= q(clear_form);
 
    my $s = $self->context->stash;
 
-   eval { $self->$clear() } unless (defined $s->{ $id });
+   unless (defined $s->{ $id }) { try { $self->$clear() } catch {} }
 
-   while (my ($attr, $value) = each %{ $data }) {
-      $s->{ $id }->{ $attr } = $value unless ($attr eq q(items));
+   while (my ($attr, $value) = each %{ $content }) {
+      $attr eq q(items) or $s->{ $id }->{ $attr } = $value;
    }
 
    return;
@@ -59,576 +54,410 @@ sub stash_meta {
 
 # Stash content methods
 
-sub add_append {
-   # Add a widget definition to the append div
-   my ($self, $content) = @_;
+sub add_field {
+   # Add a field widget definition to the inner frame div
+   my ($self, $content, @rest) = @_; is_hashref $content or return;
 
-   return unless ($content and ref $content eq q(HASH));
+   my $s = $self->context->stash; $content->{widget} = TRUE;
 
-   $content->{widget} = 1;
-
-   $self->stash_content( $content, q(append), q(clear_append) );
-   return;
-}
-
-sub add_button {
-   # Add a button widget definition to the button bar div
-   my ($self, $args) = @_; my $s = $self->context->stash; my $content;
-
-   return unless ($args and ref $args eq q(HASH));
-
-   my $label   = $args->{label  } || q(Unknown);
-   my $button  = $s->{buttons}->{ $s->{form}->{name}.q(.).(lc $label) };
-   my $help    = $args->{help   } || $button ? $button->{help  } : $NUL;
-   my $prompt  = $args->{prompt } || $button ? $button->{prompt} : $NUL;
-   my $onclick = $args->{onclick} || $prompt
-               ? "return window.confirm( '${prompt}' )" : $NUL;
-   my $type    = $args->{type   } || q(image);
-
-   $label      = (split $SPC, $label.q( X))[0];
-
-   my $file    = $label.q(.png);
-   my $path    = $self->catfile( $s->{skindir}, $s->{skin}, $file );
-
-   unless (-f $path) {
-      $file = $label.q(.gif);
-      $path = $self->catfile( $s->{skindir}, $s->{skin}, $file );
+   # TODO: yuck yuck yuck
+   # If error then resultDisp is too wide coz content haz no padding
+   if (exists $content->{subtype} and $content->{subtype} eq q(html)) {
+      $s->{content}->{class} = q(subtype_html);
+   }
+   elsif (not exists $s->{content}->{class}) {
+      $s->{content}->{class} = q(subtype_normal);
    }
 
-   if ($type eq q(image) and -f $path) {
-      $content = { alt => $label, src => $s->{assets}.$file };
-   }
-
-   $content->{class  } = $args->{class} || q(button);
-   $content->{name   } = $label;
-   $content->{onclick} = $onclick if ($onclick);
-   $content->{tip    } = ($args->{title} || $DOTS).$TTS.$help if ($help);
-   $content->{type   } = q(button);
-   $content->{widget } = 1;
-
-   $self->stash_content( $content, q(bbar), q(clear_buttons) );
-   return;
-}
-
-sub add_footer {
-   my $self = shift;
-   my $c    = $self->context;
-   my $cfg  = $c->config;
-   my $req  = $c->req;
-   my $s    = $c->stash;
-   my ($content, $text);
-
-   $self->stash_content( $self->_footer_line, q(footer), q(clear_footer) );
-
-   $content = { text    => $s->{user}.q(@).$s->{host_port},
-                tip     => $self->loc( q(yourIdentity) ),
-                tiptype => q(plain),
-                type    => q(label),
-                widget  => 1 };
-   $self->stash_content( $content, q(footer) );
-
-   if ($s->{debug}) {
-      # Useful numbers and such
-      if ($cfg->{version}) {
-         $content = { text    => q(&nbsp;).$cfg->{version},
-                      tip     => $self->loc( q(moduleVersion) ),
-                      tiptype => q(plain),
-                      type    => q(label),
-                      widget  => 1 };
-         $self->stash_content( $content, q(footer) );
-      }
-
-      if (defined $s->{version}) {
-         $content = { text    => q(&nbsp;).$s->{version},
-                      tip     => $self->loc( q(levelVersion) ),
-                      tiptype => q(plain),
-                      type    => q(label),
-                      widget  => 1 };
-         $self->stash_content( $content, q(footer) );
-      }
-
-      ($text = $self->stamp) =~ tr?/:?..?;
-      $content = { text    => $text,
-                   tip     => $self->loc( q(pageGenerated) ),
-                   tiptype => q(plain),
-                   type    => q(label),
-                   widget  => 1 };
-      $self->stash_content( $content, q(footer) );
-
-      if ($s->{elapsed}) {
-         $content = { text    => q(&nbsp;).elapsed( $s->{elapsed} ),
-                      tip     => $self->loc( q(elapsedTime) ),
-                      tiptype => q(plain),
-                      type    => q(label),
-                      widget  => 1 };
-         $self->stash_content( $content, q(footer) );
-      }
-
-      # TODO: Replace this with a language selector
-      my %lang2country_map = ( 'de' => q(DE), 'en' => q(GB) );
-      my $country          = $lang2country_map{ $s->{lang} };
-      my $flag             = as_html_img( $country );
-
-      $flag =~ s{ \s* / > }{>}mx if ($s->{content_type} eq q(text/html));
-
-      $content = { text => $flag, type => q(label), widget => 1 };
-      $self->stash_content( $content, q(footer) );
-   }
-
-   return;
-}
-
-sub add_header {
-   my $self = shift; my $s = $self->context->stash;
-
-   $self->stash_content( $self->_logo_link,        q(header) );
-   $self->stash_content( $self->_company_link,     q(header) );
-   $self->stash_meta   ( { title => $s->{title} }, q(header) );
-   return;
-}
-
-sub add_hidden {
-   # Add a hidden input field to the form
-   my ($self, $name, $values) = @_;
-
-   return unless ($name && defined $values);
-
-   $values = [ $values ] unless (ref $values eq q(ARRAY));
-
-   for my $value (@{ $values }) {
-      my $content = { default => $value,    name   => $name,
-                      type    => q(hidden), widget => 1 };
-
-      $self->stash_content( $content, q(hidden), q(clear_hidden) );
-   }
-
-   return;
+   return $self->stash_content( $content, @rest );
 }
 
 sub add_result {
    # Add some content the the result div
-   my ($self, $content) = @_;
+   my ($self, $content) = @_; my $s = $self->context->stash;
 
-   return unless ($content); chomp $content;
+   $content or return; chomp $content;
 
-   my $s = $self->context->stash;
+   $s->{result} and $s->{result}->{items}->[ 0 ]
+      and $s->{result}->{items}->[ -1 ]->{content} .= "\n";
 
-   if ($s->{result} and $s->{result}->{items}->[ 0 ]) {
-      $s->{result}->{items}->[-1]->{content} .= "\n";
-   }
-
-   $self->stash_content( $content, q(result), q(clear_result) );
-   return;
+   return $self->stash_content( $content, qw(result clear_result) );
 }
 
-sub add_sidebar_panel {
-   # Add an Ajax call to the side bar accordion widget
-   my ($self, $args) = @_; my ($content, $count, $jscript);
-
-   my $s = $self->context->stash;
-
-   unless ($count = $s->{sidebar}->{count} || 0) {
-      $self->_clear_by_id( q(sidebar) );
-      $s->{sidebar}->{tip} = $self->loc( q(sidebarTip) );
-   }
-
-   if ($args->{name} eq q(default)) {
-      $content = {
-         content      => { class => q(sidebarContent),
-                           id    => q(default),
-                           text  => $self->loc( q(sidebarBlankContent) ) },
-         contentClass => q(sidebarPanel),
-         contentId    => q(panel).$count.q(Content),
-         header       => { content => $self->loc( q(sidebarBlankHeader)) },
-         headerClass  => q(sidebarHeader sidebarHeaderFirst),
-         headerId     => q(glassHeader),
-         panelId      => q(glassPanel) };
-   }
-   else {
-      $jscript  = "behaviour.loadMore.request('".$args->{name}."', '";
-      $jscript .= $args->{name}."', '".($args->{value} || $NUL)."')";
-
-      $args->{heading} = ucfirst $args->{name} unless ($args->{heading});
-
-      $content = {
-         content      => { class => q(sidebarContent),
-                           id    => $args->{name},
-                           text  => q(&nbsp;) },
-         contentClass => q(sidebarPanel),
-         contentId    => q(panel).$count.q(Content),
-         header       => { onclick => $jscript,
-                           content => $args->{heading} },
-         headerClass  => q(sidebarHeader),
-         headerId     => $args->{name}.q(Header),
-         panelId      => $args->{name}.q(Panel) };
-   }
-
-   $self->stash_content( $content, q(sidebar), q(clear_sidebar) );
-   return $s->{sidebar}->{count} - 1;
-}
-
-sub stash_form {
-   my ($self, $content) = @_;
-
-   $self->stash_content( $content, q(sdata), q(clear_form) );
-   return;
-}
-
-# Clear content methods. Called by the stash content methods on first use
-
-sub clear_append {
-   my ($self, $args) = @_; $self->_clear_by_id( q(append), $args ); return;
-}
-
-sub clear_buttons {
-   my ($self, $args) = @_; $self->_clear_by_id( q(bbar), $args ); return;
-}
-
-sub clear_footer {
-   my ($self, $args) = @_; $self->_clear_by_id( q(footer), $args ); return;
-}
-
-sub clear_form {
-   # Clear the stash of all form content
-   my ($self, $args) = @_; my $s = $self->context->stash; my $id = q(sdata);
-
-   return if (exists $s->{ $id });
-
-   $self->_clear_by_id( $id, $args );
-
-   if (exists $args->{title}) {
-      $s->{title} = $args->{title}; $s->{header}->{title} = $args->{title};
-   }
-
-   $s->{firstfld} = $args->{firstfld} || $NUL;
-   return;
-}
-
-sub clear_hidden {
-   my ($self, $args) = @_; $self->_clear_by_id( q(hidden), $args ); return;
-}
-
-sub clear_menus {
-   my $self = shift; $self->_clear_by_id( q(menus) ); return;
-}
-
-sub clear_quick_links {
-   my $self = shift; $self->_clear_by_id( q(quick_links) ); return;
-}
-
-sub clear_result {
+sub form_wrapper {
+   # Wrap a group of form fields with a form element
    my ($self, $args) = @_; my $s = $self->context->stash;
 
-   $self->_clear_by_id( q(result), $args );
-   $s->{result}->{class} = q(centre);
-   $s->{result}->{text } = 'Results';
-   return;
+   my $nitems = __get_field_count( $s->{sdata}, $args->{nitems} ) or return;
+   my $attrs  = { action  => $args->{action},
+                  enctype => q(application/x-www-form-urlencoded),
+                  method  => q(post), name => $args->{name} };
+
+   return $self->stash_content( { attrs  => $attrs, form => TRUE,
+                                  nitems => $nitems } );
 }
 
-sub clear_sidebar {
-   my $self = shift; $self->context->stash( sidebar => 0 ); return;
+sub group_fields {
+   # Enclose a group of form fields in a field set definition
+   my ($self, $args) = @_; my $s = $self->context->stash;
+
+   my $nitems = __get_field_count( $s->{sdata}, $args->{nitems} ) or return;
+   my $class  = exists $args->{class} ? $args->{class} : undef;
+   my $text   = $args->{text} || $self->loc( $args->{id} || q(duh) );
+
+   return $self->stash_content( { frame_class  => $class,  group => TRUE,
+                                  nitems       => $nitems, text  => $text } );
 }
 
-# Curried stash content methods
+# Add field helper methods
+
+sub add_append {
+   # Add a widget definition to the append div
+   my ($self, $content) = @_;
+
+   return $self->add_field( $content, qw(append clear_append) );
+}
+
+sub add_button {
+   # Add a button widget definition to the button bar div
+   my ($self, $args) = @_; is_hashref $args or return;
+
+   my $s       = $self->context->stash;
+   my $label   = $args->{label}  || 'Unknown';
+   my $id      = $s->{form}->{name}.q(.).(lc $label);
+   my $button  = $s->{buttons}->{ $id } || {};
+   my $help    = $args->{help  } || $button->{help  };
+   my $prompt  = $args->{prompt} || $button->{prompt};
+   my $class   = $args->{class } || $button->{class } || NUL;
+   my $type    = $args->{type  } || $button->{type  } || q(image);
+   my $content = { id => $id.q(_button), type => q(button), };
+   my $file;
+
+   if ($type eq q(vertical)) {
+      $content->{class } = $class || q(vertical markup_button submit);
+      $content->{config} = { args    => "[ '${label}' ]",
+                             method  => "'submitForm'" };
+      $content->{src   } = { content => uc $label };
+   }
+   else { $class and $content->{class} = $class; $content->{name} = $label }
+
+   if ($type eq q(image) and $file = $self->_get_image_file( $s, $label )) {
+      $content->{alt} = $label; $content->{src} = $s->{assets}.$file;
+   }
+
+   $help   and $content->{tip   } = ($args->{title} || DOTS).TTS.$help;
+   $prompt and $content->{config} = { args   => "[ '${label}', '${prompt}' ]",
+                                      method => "'confirmSubmit'" };
+
+   return $self->add_field( $content, qw(button clear_buttons) );
+}
 
 sub add_buttons {
-   my ($self, @buttons) = @_; my $title = $self->loc( q(buttonTitle) );
+   my ($self, @labels) = @_; my $title = $self->loc( 'Action' );
 
-   for (0 .. $#buttons) {
-      $self->add_button( { label => $buttons[ $_ ], title => $title } );
+   for my $label (@labels) {
+      $self->add_button( { label => $label, title => $title } );
    }
 
    return;
 }
 
 sub add_chooser {
-   my ($self, $args) = @_; my ($jscript, $param);
+   my ($self, $args) = @_;
 
-   my $attr   = $args->{attr};
-   my $field  = $args->{field};
-   my $form   = $args->{form};
-   my $method = $args->{method};
-   my $val    = $args->{value};
+   my $s      = $self->context->stash;
+   my $attr   = $args->{attr     } or return;
+   my $field  = $args->{field    } or return;
+   my $form   = $args->{form     } or return;
+   my $method = $args->{method   } or return;
+   my $val    = $args->{value    };
    my $w_fld  = $args->{where_fld};
-   my $w_val  = $args->{where_val};
+   my $param  = {};
 
-   $param->{ $w_fld } = $w_val if ($w_fld);
+   $s->{is_popup} = q(true); # Stop JS from caching window size
+   $s->{header  }->{title} = $self->loc( 'Select Item' );
+   $w_fld and $param->{ $w_fld } = $args->{where_val};
    $param->{ $field } = { like => $val ? $val : q(%) };
 
    my @items  = $self->$method( $param );
 
-   unless ($items[0]) {
-      $self->add_field( { text => $self->loc( 'Nothing selected' ),
-                          type => q(label) } );
-      return;
-   }
+   $items[ 0 ]
+      or return $self->add_field( { text => $self->loc( 'Nothing selected' ),
+                                    type => q(label) } );
+
+   my $class = ($args->{class} || q(anchor_button fade)).q( submit);
+   my $count = 0;
 
    for my $item (@items) {
-      $jscript  = "behaviour.submit.returnValue('";
-      $jscript .= "${form}', '${field}', '".$item->$attr()."') ";
-      $self->add_field( { class   => $args->{class},
-                          clear   => q(left),
-                          href    => '#top',
-                          onclick => $jscript,
-                          text    => $item->$attr(),
-                          tip     => $self->loc( 'Click to select' ),
-                          type    => q(anchor) } );
+      my $text = $item->$attr();
+
+      $self->add_field( {
+         class       => $class,
+         config      => { args   => "[ '${form}', '${field}', '${text}' ]",
+                          method => q("returnValue") },
+         frame_class => $args->{frame_class} || q(chooser),
+         href        => '#top',
+         id          => $field.q(_).$attr.$count++,
+         text        => $text,
+         tip         => $self->loc( 'Click to select' ),
+         type        => q(anchor) } );
    }
 
-   my $s = $self->context->stash;
-
-   $s->{is_popup} = q(true); # Stop JS from caching window size
-   $s->{header  }->{title} = $self->loc( 'Select Item' );
-   delete $s->{token};
    return;
 }
 
 sub add_error {
-   # Handle $self->catch error thrown by a call to the model
-   my ($self, $e, $verbosity, $offset) = @_;
+   # Handle error thrown by a call to the model
+   my ($self, $e) = @_; my $s = $self->context->stash; my $class = blessed $e;
 
-   unless (defined $verbosity) {
-      $verbosity = $self->context->stash->{debug} ? 3 : 2;
-   }
+   ($class and $e->isa( EXCEPTION_CLASS )) or $e = exception $e;
+   $s->{stacktrace} = $s->{debug} ? (blessed $e)."\n".$e->stacktrace : NUL;
 
-   $offset = 1 unless (defined $offset);
-
-   my $err = $self->loc( $e->as_string( $verbosity, $offset ), @{ $e->args } );
-
-   $self->log_error ( (ref $self).$SPC.(split m{ \n }mx, $err)[0] );
-   $self->add_result( $err );
-   return;
+   return $self->_log_and_stash_error( $e );
 }
 
 sub add_error_msg {
-   my ($self, @rest) = @_;
+   my ($self, $error, @rest) = @_;
 
-   $self->add_error( $self->exception_class->new( $self->loc( @rest ) ) );
-   return;
+   my $key  = (split m{ [\n] }mx, $error)[ 0 ];
+   my $args = (is_arrayref $rest[ 0 ]) ? $rest[ 0 ] : [ @rest ];
+   my $e    = exception 'error' => $key, 'args' => $args;
+
+   return $self->_log_and_stash_error( $e );
 }
 
-sub add_field {
-   # Add a field widget definition to the inner frame div
-   my ($self, $content) = @_; my $s = $self->context->stash;
+sub add_footer {
+   my $self = shift; my $s = $self->context->stash;
 
-   return unless ($content and ref $content eq q(HASH));
+   $self->add_field( $self->_hash_for_footer_line,  qw(footer clear_footer) );
+   $self->add_field( $self->_hash_for_async_footer, qw(footer) );
 
-   if (exists $content->{subtype} && $content->{subtype} eq q(html)) {
-      $s->{content}->{style} = q(overflow: hidden; padding: 0px;);
+   return $self->stash_meta( { state => $s->{fstate} }, qw(footer) );
+}
+
+sub add_header {
+   my $self = shift; my $s = $self->context->stash;
+
+   $self->add_field( $self->_hash_for_logo_link,    qw(header clear_header) );
+   $self->add_field( $self->_hash_for_company_link, qw(header) );
+
+   return $self->stash_meta( { title => $s->{title} }, qw(header) );
+}
+
+sub add_hidden {
+   # Add a hidden input field to the form
+   my ($self, $name, $values) = @_;
+
+   ($name and defined $values) or return;
+
+   is_arrayref $values or $values = [ $values ];
+
+   for my $value (@{ $values }) {
+      my $content = { default => $value, name => $name, type => q(hidden) };
+
+      $self->add_field( $content, qw(hidden clear_hidden) );
    }
 
-   $content->{widget} = 1;
-   $self->stash_form( $content );
    return;
 }
 
 sub add_result_msg {
-   my ($self, @rest) = @_; $self->add_result( $self->loc( @rest ) ); return;
+   my ($self, @rest) = @_; return $self->add_result( $self->loc( @rest ) );
+}
+
+sub add_search_hit {
+   return; # You want to override in your subclass
 }
 
 sub add_search_links {
-   my ($self, $page_info, $attrs) = @_; my ($key, $name, $page, $ref);
+   my ($self, $page_info, $attrs) = @_; my ($args, $key, $name, $page);
 
    $attrs ||= {};
 
    my $s            = $self->context->stash;
-   my $expr         = $attrs->{expression};
    my $hits_per     = $attrs->{hits_per};
-   my $href         = $s->{form}->{action}.$SEP.$expr.$SEP;
-   my $anchor_class = $attrs->{anchor_class} || q(searchFade smaller);
-   my $clear        = 1;
+   my $href         = $attrs->{href};
+   my $anchor_class = $attrs->{anchor_class} || q(search fade);
+   my $clear        = TRUE;
 
    for $page (qw(first_page previous_page pages_in_set next_page last_page)) {
       if ($page eq q(pages_in_set)) {
          for (@{ $page_info->pages_in_set }) {
             if ($_ == $page_info->current_page) {
-               $ref = { container => 1,
-                        text      => q(&hellip;), type => q(label) };
+               $args = { container       => FALSE,
+                         text            => q(&hellip;),
+                         type            => q(label) };
             }
             else {
-               $ref = { class  => $anchor_class,
-                        href   => $href.$hits_per.$SEP.$_,
-                        name   => q(page).$_,
-                        pwidth => 0,
-                        text   => $_,
-                        type   => q(anchor) };
+               $args = { class           => $anchor_class,
+                         container_class => q(label_text),
+                         href            => $href.$hits_per.SEP.$_,
+                         name            => q(page).$_,
+                         pwidth          => 0,
+                         text            => $_,
+                         type            => q(anchor) };
             }
 
-            $self->add_field( $ref );
+            $self->add_field( $args );
          }
       }
       elsif ($key = $page_info->$page) {
-         $name = (split m{ _ }mx, $page)[0];
-         $ref  = { class  => $anchor_class,
-                   href   => $href.$hits_per.$SEP.$key,
-                   name   => $name,
-                   pwidth => 0,
-                   text   => $self->loc( $page.q(_anchor) ),
-                   type   => q(anchor) };
+         $name = (split m{ _ }mx, $page)[ 0 ];
+         $args = { class           => $anchor_class,
+                   container_class => q(label_text),
+                   href            => $href.$hits_per.SEP.$key,
+                   name            => $name,
+                   pwidth          => 0,
+                   text            => $self->loc( $page.q(_anchor) ),
+                   type            => q(anchor) };
 
          if ($clear) {
-            $ref->{class } .= q( clearLeft);
-            $ref->{prompt}  = $self->loc( q(page_prompt) );
+            $args->{frame_class } = q(clearLeft);
+            $args->{prompt      } = $self->loc( q(page_prompt) );
+            $args->{stepno      } = 0;
          }
 
-         $self->add_field( $ref );
-         $clear = 0;
+         $self->add_field( $args );
+         $clear = FALSE;
       }
    }
 
    return;
 }
 
-sub group_fields {
-   # Enclose a group of form fields in a field set definition
-   my ($self, $args) = @_; my $text;
+sub add_sidebar_panel {
+   # Add an Ajax call to the sidebar accordion widget
+   my ($self, $args) = @_; my ($content, $count);
 
-   my $nitems = $args->{nitems} || $args->{nItems};
-   my $class  = exists $args->{class} ? $args->{class} : q(fullWidth);
+   my $name    = $args->{name};
+   my $s       = $self->context->stash;
+   my $sidebar = $s->{sidebar} || {};
 
-   return if (!$nitems || $nitems <= 0);
+   unless ($count = $sidebar->{count} || 0) {
+      $self->_clear_by_id( q(sidebar) );
+      $s->{sidebar}->{tip} = $self->loc( q(sidebarTip) );
+   }
 
-   $text = $args->{text} || $self->loc( $args->{id} || q(duh) );
+   if ($name eq q(default)) {
+      $content        =  {
+         class        => q(accordion_content heading),
+         container_id => q(glassPanel),
+         header       => {
+            class     => q(accordion_header),
+            id        => $name.q(Header),
+            text      => $self->loc( q(sidebarBlankHeader) ) },
+         id           => $name,
+         panel        => {
+            class     => q(accordion_panel),
+            id        => q(panel).$count.q(Content) },
+         text         => $self->loc( q(sidebarBlankContent) ),
+         type         => q(sidebarPanel) };
+   }
+   else {
+      my $action = $name.($args->{action} ? SEP.$args->{action} : NUL);
 
-   $self->stash_form( { class  => $class,  group => 1,
-                        nitems => $nitems, text  => $text } );
-   return;
+      $content        =  {
+         config       => {
+            action    => '"'.$action.'"',
+            name      => '"'.$name.'"' },
+         container_id => $name.q(Panel),
+         header       => {
+            class     => q(accordion_header),
+            id        => $name.q(Header),
+            text      => $args->{heading} || ucfirst $name },
+         id           => $name,
+         panel        => {
+            class     => q(accordion_panel),
+            id        => q(panel).$count.q(Content) },
+         text         => SPC,
+         type         => q(sidebarPanel) };
+   }
+
+   $args->{on_complete}
+      and $content->{config}->{onComplete} = $args->{on_complete};
+   $args->{value} and $content->{config}->{value} = '"'.$args->{value}.'"';
+   $self->add_field( $content, qw(sidebar clear_sidebar), $args->{unshift} );
+
+   return $args->{unshift} ? 0 : $s->{sidebar}->{count} - 1;
+}
+
+sub search_for {
+   throw 'Method search_for not overridden in subclass'; return;
 }
 
 sub search_page {
-   my ($self, $args) = @_; my ($e, $hit, @hits, $link_num, $page_info, $text);
+   my ($self, $args) = @_; my ($hits, @hits);
 
-   my $cnt      = 0;
-   my $expr     = $args->{expression};
-   my $excerpts = $args->{excerpts};
-   my $hits_per = $args->{hits_per};
-   my $key      = $args->{key};
-   my $model    = $args->{data_model};
-   my $offset   = $args->{offset};
+   my $field    = $args->{search_field};
+   my $query    = $args->{query       };
+   my $hits_per = $args->{hits_per    };
+   my $offset   = $args->{offset      };
+   my $heading  = $self->loc( $args->{key}, $query );
    my $s        = $self->context->stash;
    my $form     = $s->{form}->{name};
-   my $ref      = eval { $model->search_for( $expr, $hits_per, $offset ) };
+   my $href     = $s->{form}->{action}.SEP.$query.SEP;
 
-   return $self->add_error( $e ) if ($e = $self->catch);
-
-   while ($hit = $ref->fetch_hit_hashref) { push @hits, $hit; $cnt++ }
-
-   $ref        = { current_page     => $offset + 1,
-                   entries_per_page => $hits_per,
-                   mode             => q(slide),
-                   total_entries    => $ref->total_hits };
-   $page_info  = Data::Pageset->new( $ref );
-   $link_num   = 1 + $hits_per * $offset;
-   $text       = $self->loc( $key, $expr );
-   $self->add_field( { id => $form.q(.).$key, text => $text } );
-   $text       = $self->loc( q(search_results), $offset +1,
-                             $page_info->last_page,
-                             $cnt, $ref->{total_entries} );
-   $self->add_field( { id => $form.q(.search_results), text => $text } );
-   $self->add_search_links( $page_info, { expression => $expr,
-                                          hits_per   => $hits_per } );
-
-   for $hit (@hits) {
-      $self->add_field( { href   => $s->{url}.$hit->{url},
-                          id     => $form.q(.title),
-                          stepno => $link_num++,
-                          text   => $hit->{title} } );
-      $self->add_field( { id     => $form.q(.excerpt),
-                          text   => $hit->{excerpts}->{ $excerpts } } );
-      $self->add_field( { id     => $form.q(.score),
-                          pwidth => 0,
-                          text   => sprintf '%0.3f', $hit->{score} } );
-      $self->add_field( { id     => $form.q(.file),
-                          pwidth => 0,
-                          text   => $hit->{file} } );
-      $self->add_field( { id     => $form.q(.key),
-                          pwidth => 0,
-                          text   => $hit->{key} } );
+   try { $hits = $self->search_for( { hits_per     => $hits_per,
+                                      page         => $offset,
+                                      query        => $query,
+                                      search_field => $field } );
    }
+   catch ($e) { return $self->add_error( $e ) }
 
-   $self->add_search_links( $page_info, { expression => $expr,
-                                          hits_per   => $hits_per } );
-   return;
-}
+   my $page_info = Data::Pageset->new( {
+      current_page     => $offset + 1,
+      entries_per_page => $hits_per,
+      mode             => q(slide),
+      total_entries    => $hits->total_hits } );
+   my $link_num    = 1 + $hits_per * $offset;
+   my $sub_heading = $self->loc( q(search_results),
+                                 $offset + 1,
+                                 $page_info->last_page,
+                                 scalar @{ $hits->list || [] },
+                                 $hits->total_hits || 0 );
 
-sub simple_page {
-   # Knock up a page of simple content from the XML config files
-   my ($self, $name, $n_cols) = @_; my ($page, $ref, $subh, $text);
+   $self->clear_form( { class       => q(narrow left),
+                        heading     => { class   => q(narrow left),
+                                         content => $heading, },
+                        sub_heading => { class   => q(narrow left),
+                                         content => $sub_heading,
+                                         level   => 4 } } );
 
-   my $s = $self->context->stash;
+   $self->add_search_links( $page_info, { href     => $href,
+                                          hits_per => $hits_per } );
 
-   return $self->add_error_msg( 'No page specified' ) unless ($name);
-
-   unless ($page = $s->{pages}->{ $name }) {
-      return $self->add_error_msg( 'Page [_1] unknown', $name );
-   }
-
-   unless (exists $s->{sdata}) {
-      delete $s->{token}; # Do not need a CSRF token on a simple page
-      $self->clear_form
-         ( { heading    => $page->{heading} || $s->{title},
-             subHeading => { content => $page->{subHeading} || q(&nbsp;) },
-             title      => $page->{title} || $s->{title} } );
-   }
-
-   my $idx  = 0;
-   my $data = { values => [] };
-   my $para = $page->{vals}->{ q(para).$idx };
-
-   while ($text = $para->{text}) {
-      my $drop = $para->{dropcap} || 0; my $mark = $para->{markdown} || 0;
-
-      $ref  = { class => q(), text => { dropcap => $drop, markdown => $mark,
-                                        text    => $text, type => q(label) } };
-
-      if ($subh = $page->{vals}->{ q(subHeading).$idx }->{text}) {
-         $ref->{heading} = { text => $subh, type => q(label) };
+   try {
+      for my $hit (@{ $hits->list || [] }) {
+         $self->add_search_hit( $hit, $link_num++, $field );
       }
-
-      push @{ $data->{values} }, $ref;
-      $para = $page->{vals}->{ q(para).++$idx };
    }
+   catch ($e) { return $self->add_error( $e ) }
 
-   my $columns   = $n_cols || $page->{columns};
-   my $col_class = ($columns > 1 ? 'multi' : 'one').'Column '.$page->{class};
-
-   $self->add_field( { class           => q(fullWidth),
-                       column_class    => $col_class,
-                       columns         => $columns,
-                       container       => 1,
-                       container_class => q(paragraphs centre),
-                       data            => $data,
-                       hclass          => q(subheading),
-                       type            => q(paragraphs) } );
-   return 1;
-}
-
-# Stash meta methods
-
-sub check_field_wrapper {
-   # Process Ajax calls to validate form field values
-   my $self = shift;
-   my $s    = $self->context->stash;
-   my $id   = $self->query_value( q(id) );
-   my $val  = $self->query_value( q(val) );
-   my $e;
-
-   delete $s->{token};
-   $self->stash_meta( { id => $id.q(_checkField), result => q(hidden) } );
-
-   eval { $self->check_field( $id, $val ) };
-
-   return unless ($e = $self->catch);
-
-   if ($s->{debug}) {
-      $self->log_debug( $self->loc( $e->as_string( 1 ), $id, $val ) );
-   }
-
-   $self->stash_meta( { result => q(error) } );
+   $self->add_search_links( $page_info, { href     => $href,
+                                          hits_per => $hits_per } );
    return;
 }
 
 # Supporting cast
+
+sub check_field_wrapper {
+   # Process Ajax calls to validate form field values
+   my $self = shift;
+   my $id   = $self->query_value( q(id)  );
+   my $val  = $self->query_value( q(val) );
+   my $msg;
+
+   $self->stash_meta( { id => $id.q(_ajax), result => NUL } );
+
+   try        { $self->check_field( $id, $val ) }
+   catch ($e) {
+      $self->stash_meta( { class_name => q(error) } );
+      $self->stash_content( $msg = $self->loc( $e->error, $id, $val ) );
+      $self->context->stash->{debug} and $self->log_debug( $msg );
+   }
+
+   return;
+}
 
 sub clear_controls {
    # Clear contents of multiple divs
@@ -641,103 +470,235 @@ sub clear_controls {
    return;
 }
 
-sub open_window {
-   my ($self, @rest) = @_; my ($jscript, $text);
+sub get_para_col_class {
+   my ($self, $columns) = @_; $columns ||= 1;
 
-   my $args = $self->arg_list( @rest );
+   my @col_names  = ( qw(zero one two three four five six seven eight nine ten
+                         eleven twelve thirteen fourteen fifteen) );
+   my $col_class  = $columns > 1 ? $col_names[ $columns ].' multi' : 'one';
+      $col_class .= 'Column';
 
-   return unless ($args->{key} and $args->{href});
+   return $col_class;
+}
 
-   $text     = 'dependent=no, width='.($args->{width} || 800);
-   $text    .= ', height='.($args->{height} || 600).', resizable=yes, ';
-   $text    .= 'screenX=0, screenY=0, titlebar=no, scrollbars=yes';
-   $jscript  = "behaviour.window.openWindow('".$args->{href}."', '";
-   $jscript .= $args->{key}."', '${text}')";
-   return $jscript;
+sub stash_para_col_class {
+   my ($self, $key, $n_cols) = @_; my $s = $self->context->stash;
+
+   return $s->{ $key } = $self->get_para_col_class( $n_cols || 2 );
+}
+
+sub update_group_membership {
+   my ($self, $args) = @_; my $count = 0;
+
+   my $method_args = $args->{method_args};
+
+   $method_args->{items} = $self->query_array( $args->{field}.q(_added) );
+
+   defined $method_args->{items}->[ 0 ]
+      and $count += $args->{add_method}->( $method_args );
+
+   $method_args->{items} = $self->query_array( $args->{field}.q(_deleted) );
+
+   defined $method_args->{items}->[ 0 ]
+      and $count += $args->{delete_method}->( $method_args );
+
+   $count < 1 and throw 'Updated nothing';
+
+   return TRUE;
+}
+
+# Clear content methods. Called by the stash content methods on first use
+
+sub clear_append {
+   my ($self, $args) = @_; return $self->_clear_by_id( q(append), $args );
+}
+
+sub clear_buttons {
+   my ($self, $args) = @_; return $self->_clear_by_id( q(button), $args );
+}
+
+sub clear_footer {
+   my ($self, $args) = @_; return $self->_clear_by_id( q(footer), $args );
+}
+
+sub clear_form {
+   # Clear the stash of all form content
+   my ($self, $args) = @_; my $s = $self->context->stash; my $id = q(sdata);
+
+   exists $s->{ $id } and not $args->{force} and return;
+
+   $self->_clear_by_id( $id, $args );
+
+   exists $args->{title}
+      and $s->{title} = $s->{header}->{title} = $args->{title};
+
+   $s->{firstfld} = $args->{firstfld} || NUL;
+   return;
+}
+
+sub clear_header {
+   my $self = shift; return $self->_clear_by_id( q(header) );
+}
+
+sub clear_hidden {
+   my ($self, $args) = @_; return $self->_clear_by_id( q(hidden), $args );
+}
+
+sub clear_menus {
+   my $self = shift; return $self->_clear_by_id( q(menus) );
+}
+
+sub clear_quick_links {
+   my $self = shift; return $self->_clear_by_id( q(quick_links) );
+}
+
+sub clear_result {
+   my ($self, $args) = @_;
+
+   $self->_clear_by_id( q(result), $args );
+   $self->context->stash->{result}->{text} = $self->loc( 'Results' );
+   return;
+}
+
+sub clear_sidebar {
+   my $self = shift; $self->context->stash( sidebar => FALSE ); return;
 }
 
 # Private methods
 
 sub _clear_by_id {
-   my ($self, $id, $args) = @_;
+   my ($self, $id, $args) = @_; $id or return; $args ||= {};
 
-   return unless ($id);
+   my $sid     = $self->context->stash->{ $id } ||= {};
+   my $heading = $args->{heading}
+               ? ( (is_hashref $args->{heading})
+               ? $args->{heading}
+               : { class => q(banner), content => $args->{heading} } )
+               : FALSE;
 
-   my $s = $self->context->stash; $s->{ $id } ||= {}; $args ||= {};
+   $heading                    and $sid->{heading    } = $heading;
+   exists $args->{class      } and $sid->{class      } = $args->{class      };
+   exists $args->{sub_heading} and $sid->{sub_heading} = $args->{sub_heading};
 
-   $s->{ $id }->{count     } = 0;
-   $s->{ $id }->{heading   } = $args->{heading} || $NUL;
-   $s->{ $id }->{items     } = [];
-   $s->{ $id }->{subHeading} = $args->{subHeading}
-      if (exists $args->{subHeading});
-
+   $sid->{count} = 0;
+   $sid->{items} = [];
+   $sid->{mark } = -1;
    return;
 }
 
-sub _company_link {
-   my $self    = shift;
-   my $s       = $self->context->stash;
-   my $href    = $self->uri_for( q(root).$SEP.q(company), $s->{lang} );
-   my $tip     = $DOTS.$TTS.$self->loc( q(aboutCompanyTip) );
-   my $content =
-      { class           => q(headerFade),
-        container_class => $s->{class},
-        container_id    => q(headerSubTitle),
-        href            => '#top',
-        onclick         => $self->open_window( key  => q(company),
-                                               href => $href ),
-        sep             => q(),
-        text            => $s->{company},
-        tip             => $tip,
-        type            => q(anchor),
-        widget          => 1 };
+{  my %cache;
 
-   return $content;
+   sub _get_image_file {
+      my ($self, $s, $prefix) = @_;
+
+      my $dir = $self->catdir( $s->{skindir}, $s->{skin} );
+
+      0 > index $prefix, SPC or $prefix =~ s{ \s+ }{_}gmx;
+
+      for my $file (map { $prefix.$_ } qw(.png .gif)) {
+         my $path = $self->catfile( $dir, $file );
+
+         not exists $cache{ $path } and $cache{ $path } = -f $path;
+
+         $cache{ $path } and return $file;
+      }
+
+      return;
+   }
 }
 
-sub _footer_line {
-   my $self = shift; my ($content, $item, $jscript, $tip);
+sub _hash_for_async_footer {
+   my $self = shift; my $c = $self->context; my $s = $c->stash;
 
-   my $s = $self->context->stash;
+   my $id       = q(footer.data);
+   my $action   = $c->action->reverse;
+   my $function = 'function() { this.rebuild() }';
+   my $args     = "[ 'footer', '${id}', '${action}', ${function} ]";
 
+   return { config           => [ {
+               'tools0item1' => {
+                  args       => $args,
+                  method     => "'request'" } }, {
+               'footer.data' => {
+                  args       => $args,
+                  event      => "'load'",
+                  method     => "'requestIfVisible'" } }, ],
+            id               => $id,
+            text             => $s->{nbsp},
+            type             => q(async) };
+}
+
+sub _hash_for_company_link {
+   my $self = shift; my $c = $self->context; my $s = $c->stash;
+
+   my $href = $c->uri_for_action( SEP.q(company) );
+
+   return { class           => q(header_link fade windows),
+            config          => {
+               args         => "[ '${href}', { name: 'company' } ]",
+               method       => "'openWindow'" },
+            container_id    => q(headerSubTitle),
+            container_class => q(none),
+            href            => '#top',
+            id              => q(company_link),
+            sep             => NUL,
+            text            => $s->{company},
+            tip             => DOTS.TTS.$self->loc( q(aboutCompanyTip) ),
+            type            => q(anchor) };
+}
+
+sub _hash_for_footer_line {
    # Cut on the dotted line toggle the footer visibilty
-   $item     = 1 + ($s->{is_administrator} ? 1 : 0);
-   $jscript  = "behaviour.state.toggleSwapText('tools0item${item}";
-   $jscript .= "', 'footer', '".$self->loc( q(footerOffText) )."', '";
-   $jscript .= $self->loc( q(footerOnText) )."')";
-   $tip      = $self->loc( q(footerToggleTip) );
-   $content  = { alt      => 'Close Footer',
-                 class    => q(footer),
-                 href     => '#top',
-                 imgclass => q(footer),
-                 onclick  => $jscript,
-                 text     => $s->{assets}.'footerCut.gif',
-                 tip      => $tip,
-                 type     => q(rule),
-                 widget   => 1 };
+   my $self = shift;
+   my $id   = q(tools0item1);
+   my $text = $self->loc( q(footerOffText) );
+   my $alt  = $self->loc( q(footerOnText) );
 
-   return $content;
+   return { class     => q(cut_here),
+            config    => {
+               args   => "[ '${id}', 'footer', '${text}', '${alt}' ]",
+               method => "'toggleSwapText'" },
+            href      => '#top',
+            id        => q(footer_line),
+            imgclass  => q(scissors_icon),
+            text      => NUL,
+            tip       => DOTS.TTS.$self->loc( q(footerToggleTip) ),
+            type      => q(rule) };
 }
 
-sub _logo_link {
-   my $self    = shift;
-   my $s       = $self->context->stash;
-   my $href    = $s->{server_home} || 'http://'.$s->{domain};
-   my $content =
-      { class           => q(logo),
-        container_class => $s->{class},
-        container_id    => q(companyLogo),
-        fhelp           => q(Company Logo),
-        hint_title      => $href,
-        href            => $href,
-        imgclass        => q(logo),
-        sep             => $NUL,
-        text            => $s->{assets}.($s->{logo} || q(logo.png)),
-        tip             => $self->loc( q(logoTip) ),
-        type            => q(anchor),
-        widget          => 1 };
+sub _hash_for_logo_link {
+   my $self = shift;
+   my $s    = $self->context->stash;
+   my $href = $s->{server_home} || q(http://).$s->{domain};
 
-   return $content;
+   return { class        => q(logo),
+            container_id => q(companyLogo),
+            fhelp        => q(Company Logo),
+            hint_title   => $href,
+            href         => $href,
+            imgclass     => q(logo),
+            sep          => NUL,
+            text         => $s->{assets}.($s->{logo} || q(logo.png)),
+            tip          => $self->loc( q(logoTip) ),
+            type         => q(anchor) };
+}
+
+sub _log_and_stash_error {
+   my ($self, $e) = @_; my $s = $self->context->stash;
+
+   $s->{leader} = blessed $self; $self->log_error_message( $e, $s );
+
+   return $self->add_result( $self->loc( $e->error, $e->args ) );
+}
+
+# Private functions
+
+sub __get_field_count {
+   my ($sid, $nitems) = @_; $nitems ||= $sid->{count} - $sid->{mark} - 1;
+
+   (not $nitems or $nitems <= 0) and return FALSE; $sid->{mark} = $sid->{count};
+
+   return $nitems;
 }
 
 1;
@@ -752,15 +713,15 @@ CatalystX::Usul::Plugin::Model::StashHelper - Convenience methods for stuffing t
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1116 $
 
 =head1 Synopsis
 
    package CatalystX::Usul;
-   use parent qw(Catalyst::Component CatalystX::Usul::Base);
+   use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
 
    package CatalystX::Usul::Model;
-   use parent qw(CatalystX::Usul CatalystX::Usul::StashHelper);
+   use parent qw(Catalyst::Model CatalystX::Usul);
 
    package YourApp::Model::YourModel;
    use parent qw(CatalystX::Usul::Model);
@@ -784,7 +745,7 @@ which is rendered in the order in which it was stacked
 =head2 add_button
 
 Add a button definition to the stash. The template will render these
-as image buttons on the I<bbar> div
+as image buttons on the I<button> div
 
 =head2 add_buttons
 
@@ -813,7 +774,8 @@ Create a widget definition for a form field
 
 =head2 add_footer
 
-Adds some useful debugging info to the footer
+Adds data for a horizontal rule to separate the footer from the rest of the
+content
 
 =head2 add_header
 
@@ -831,6 +793,11 @@ div in the template
 =head2 add_result_msg
 
 Localises the message text and calls L</add_result>
+
+=head2 add_search_hit
+
+Placeholder should have been implemented in the class that applies
+this role
 
 =head2 add_search_links
 
@@ -870,6 +837,10 @@ Clears all footer data. Called by L</add_footer>
 Initialises the I<sdata> div contents. Called by C</stash_content> on
 first use
 
+=head2 clear_header
+
+Clears the header data from the form
+
 =head2 clear_hidden
 
 Clears the hidden fields from the form
@@ -890,44 +861,61 @@ Clears the stash of messages from the output of actions
 
 Clears the stash of the data used by the sidebar accordion widget
 
-=head2 _footer_line
+=head2 form_wrapper
 
-Adds a horizontal rule to separate the footer. Called by L</add_footer>
+Stashes the data used by L<HTML::FormWidgets> to throw I<form> around
+a group of fields
+
+=head2 get_para_col_class
+
+   $column_class = $model_obj->get_para_col_class( $n_columns );
+
+Converts an integer number into a string representation
 
 =head2 group_fields
 
-Stashes the data used by L<HTML::FormWidgets> to throw I<fieldset> around
+Stashes the data used by L<HTML::FormWidgets> to throw a I<fieldset> around
 a group of fields
 
-=head2 _logo_link
+=head2 search_for
 
-Returns a content hash ref that renders as a clickable image anchor. The
-link returns to the web servers default page
-
-=head2 open_window
-
-Returns the Javascript fragment that will open a new window in the web
-browser
+Placeholder returns an instance of L<Class::Null>. Should have been
+implemented in the interface model subclass
 
 =head2 search_page
 
 Create a L<KinoSearch> results page
 
-=head2 simple_page
-
-Creates a "simple" page from information stored in the configuration files
-
 =head2 stash_content
 
-Pushes the content (usually a widget definition) onto the specified stack
-
-=head2 stash_form
-
-Calls L</stash_content> specifying the I<sdata> stack
+Pushes the content (usually a widget definition) onto the specified stack.
+Defaults the I<sdata> stack
 
 =head2 stash_meta
 
 Adds some meta data to the response for an Ajax call
+
+=head2 stash_para_col_class
+
+   $column_class = $model_obj->stash_para_col_class( $key, $n_columns );
+
+Calls and returns the value from L</get_para_col_class>. Also stashes the
+value in the C<$key> attribute
+
+=head2 update_group_membership
+
+   $bool = $model_obj->update_group_membership( $args );
+
+Adds/removes lists of attributes from groups
+
+=head2 _hash_for_logo_link
+
+Returns a content hash ref that renders as a clickable image anchor. The
+link returns to the web servers default page
+
+=head2 _hash_for_footer_line
+
+Adds a horizontal rule to separate the footer. Called by L</add_footer>
 
 =head1 Configuration and Environment
 

@@ -1,249 +1,181 @@
-# @(#)$Id: Config.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Config.pm 1056 2011-10-19 21:27:16Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Config;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1056 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-my $SEP = q(/);
+use CatalystX::Usul::Constants;
 
-__PACKAGE__->config( namespace => q(admin) );
+__PACKAGE__->config( button_class     => q(Config::Buttons),
+                     credential_class => q(Config::Credentials),
+                     field_class      => q(Config::Fields),
+                     key_class        => q(Config::Keys),
+                     message_class    => q(Config::Messages),
+                     namespace        => q(admin),
+                     template_class   => q(Templates), );
+
+__PACKAGE__->mk_accessors( qw(button_class credential_class
+                              field_class key_class
+                              message_class template_class) );
 
 sub config_base : Chained(common) PathPart(configuration) CaptureArgs(0) {
-   my ($self, $c) = @_; my $model = $c->model( q(Base) );
-
-   $c->stash->{model_args} = { file => $self->get_key( $c, q(level) ),
-                               name => $model->query_value( q(name)  ) };
-   return;
 }
 
 sub configuration : Chained(config_base) PathPart('') Args(0) Public {
-   my ($self, $c) = @_;
-
-   return $self->redirect_to_path( $c, $SEP.q(globals) );
+   my ($self, $c) = @_; return $self->redirect_to_path( $c, SEP.q(globals) );
 }
 
 sub buttons_delete : ActionFor(buttons_view.delete) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $s     = $c->stash;
-   my $args  = $s->{model_args};
-   my $model = $c->model( q(Config::Buttons) );
-   my $attr  = $model->keys_attr;
-
-   $args->{name} = $self->get_key( $c, $attr );
-   $model->delete( $args );
-   $self->set_key( $c, $attr, $s->{newtag} );
-   return 1;
+   $c->model( $self->button_class )->delete( $ns );
+   $self->set_uri_args( $c, $ns, $s->{newtag} );
+   return TRUE;
 }
 
 sub buttons_save : ActionFor(buttons_view.save)
                    ActionFor(buttons_view.insert) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $model = $c->model( q(Config::Buttons) );
-   my $name  = $model->create_or_update( $c->stash->{model_args} );
+   my $name = $c->model( $self->button_class )->create_or_update( $ns );
 
-   $self->set_key( $c, $model->keys_attr, $name );
-   return 1;
+   $self->set_uri_args( $c, $ns, $name );
+   return TRUE;
 }
 
 sub buttons_view : Chained(config_base) PathPart(buttons) Args HasActions {
-   my ($self, $c, $namespace, $name) = @_;
+   my ($self, $c, @args) = @_;
 
-   my $model  = $c->model( q(Config::Buttons) );
-
-   $namespace = $self->set_key( $c, q(level), $namespace );
-   $name      = $self->set_key( $c, $model->keys_attr, $name );
-   $model->config_form( $namespace, $name );
-   return;
+   return $c->model( $self->button_class )->config_form( @args );
 }
 
 sub credentials : Chained(config_base) Args HasActions {
-   my ($self, $c, $namespace, $name) = @_;
+   my ($self, $c, @args) = @_;
 
-   my $model  = $c->model( q(Config::Credentials) );
-
-   $namespace = $self->set_key( $c, q(level), $namespace );
-   $name      = $self->set_key( $c, $model->keys_attr, $name );
-   $model->form( $namespace, $name );
-   return;
+   return $c->model( $self->credential_class )->form( @args );
 }
 
 sub credentials_delete : ActionFor(credentials.delete) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $s     = $c->stash;
-   my $args  = $s->{model_args};
-   my $model = $c->model( q(Config::Credentials) );
-   my $attr  = $model->keys_attr;
-
-   $args->{name} = $self->get_key( $c, $attr );
-   $model->delete( $args );
-   $self->set_key( $c, $attr, $s->{newtag} );
-   return 1;
+   $c->model( $self->credential_class )->delete( $ns );
+   $self->set_uri_args( $c, $ns, $s->{newtag} );
+   return TRUE;
 }
 
 sub credentials_save : ActionFor(credentials.save)
                        ActionFor(credentials.insert) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $model = $c->model( q(Config::Credentials) );
-   my $name  = $model->create_or_update( $c->stash->{model_args} );
+   my $name = $c->model( $self->credential_class )->create_or_update( $ns );
 
-   $self->set_key( $c, $model->keys_attr, $name );
-   return 1;
+   $self->set_uri_args( $c, $ns, $name );
+   return TRUE;
 }
 
 sub fields_delete : ActionFor(fields_view.delete) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $s     = $c->stash;
-   my $args  = $s->{model_args};
-   my $model = $c->model( q(Config::Fields) );
-   my $attr  = $model->keys_attr;
-
-   $args->{name} = $self->get_key( $c, $attr );
-   $model->delete( $args );
-   $self->set_key( $c, $attr, $s->{newtag} );
-   return 1;
+   $c->model( $self->field_class )->delete( $ns );
+   $self->set_uri_args( $c, $ns, $s->{newtag} );
+   return TRUE;
 }
 
 sub fields_save : ActionFor(fields_view.save) ActionFor(fields_view.insert) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $model = $c->model( q(Config::Fields) );
-   my $name  = $model->create_or_update( $c->stash->{model_args} );
+   my $name = $c->model( $self->field_class )->create_or_update( $ns );
 
-   $self->set_key( $c, $model->keys_attr, $name );
-   return 1;
+   $self->set_uri_args( $c, $ns, $name );
+   return TRUE;
 }
 
 sub fields_view : Chained(config_base) PathPart(fields) Args HasActions {
-   my ($self, $c, $namespace, $name) = @_;
+   my ($self, $c, @args) = @_;
 
-   my $model  = $c->model( q(Config::Fields) );
-
-   $namespace = $self->set_key( $c, q(level), $namespace );
-   $name      = $self->set_key( $c, $model->keys_attr, $name );
-   $model->config_form( $namespace, $name );
-   return;
+   return $c->model( $self->field_class )->config_form( @args );
 }
 
 sub globals : Chained(config_base) PathPart(globals) Args(0) HasActions {
-   my ($self, $c) = @_; $c->model( q(Config::Globals) )->form; return;
+   my ($self, $c) = @_; return $c->model( $self->global_class )->form;
 }
 
 sub globals_save : ActionFor(globals.save) {
-   my ($self, $c) = @_; $c->model( q(Config::Globals) )->save; return 1;
+   my ($self, $c) = @_; return $c->model( $self->global_class )->save;
 }
 
 sub keys_delete : ActionFor(keys_view.delete) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $s     = $c->stash;
-   my $args  = $s->{model_args};
-   my $model = $c->model( q(Config::Keys) );
-   my $attr  = $model->keys_attr;
-
-   $args->{name} = $self->get_key( $c, $attr );
-   $model->delete( $args );
-   $self->set_key( $c, $attr, $s->{newtag} );
-   return 1;
+   $c->model( $self->key_class )->delete( $ns );
+   $self->set_uri_args( $c, $ns, $s->{newtag} );
+   return TRUE;
 }
 
 sub keys_save : ActionFor(keys_view.save) ActionFor(keys_view.insert) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $model = $c->model( q(Config::Keys) );
-   my $name  = $model->create_or_update( $c->stash->{model_args} );
+   my $name = $c->model( $self->key_class )->create_or_update( $ns );
 
-   $self->set_key( $c, $model->keys_attr, $name );
-   return 1;
+   $self->set_uri_args( $c, $ns, $name );
+   return TRUE;
 }
 
 sub keys_view : Chained(config_base) PathPart(keys) Args HasActions {
-   my ($self, $c, $namespace, $name) = @_;
+   my ($self, $c, @args) = @_;
 
-   my $model  = $c->model( q(Config::Keys) );
-
-   $namespace = $self->set_key( $c, q(level), $namespace );
-   $name      = $self->set_key( $c, $model->keys_attr, $name );
-   $model->config_form( $namespace, $name );
-   return;
+   return $c->model( $self->key_class )->config_form( @args );
 }
 
 sub messages_delete : ActionFor(messages_view.delete) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $s     = $c->stash;
-   my $args  = $s->{model_args};
-   my $model = $c->model( q(Config::Messages) );
-   my $attr  = $model->keys_attr;
-
-   $args->{name} = $self->get_key( $c, $attr );
-   $model->delete( $args );
-   $self->set_key( $c, $attr, $s->{newtag} );
-   return 1;
+   $c->model( $self->message_class )->delete( $ns );
+   $self->set_uri_args( $c, $ns, $s->{newtag} );
+   return TRUE;
 }
 
 sub messages_save : ActionFor(messages_view.save)
                     ActionFor(messages_view.insert) {
-   my ($self, $c) = @_;
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $model = $c->model( q(Config::Messages) );
-   my $name  = $model->create_or_update( $c->stash->{model_args} );
+   my $name = $c->model( $self->message_class )->create_or_update( $ns );
 
-   $self->set_key( $c, $model->keys_attr, $name );
-   return 1;
+   $self->set_uri_args( $c, $ns, $name );
+   return TRUE;
 }
 
 sub messages_view : Chained(config_base) PathPart(messages) Args HasActions {
-   my ($self, $c, $namespace, $name) = @_;
+   my ($self, $c, @args) = @_;
 
-   my $model  = $c->model( q(Config::Messages) );
-
-   $namespace = $self->set_key( $c, q(level), $namespace );
-   $name      = $self->set_key( $c, $model->keys_attr, $name );
-   $model->config_form( $namespace, $name );
-   return;
+   return $c->model( $self->message_class )->config_form( @args );
 }
 
-sub pages_delete : ActionFor(pages_view.delete) {
-   my ($self, $c) = @_;
+sub templates_delete : ActionFor(templates_view.delete) {
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $s     = $c->stash;
-   my $args  = $s->{model_args};
-   my $model = $c->model( q(Config::Pages) );
-   my $attr  = $model->keys_attr;
-
-   $args->{name} = $self->get_key( $c, $attr );
-   $model->delete( $args );
-   $self->set_key( $c, $attr, $s->{newtag} );
-   return 1;
+   $c->model( $self->template_class )->delete( $ns );
+   $self->set_uri_args( $c, $ns, $s->{newtag} );
+   return TRUE;
 }
 
-sub pages_save : ActionFor(pages_view.save) ActionFor(pages_view.insert) {
-   my ($self, $c) = @_;
+sub templates_save : ActionFor(templates_view.save)
+                     ActionFor(templates_view.insert) {
+   my ($self, $c, $ns) = @_; my $s = $c->stash;
 
-   my $model = $c->model( q(Config::Pages) );
-   my $name  = $model->create_or_update( $c->stash->{model_args} );
+   my $name = $c->model( $self->template_class )->create_or_update( $ns );
 
-   $self->set_key( $c, $model->keys_attr, $name );
-   return 1;
+   $self->set_uri_args( $c, $ns, $name );
+   return TRUE;
 }
 
-sub pages_view : Chained(config_base) PathPart(pages) Args HasActions {
-   my ($self, $c, $namespace, $name) = @_;
+sub templates_view : Chained(config_base) PathPart(templates) Args HasActions {
+   my ($self, $c, @args) = @_;
 
-   my $model  = $c->model( q(Config::Pages) );
-
-   $namespace = $self->set_key( $c, q(level), $namespace );
-   $name      = $self->set_key( $c, $model->keys_attr, $name );
-   $model->config_form( $namespace, $name );
-   return;
+   return $c->model( $self->template_class )->form( @args );
 }
 
 1;
@@ -258,7 +190,7 @@ CatalystX::Usul::Controller::Admin::Config - Editor for config files
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1056 $
 
 =head1 Synopsis
 
@@ -376,24 +308,24 @@ currently selected message definition or inserts a new one
 =head2 messages_view
 
 Displays the message definition form. Messages are language dependent
-and are used to L<localize|CatalystX::Usul/localize> output
+and are used to L<localize|CatalystX::Usul::Controller/loc> output
 
-=head2 pages_delete
+=head2 templates_delete
 
-Called in response to the I<Delete> button on the L</pages_view>
-page being pressed, this method deletes the currently selected page
-definition
+Called in response to the I<Delete> button on the L</templates_view>
+page being pressed, this method deletes the currently selected template
+file
 
-=head2 pages_save
+=head2 templates_save
 
 Called in response to the I<Insert> or I<Save> buttons on the
-L</pages_view> page being pressed, this method either updates the
-currently selected page definition or inserts a new one
+L</templates_view> page being pressed, this method either updates the
+currently selected template or creates a new one
 
-=head2 pages_view
+=head2 templates_view
 
-Displays the page definition form. Page definitions define the contents
-of a L<simple page|CatalystX::Usul::Plugin::Model::StashHelper/simple_page>
+Displays the template form. Templates define the contents
+of a page
 
 =head1 Diagnostics
 

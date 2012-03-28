@@ -1,25 +1,27 @@
-# @(#)$Id: Table.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Table.pm 1065 2011-10-26 13:22:21Z pjf $
 
 package CatalystX::Usul::Table;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(Class::Accessor::Fast);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1065 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Base);
 
-__PACKAGE__->mk_accessors( qw(align class count flds hclass labels
+use CatalystX::Usul::Functions qw(arg_list);
+
+__PACKAGE__->mk_accessors( qw(caption class classes count flds hclass labels
                               sizes typelist values widths wrap) );
 
 sub new {
    my ($self, @rest) = @_;
 
-   my $args = $rest[0] && ref $rest[0] eq q(HASH) ? $rest[0] : { @rest };
-   my $new  = bless { align  => {}, class    => undef,
-                      count  => 0,  flds     => [],
-                      hclass => {}, labels   => {},
-                      sizes  => {}, typelist => {},
-                      values => [], widths   => {},
-                      wrap   => {} }, ref $self || $self;
+   my $args  = arg_list @rest;
+   my $class = ref $self || $self;
+   my $new   = bless {
+      caption  => undef, class    => undef, classes  => {},
+      count    => 0,     flds     => [],    hclass   => {},
+      labels   => {},    sizes    => {},    typelist => {},
+      values   => [],    widths   => {},    wrap     => {} }, $class;
 
    for (grep { exists $new->{ $_ } } keys %{ $args }) {
       $new->$_( $args->{ $_ } );
@@ -40,7 +42,7 @@ CatalystX::Usul::Table - Data structure for the table widget
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1065 $
 
 =head1 Synopsis
 
@@ -66,7 +68,7 @@ None
 
 =over 3
 
-=item L<Class::Accessor::Fast>
+=item L<CatalystX::Usul::Base>
 
 =back
 

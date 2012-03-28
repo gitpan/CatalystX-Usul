@@ -1,82 +1,78 @@
-# @(#)$Id: Model.pm 589 2009-06-13 12:24:29Z pjf $
+# @(#)$Id: Model.pm 1128 2012-03-23 21:47:25Z pjf $
 
 package CatalystX::Usul::Model;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 589 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1128 $ =~ /\d+/gmx );
+use parent qw(Catalyst::Model CatalystX::Usul CatalystX::Usul::Encoding);
 
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(app_prefix is_arrayref throw);
 use Data::Validation;
+use MRO::Compat;
 use Scalar::Util qw(blessed refaddr weaken);
+use TryCatch;
+
+__PACKAGE__->config( scrubbing => FALSE, scrub_chars => q([\'\"/\:]) );
+
+__PACKAGE__->mk_accessors( qw(context domain_attributes domain_class
+                              domain_model scrubbing scrub_chars) );
 
 __PACKAGE__->mk_encoding_methods( qw(_get_req_array _get_req_value) );
 
-__PACKAGE__->mk_accessors( qw(context screensaver scrubbing scrub_chars) );
+sub COMPONENT {
+   my ($class, $app, $config) = @_; $class->_setup_plugins( $app );
 
-sub new {
-   my ($self, $app, $config) = @_; my $class = ref $self || $self;
+   my $comp = $class->next::method( $app, $config );
+   my $usul = CatalystX::Usul->new( $app, {} );
 
-   $class->_setup_plugins( $app );
+   for (grep { not defined $comp->{ $_ } } keys %{ $usul }) {
+      $comp->{ $_ } = $usul->{ $_ }; # Attribute mixin
+   }
 
-   my $ac          = $app->config || {};
-   my $new         = $self->next::method( $app, $config );
-   my $scrubbing   = $new->scrubbing   || $ac->{scrubbing  } || 0;
-   my $scrub_chars = $new->scrub_chars || $ac->{scrub_chars} || q([\'\"/\:]);
-
-   $new->scrubbing  ( $scrubbing   );
-   $new->scrub_chars( $scrub_chars );
-
-   $new->screensaver( q(xdg-screensaver lock) );
-
-   return $new;
+   return $comp;
 }
 
 sub ACCEPT_CONTEXT {
    my ($self, $c, @rest) = @_;
 
-   return $self->build_per_context_instance( $c, @rest ) unless ref $c;
+   blessed $c or return $self->build_per_context_instance( $c, @rest );
 
-   my $key = blessed $self ? refaddr $self : $self;
+   my $s   = $c->stash;
+   my $key = q(__InstancePerContext_).(blessed $self ? refaddr $self : $self);
 
-   return $c->stash->{ "__InstancePerContext_${key}" }
-             ||= $self->build_per_context_instance( $c, @rest );
+   return $s->{ $key } ||= $self->build_per_context_instance( $c, @rest );
 }
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $s = $c->stash;
+   my ($self, $c, @rest) = @_;
 
-   my $new = bless { %{ $self } }, ref $self;
+   my $attrs = { ref $self ? %{ $self } : () }; # Clone self
+   my $new   = bless $attrs, blessed $self || $self;
 
-   if (ref $c) { $new->{context} = $c; weaken( $new->{context} ) }
+   if (blessed $c) { $new->{context} = $c; weaken( $new->{context} ) }
 
    return $new;
 }
 
 sub check_field {
-   my ($self, @rest) = @_; my $s = $self->context->stash;
+   my ($self, $id, $value) = @_;
 
-   my $config = { exception   => $self->exception_class,
-                  constraints => $s->{constraints} || {},
-                  fields      => $s->{fields}      || {},
-                  filters     => $s->{filters}     || {} };
-   my $dv     = Data::Validation->new( %{ $config } );
-
-   return $dv->check_field( @rest );
+   return $self->_validator->check_field( $id, $value );
 }
 
 sub check_form  {
-   my ($self, @rest) = @_; my $s = $self->context->stash;
+   my ($self, $form) = @_; my $c = $self->context; my $s = $c->stash;
 
-   my $config = { exception   => $self->exception_class,
-                  constraints => $s->{constraints} || {},
-                  fields      => $s->{fields}      || {},
-                  filters     => $s->{filters}     || {} };
-   my $dv     = Data::Validation->new( %{ $config } );
-   my $form   = $s->{form}->{name} || $self->app_prefix( ref $self );
+   my $prefix = ($s->{form}->{name} || app_prefix blessed $self).q(.);
 
-   return $dv->check_form( $form.q(.), @rest );
+   try        { $form = $self->_validator->check_form( $prefix, $form ) }
+   catch ($e) {
+      my $last = pop @{ $e->args }; $c->error( $e->args ); throw $last;
+   }
+
+   return $form;
 }
 
 sub form {
@@ -87,105 +83,97 @@ sub form {
    return $self->$method( @rest );
 }
 
-*loc = \&localize;
+sub loc {
+   my ($self, @rest) = @_;
 
-sub localize {
-   my ($self, @rest) = @_; my $c = $self->context; my $arg = $rest[ 0 ];
-
-   return $self->next::method( $c, @rest ) if (not $arg or not ref $arg);
-
-   return $self->next::method( @rest );
-}
-
-sub lock_display {
-   # TODO: Move this to a plugin
-   my ($self, $display) = @_;
-
-   $self->run_cmd( $self->screensaver, { err => q(out) } );
-   return;
+   return $self->next::method( $self->context->stash, @rest );
 }
 
 sub query_array {
-   my ($self, @rest) = @_;
-
-   return $self->_query_array_or_value( q(array), @rest );
+   my ($self, @rest) = @_; return $self->_query_by_type( q(array), @rest );
 }
 
 sub query_value {
-   my ($self, @rest) = @_;
+   my ($self, @rest) = @_; return $self->_query_by_type( q(value), @rest );
+}
 
-   return $self->_query_array_or_value( q(value), @rest );
+sub query_value_by_fields {
+   my ($self, @fields) = @_;
+
+   return { map  { $_->[ 0 ] => $_->[ 1 ]           }
+            grep { defined $_->[ 1 ]                }
+            map  { [ $_, $self->query_value( $_ ) ] } @fields };
 }
 
 sub scrub {
-   my ($self, $value) = @_; my $pattern = $self->scrub_chars;
+   my ($self, $value) = @_; defined $value or return;
 
-   return unless (defined $value);
-
-   $value =~ s{ $pattern }{}gmx;
+   my $pattern = $self->scrub_chars; $value =~ s{ $pattern }{}gmx;
 
    return $value;
-}
-
-sub uri_for {
-   my ($self, @rest) = @_; my $c = $self->context; my $arg = $rest[ 0 ];
-
-   return $self->next::method( $c, @rest ) if (not $arg or not ref $arg);
-
-   return $self->next::method( @rest );
 }
 
 # Private methods
 
 sub _get_req_array {
-   my ($self, $fld) = @_; $fld ||= q();
+   my ($self, $attr) = @_;
 
-   my $value = $self->context->req->params->{ $fld };
+   my $value = $self->context->req->params->{ $attr || NUL };
 
    $value = defined $value ? $value : [];
 
-   $value = [ $value ] unless (ref $value eq q(ARRAY));
+   is_arrayref $value or $value = [ $value ];
 
    return $value;
 }
 
 sub _get_req_value {
-   my ($self, $fld) = @_; $fld ||= q();
+   my ($self, $attr) = @_;
 
-   my $value = $self->context->req->params->{ $fld };
+   my $value = $self->context->req->params->{ $attr || NUL };
 
-   $value = $value->[ 0 ] if ($value && ref $value eq q(ARRAY));
+   is_arrayref $value and $value = $value->[ 0 ];
 
    return $value;
 }
 
-sub _query_array_or_value {
+sub _query_by_type {
    my ($self, $type, @rest) = @_;
 
    (my $enc   = lc ($self->encoding || q(guess))) =~ s{ [-] }{_}gmx;
    my $method = q(_get_req_).$type.q(_).$enc.q(_encoding);
    my $value  = $self->$method( @rest );
 
-   if ($self->scrubbing) {
-      unless ($type eq q(array)) { $value = $self->scrub( $value ) }
-      else { @{ $value } = map { $self->scrub( $_ ) } @{ $value } }
-   }
+   $self->scrubbing or return $value;
+
+   unless ($type eq q(array)) { $value = $self->scrub( $value ) }
+   else { @{ $value } = map { $self->scrub( $_ ) } @{ $value } }
 
    return $value;
 }
 
 sub _setup_plugins {
-   my ($self, $app) = @_;
+   my ($self, $app) = @_; my $plugins;
 
-   unless (__PACKAGE__->get_inherited( q(_m_plugins) )) {
-      my $config  = { search_paths => [ qw(::Plugin::Model ::Plugin::M) ],
-                      %{ $app->config->{ setup_plugins } || {} } };
-      my $plugins = __PACKAGE__->setup_plugins( $config );
+   $plugins = __PACKAGE__->get_inherited( q(_m_plugins) ) and return $plugins;
 
-      __PACKAGE__->set_inherited( q(_m_plugins), $plugins );
-   }
+   my $config = { search_paths => [ q(::Plugin::Model) ],
+               %{ $app->config->{ setup_plugins } || {} } };
 
-   return;
+   $plugins = __PACKAGE__->setup_plugins( $config );
+
+   return __PACKAGE__->set_inherited( q(_m_plugins), $plugins );
+}
+
+sub _validator {
+   my $self  = shift;
+   my $s     = $self->context->stash;
+   my $attrs = { exception   => $self->exception_class,
+                 constraints => $s->{constraints} || {},
+                 fields      => $s->{fields     } || {},
+                 filters     => $s->{filters    } || {} };
+
+   return Data::Validation->new( $attrs );
 }
 
 1;
@@ -196,40 +184,34 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model - Application independent common model methods
+CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-0.3.$Revision: 589 $
+0.4.$Revision: 1128 $
 
 =head1 Synopsis
 
    package CatalystX::Usul;
-   use parent qw(Catalyst::Component CatalystX::Usul::Base);
+   use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
 
    package CatalystX::Usul::Model;
-   use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+   use parent qw(Catalyst::Model CatalystX::Usul CatalystX::Usul::IPC);
 
    package YourApp::Model::YourModel;
    use parent qw(CatalystX::Usul::Model);
 
 =head1 Description
 
-Common core model methods
+Common core interface model methods
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
 
 Defines the following accessors:
 
 =over 3
-
-=item screensaver
-
-The external command to execute to lock the display. Defaults to one that
-works with KDE as the window manager. Should move this to a plugin
-because its silly
 
 =item scrubbing
 
@@ -257,8 +239,7 @@ Calls L</build_per_context_instance> for each new context
 =head2 build_per_context_instance
 
 Called by L</ACCEPT_CONTEXT>. Takes a copy of the Catalyst object so
-that we don't have to pass C<$c> into L<CatalystX::Usul/get_action>,
-L<CatalystX::Usul/localize> and L<CatalystX::Usul/uri_for>
+that we don't have to pass C<< $c->stash >> into L<CatalystX::Usul/loc>
 
 =head2 check_field
 
@@ -282,17 +263,13 @@ construct the method name
 
 =head2 loc
 
-=head2 localize
+   $local_text = $self->loc( $key, $args );
 
-   $local_text = $self->localize( $message, $args );
-
-Localizes the message. Optionally calls C<markdown> on the text
-
-=head2 lock_display
-
-Locks the display by running the external screensaver command
+Localizes the message. Calls L<CatalystX::Usul/loc>
 
 =head2 query_array
+
+   $array_ref = $self->query_array( $attr );
 
 Returns the requested parameter in a list context. Uses the
 B<encoding> attribute to generate the method call to decode the input
@@ -302,10 +279,20 @@ not provided
 
 =head2 query_value
 
+   $scalar_value = $self->query_value( $attr );
+
 Returns the requested parameter in a scalar context. Uses B<encoding>
 attribute to generate the method call to decode the input value. The
 decode method is provided by L<CatalystX::Usul::Encoding>. Will try to
 guess the encoding if one is not provided
+
+=head2 query_value_by_fields
+
+   $hash_ref = $self->query_value_by_fields( @fields );
+
+Returns a hash_ref of fields and their values if the values are
+defined by the request. Calls L</query_value> for each of supplied
+fields
 
 =head2 scrub
 
@@ -313,31 +300,24 @@ guess the encoding if one is not provided
 
 Removes the C<< $self->scrub_chars >> from the value
 
-=head2 uri_for
-
-   $uri = $self->uri_for( $action_path, @args );
-
-Provide defaults for the L<Catalyst> C<uri_for> method. Search for the uri
-with differing numbers of capture args
-
 =head2 _get_req_array
 
-   my $array_ref = $self->_get_req_array( $field );
+   my $array_ref = $self->_get_req_array( $attr );
 
 Takes a request object that must implement a C<params> method which
-returns a hash ref. The method returns the value for C<$field> from
+returns a hash ref. The method returns the value for C<$attr> from
 that hash. This method will always return a array ref. This method is
-wrapped by C<Catalystx::Usul::Encoding::mk_encoding_methods>
+wrapped by L<Catalystx::Usul::Encoding/mk_encoding_methods>
 and as such is not called directly
 
 =head2 _get_req_value
 
-   my $value = $self->_get_req_value( $field );
+   my $value = $self->_get_req_value( $attr );
 
 Takes a request object that must implement a C<params> method which
-returns a hash ref. The method returns the value for C<$field> from
+returns a hash ref. The method returns the value for C<$attr> from
 that hash. This method will always return a scalar. This method is
-wrapped by C<Catalystx::Usul::Encoding::mk_encoding_methods>
+wrapped by L<Catalystx::Usul::Encoding/mk_encoding_methods>
 and as such is not called directly
 
 =head1 Configuration and Environment
@@ -352,9 +332,13 @@ None
 
 =over 3
 
+=item L<Catalyst::Model>
+
 =item L<CatalystX::Usul>
 
-=item L<CatalystX::Usul::Utils>
+=item L<CatalystX::Usul::Encoding>
+
+=item L<CatalystX::Usul::IPC>
 
 =item L<Data::Validation>
 
@@ -378,7 +362,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2008-2009 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,249 +1,296 @@
-# @(#)$Id: HTML.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: HTML.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::View::HTML;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(Catalyst::View::TT CatalystX::Usul::View);
 
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(exception is_member);
 use Encode;
 use English qw(-no_match_vars);
 use File::Find;
+use HTML::FillInForm;
+use MRO::Compat;
 use Template::Stash;
-
-my $NUL = q();
-my $SEP = q(/);
+use TryCatch;
 
 __PACKAGE__->config( CATALYST_VAR       => q(c),
                      COMPILE_EXT        => q(.ttc),
                      PRE_CHOMP          => 1,
                      TRIM               => 1,
-                     css                => q(presentation),
+                     default_css        => q(presentation),
+                     default_jscript    => q(behaviour),
                      default_template   => q(layout),
+                     font_extension     => q(.typeface.js),
+                     fonts_dir          => q(fonts),
                      form_sources       =>
-                        [ qw(append bbar footer header hidden
-                             menus quick_links sdata) ],
-                     jscript            => q(behaviour),
+                        [ qw(append button footer header hidden
+                             menus quick_links sdata sidebar) ],
+                     lang_dir           => q(lang),
                      jscript_path       => q(static/jscript),
                      target             => q(top),
                      template_extension => q(.tt), );
 
-__PACKAGE__->mk_accessors( qw(css css_files default_template jscript
+__PACKAGE__->mk_accessors( qw(css_paths default_css default_jscript
+                              default_template font_extension
+                              fonts_dir fonts_jscript js_for_skin
                               jscript_dir jscript_path
                               lang_dep_jsprefixs lang_dep_jscript
-                              static_jscript target template_extension
-                              templates) );
+                              lang_dir optional_js static_js target
+                              template_extension templates) );
 
-sub new {
-   my ($self, $app, @rest) = @_; my $path;
+sub COMPONENT {
+   my ($class, $app, @rest) = @_;
 
-   my $new = $self->next::method( $app, @rest );
+   my $new = $class->next::method( $app, @rest );
 
-   $new->css_files         ( {} );
+   $new->css_paths         ( {} );
+   $new->fonts_jscript     ( {} );
+   $new->js_for_skin       ( {} );
    $new->lang_dep_jscript  ( {} );
    $new->lang_dep_jsprefixs( [] ) unless ($new->lang_dep_jsprefixs);
-   $new->static_jscript    ( [] );
+   $new->optional_js       ( [] );
+   $new->static_js         ( [] );
    $new->templates         ( {} );
 
    # Cache the CSS files with the colour- prefix from each available skin
-   my $io = $new->io( $app->config->{skindir} );
+   my $config     = $app->config;
+   my $stylesheet = $config->{stylesheet};
+   my $css_file   = $new->default_css.q(.css);
+   my $js_file    = $new->default_jscript.q(.js);
+   my $skin_dir   = $new->io( $config->{skindir} );
 
-   while ($path = $io->next) {
-      if (-d $path->pathname
-          and -f $self->catfile( $path->pathname, $new->css.q(.css) )) {
-         @{ $new->css_files->{ $path->filename } }
-            = grep { m{ \A colour- }mx }
-              map  { $new->basename( $_ ) }
-              glob $self->catfile( $path->pathname, q(*.css) );
-      }
+   for my $path ($skin_dir->all_dirs) {
+      my $skin_name = $path->filename;
+      my $css_path  = $skin_dir->catfile( $skin_name, $css_file );
+
+      ($path->is_dir and $css_path->is_file) or next;
+
+      my $css_paths = $new->css_paths->{ $skin_name } = [];
+      my $skin_path = join SEP, NUL, $config->{skins}, $skin_name, NUL;
+
+      @{ $css_paths } = map  { $skin_path.$_ }
+                        grep { not m{ \A $stylesheet }mx }
+                        grep { m{ \A colour- }mx }
+                        map  { $new->basename( $_ ) }
+                        glob $skin_dir->catfile( $skin_name, q(*.css) );
+
+      $skin_dir->catfile( $skin_name, $stylesheet )->exists
+         and unshift @{ $css_paths }, $skin_path.$stylesheet;
+
+      $skin_dir->catfile( $skin_name, $js_file )->exists
+         and $new->js_for_skin->{ $skin_name } = $skin_path.$js_file;
    }
 
-   $io->close;
-
    # Cache the JS files in the static JS directory
-   for $path (glob $self->catfile( $new->jscript_dir, q(*.js) )) {
-      $path = $SEP.$new->jscript_path.$SEP.$new->basename( $path );
-      push @{ $new->static_jscript }, $path;
+   for my $file ($new->_list_jscript( $new->jscript_dir )) {
+      my ($order)   = $file =~ m{ \A (\d+) }mx;
+      my $array_ref = $order && $order < 50
+                    ? $new->static_js : $new->optional_js;
+
+      push @{ $array_ref }, SEP.$new->jscript_path.SEP.$file;
    }
 
    # Cache the language dependant JS files
-   for $path (glob $self->catfile( $self->catdir( $new->jscript_dir,
-                                                  q(lang) ), q(*.js))) {
-      $new->lang_dep_jscript->{ $new->basename( $path ) } = 1;
+   my $dir = $new->catdir( $new->jscript_dir, $new->lang_dir );
+
+   for my $file ($new->_list_jscript( $dir )) {
+      $new->lang_dep_jscript->{ $file } = TRUE;
    }
 
-   # Cache the per page custom templates
-   my $extension = $new->template_extension;
+   # Cache the font replacement JS files. Fugly
+   my $suffix = $new->font_extension;
+   my $wanted = sub {
+      m{ \Q$suffix\E \z }mx and $new->fonts_jscript->{
+         $new->basename( $_, $suffix ) } =
+            $new->catfile( $new->basename( $new->dirname( $_ ) ),
+                           $new->basename( $_ ) ) };
 
-   find( { no_chdir => 1,
-           wanted   =>
-              sub { $new->templates->{ $_ } = 1 if (m{ $extension \z }mx) } },
-         $new->dynamic_templates );
+   $dir = $new->catdir( $new->jscript_dir, $new->fonts_dir );
+   find( { no_chdir => TRUE, wanted => $wanted }, $dir );
+
+   # Cache the per page custom templates
+   $suffix = $new->template_extension;
+   $wanted = sub { m{ $suffix \z }mx and $new->templates->{ $_ } = TRUE };
+   find( { no_chdir => TRUE, wanted => $wanted }, $new->template_dir );
 
    return $new;
 }
 
 sub bad_request {
-   my ($self, $c, $verb, $msg) = @_; my $s = $c->stash;
+   my ($self, $c, $verb, $msg, $status) = @_;
+
+   my $s = $c->stash; $verb ||= NUL; $msg ||= 'unknown'; $status ||= 400;
 
    # Add a stock phrase to the user visible reason for failure
-   my $button = $s->{buttons}->{ $c->action->{name}.q(.).$verb } || {};
+   my $buttons = $s->{buttons} || {};
+   my $button  = $buttons->{ $c->action->{name}.q(.).$verb } || {};
+   my $err     = $button->{error} || NUL;
 
-   $msg = $button->{error}."\n".(lcfirst $msg) if ($button->{error});
+   $c->model( q(Base) )->add_result( $err ? $err."\n".(lcfirst $msg) : $msg );
 
-   $c->model( q(Base) )->add_result( $msg );
-   $s->{override} = 1;
-   return 1;
+   return $s->{override} = TRUE;
 }
 
 sub deserialize {
    # Do nothing
 }
 
-sub fix_stash {
-   my ($self, $c) = @_; my $s = $c->stash; my $e;
-   my $extension  = $self->template_extension;
+sub get_verb {
+   my ($self, $c) = @_; my $s = $c->stash; my $req = $c->req; my $verb;
 
-   if ($c->action->reverse) {
-      # Load a per page custom template if one is defined
-      my $path = $self->catfile( $self->dynamic_templates,
-                                 split m{ $SEP }mx,
-                                 $c->action->reverse ).$extension;
-
-      if (exists $self->templates->{ $path }) {
-         my $content = eval { $self->io( $path )->slurp };
-         $content = $e->as_string if ($e = $self->catch);
-         push @{ $s->{sdata}->{items} }, { content => $content };
-      }
+   if ($verb = lc $req->params->{_method}) {
+      # To be sure we'll only do this once
+      $s->{ '_method'   } = delete $req->params->{ '_method'   };
+      $s->{ '_method.x' } = delete $req->params->{ '_method.x' };
+      $s->{ '_method.y' } = delete $req->params->{ '_method.y' };
    }
+   elsif (lc $req->method eq q(get)) { $verb = q(get) }
 
-   # Default the template if one is not already defined
-   unless ($s->{template}) {
-      $s->{template}
-         = $self->catfile( $s->{skin}, $self->default_template.$extension );
-   }
+   return $verb;
+}
 
-   if ($s->{target} = $self->target) {
-      $c->res->headers->header( q(target) => $s->{target} );
-   }
+sub process {
+   my ($self, $c) = @_; my $s = $c->stash; my $enc = $s->{encoding};
 
-   $s->{content_type} .= q(; charset=).$s->{encoding} if ($s->{encoding});
+   $self->_fix_stash    ( $c );
+   $self->_build_widgets( $c, { data => $self->_read_form_sources( $c ) } );
+   $self->_setup_css    ( $c );
+   $self->_setup_jscript( $c );
 
-   my $name = $c->action->name; my ($cfg, $text);
+   $enc and $s->{content_type} .= q(; charset=).$enc;
 
-   if (exists $s->{rooms}->{ $name } and $cfg = $s->{rooms}->{ $name }) {
-       $s->{description} = $text if ($text = $cfg->{tip     });
-       $s->{keywords   } = $text if ($text = $cfg->{keywords});
-   }
+   # Do the template thing
+   if ($self->next::method( $c )) { $s->{override} and $self->_fillform( $c ) }
+   else { $c->res->body( $c->error() ) }
 
-   $Template::Stash::SCALAR_OPS->{loc} = sub {
-      my (undef, $msg, @rest) = @_; return $self->loc( $c, $msg, @rest );
-   };
+   # Encode the body of the page
+   $enc and $c->res->body( encode( $enc, $c->res->body ) );
+
+   $c->res->content_type( $s->{content_type} );
+   $c->res->header( Vary => q(Content-Type) );
+   return TRUE;
+}
+
+# Private methods
+
+sub _fillform {
+   my ($self, $c) = @_;
+
+   $c->response->output
+      ( HTML::FillInForm->new->fill
+        ( scalarref => \$c->res->{body}, fdat => $c->req->parameters, ) );
 
    return;
 }
 
-sub get_css {
-   my ($self, $c) = @_;
-   my @csss       = ();
-   my $s          = $c->stash;
-   my $skin       = $s->{skin};
-   my $conf       = $c->config;
-   my $skin_path  = $SEP.$conf->{skins}.$SEP.$skin.$SEP;
-   my $path       = $self->catfile( $conf->{skindir},
-                                    $skin, $conf->{default_css} );
-   my $title;
+sub _fix_stash {
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   # TODO: Cache these to avoid the -f on each get request
-   # Primary CSS file
-   push @csss, $skin_path.$conf->{default_css} if (-f $path);
+   my $action = $c->action; my $extension = $self->template_extension;
 
-   # Add list of alternate CSS files
-   for my $css (@{ $self->css_files->{ $skin } }) {
-      $path = $skin_path.$css;
-      push @csss, $path unless ($self->is_member( $path, @csss ));
+   if ($action->name) {
+      # Load a per page custom template if one is defined
+      my $suffix = q(_).$s->{lang}.$extension;
+      my @parts  = ( $action->namespace || q(root), $action->name );
+      my $path   = $self->catfile( $self->template_dir, @parts );
+      my $content;
+
+      if (exists $self->templates->{ $path.$suffix }) {
+         try        { $content = $self->io( $path.$suffix )->slurp }
+         catch ($e) { $content = exception( $e )->as_string }
+      }
+      elsif (exists $self->templates->{ $path.$extension }) {
+         try        { $content = $self->io( $path.$extension )->slurp }
+         catch ($e) { $content = exception( $e )->as_string }
+      }
+
+      $content and unshift @{ $s->{sdata}->{items} },
+         { class => $action->name, content => $content };
    }
 
-   my $rel = q(stylesheet); $s->{css} = [];
+   # Default the template if one is not already defined
+   $s->{js_object}   = $self->js_object;
+   $s->{skin     } ||= q(default);
+   $s->{template } or $s->{template}
+      = $self->catfile( $s->{skin}, $self->default_template.$extension );
+   $s->{target   }   = $self->target
+      and $c->res->headers->header( q(target) => $s->{target} );
+
+   $Template::Stash::SCALAR_OPS->{loc} = sub { shift; $self->loc( $s, @_ ) };
+
+   return;
+}
+
+sub _list_jscript {
+   my ($self, $dir) = @_;
+
+   return map { $self->basename( $_ ) } glob $self->catfile( $dir, q(*.js) );
+}
+
+sub _setup_css {
+   my ($self, $c) = @_; my $s = $c->stash;
+
+   my $rel = q(stylesheet); my $skin = $s->{skin}; $s->{css} = [];
 
    # Fixup the stashed CSS files as either primary or alternate
-   for my $css (@csss) {
-      ($title = $self->basename( $css, qw(.css) )) =~ s{ \A colour- }{}mx;
+   for my $css (@{ $self->css_paths->{ $skin } }) {
+      (my $title = $self->basename( $css, qw(.css) )) =~ s{ \A colour- }{}mx;
+
       push @{ $s->{css} }, { href  => $c->uri_for( $css ),
-                             rel   => $rel,
-                             title => ucfirst $title };
+                             title => ucfirst $title,
+                             rel   => $rel };
       $rel = q(alternate stylesheet);
    }
 
    return;
 }
 
-sub get_jscript {
-   my ($self, $c) = @_; my $s = $c->stash; my $conf = $c->config; my $path;
+sub _setup_jscript {
+   my ($self, $c) = @_; my $s = $c->stash; $s->{dhtml} or return;
 
-   # Stash the static JS loaded by every page
-   @{ $s->{scripts} } = map { $c->uri_for( $_ ) } @{ $self->static_jscript };
+   my $conf = $c->config; my $path;
 
-   # Stash the language dependent JS files
-   for my $file (map { $_.q(-).$s->{lang}.q(.js) }
-                 @{ $self->lang_dep_jsprefixs }) {
-      if (exists $self->lang_dep_jscript->{ $file }) {
-         $path = join $SEP, $SEP.$self->jscript_path, q(lang), $file;
-         push @{ $s->{scripts} }, $c->uri_for( $path );
-      }
-   }
+   # Stash the static JS loaded by every page. Batch 0
+   $s->{scripts} = [ map { [ 0, $c->uri_for( $_ ) ] }
+                        @{ $self->static_js || [] } ];
 
-   # Cache the "use case" JS for the selected skin
-   $path = $self->catfile( $conf->{root}, $conf->{skins},
-                           $s->{skin}, $self->jscript.q(.js) );
+   # Stash the optional JS. Batch 0
+   push   @{ $s->{scripts} },
+      map  { [ 0, $c->uri_for( $_ ) ] }
+      grep { (my $x = $self->basename( $_ )) =~ s{ \A (\d+) }{}mx;
+             is_member $x, $s->{optional_js} }
+          @{ $self->optional_js || [] };
 
-   # TODO: Cache this to avoid -f on each get request
-   if (-f $path) {
-      $path = join $SEP, $SEP.$conf->{skins}, $s->{skin}, $self->jscript.'.js';
-      push @{ $s->{scripts} }, $c->uri_for( $path );
-   }
+   # Stash the language dependent JS files. Batch 1
+   push   @{ $s->{scripts} },
+      map  { [ 1, $c->uri_for( $_ ) ] }
+      map  { join SEP, SEP.$self->jscript_path, $self->lang_dir, $_ }
+      grep { exists $self->lang_dep_jscript->{ $_ } }
+      map  { $_.q(-).$s->{lang}.q(.js) }
+      grep { is_member $_.q(.js), $s->{optional_js} }
+          @{ $self->lang_dep_jsprefixs || [] };
 
-   # Set the onload event handler
-   $s->{onload} .= "behaviour.state.setState('".($s->{firstfld} || $NUL)."')";
+   # Stash the font replacement JS files. Batch 1
+   push   @{ $s->{scripts} },
+      map  { [ 1, $c->uri_for( $_ ) ] }
+      map  { join SEP, SEP.$self->jscript_path, $self->fonts_dir,
+                       $self->fonts_jscript->{ $_ } }
+      grep { $self->fonts_jscript->{ $_ } }
+          @{ $s->{fonts} || [] };
+
+   # Stash the "use case" JS for the selected skin. Batch 2
+   exists $self->js_for_skin->{ $s->{skin} } and push @{ $s->{scripts} },
+      [ 2, $c->uri_for( $self->js_for_skin->{ $s->{skin} }) ];
+
+   # If true generate literal js to async download all the js files in batches
+   $path = $conf->{async_js} and
+      $s->{async_js} = $c->uri_for( join SEP, SEP.$self->jscript_path, $path );
+
    return;
-}
-
-sub get_verb {
-   my ($self, $s, $req) = @_; my $verb = lc $req->param( q(_method) );
-
-   if ($verb) {
-      # To be sure we'll only do this once
-      $s->{ '_method'   } = delete $req->params->{ '_method'   };
-      $s->{ '_method.x' } = delete $req->params->{ '_method.x' };
-      $s->{ '_method.y' } = delete $req->params->{ '_method.y' };
-   }
-
-   return $verb;
-}
-
-sub not_implemented {
-   my ($self, @rest) = @_; return $self->bad_request( @rest );
-}
-
-sub process {
-   my ($self, $c) = @_; my $s = $c->stash; my $enc;
-
-   $self->fix_stash    ( $c                      );
-   $self->build_widgets( $c, $self->form_sources );
-   $self->get_css      ( $c                      );
-   $self->get_jscript  ( $c                      ) if ($s->{dhtml});
-
-   # Do the template thing
-   if ($self->next::method( $c )) { $c->fillform() if ($s->{override}) }
-   else { $c->res->body( $c->error() ) }
-
-   # Encode the body of the page
-   $c->res->body( encode( $enc, $c->res->body ) ) if ($enc = $s->{encoding});
-   $c->res->content_type( $s->{content_type} );
-   $c->res->header( Vary => q(Content-Type) );
-   return 1;
 }
 
 1;
@@ -258,7 +305,7 @@ CatalystX::Usul::View::HTML - Render a page of HTML or XHTML
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -271,7 +318,7 @@ of the stash
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
 
 Looks up and caches CSS, Javascript and template files rather than test for
 their existence with each request
@@ -285,7 +332,37 @@ phrase specific to the failed action
 
 Dummy method, does nothing in this view
 
-=head2 fix_stash
+=head2 get_verb
+
+Returns the I<_method> parameter from the query which is used by the
+action class to lookup the action to forward to. Called from the
+C<begin> method once the current view has been determined from the
+request content type
+
+=head2 not_implemented
+
+Proxy for L</bad_request>
+
+=head2 process
+
+Calls L</_fix_stash>, C<_build_widgets>, L</_setup_css> and L</_setup_jscript>
+before calling L<Template::Toolkit> via the parent class. Will also
+call L</_fillform> if the I<override> attribute was set in the stash
+to indicate an error.  Encodes the response body using the currently
+selected encoding
+
+C<_build_widgets> in L<CatalystX::Usul::View> is passed those parts of
+the stash that might contain widget definitions which it renders as
+HTML or XHTML
+
+=head1 Private Methods
+
+=head2 _fillform
+
+Uses L<HTML::FillInForm> to fill in the response body from the request
+parameters
+
+=head2 _fix_stash
 
 Adds some extra entries to the stash
 
@@ -301,38 +378,15 @@ Sets the target for this page in the headers
 
 =back
 
-=head2 get_css
+=head2 _setup_css
 
 For the selected skin sets up the data for the main CSS link and the
 alternate CSS links if any exist
 
-=head2 get_jscript
+=head2 _setup_jscript
 
 For the selected skin adds it's Javascript file to the list files that
 will be linked into the page
-
-=head2 get_verb
-
-Returns the I<_method> parameter from the query which is used by the
-action class to lookup the action to forward to. Called from the
-C<begin> method once the current view has been determined from the
-request content type
-
-=head2 not_implemented
-
-Proxy for L</bad_request>
-
-=head2 process
-
-Calls L</fix_stash>, C<build_widgets>, L</get_css> and L</get_jscript>
-before calling L<Template::Toolkit> via the parent class. Will also
-call C<FillInForm> if the I<override> attribute was set in the stash
-to indicate an error.  Encodes the response body using the currently
-selected encoding
-
-C<build_widgets> in L<CatalystX::Usul::View> is passed those parts of
-the stash that might contain widget definitions which it renders as
-HTML or XHTML
 
 =head1 Diagnostics
 

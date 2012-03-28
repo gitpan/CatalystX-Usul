@@ -2,10 +2,10 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    0.3.$Revision: 625 $
+    This document describes CatalystX::Usul version 0.4.$Revision: 1133 $
 
 Synopsis
-       use base qw(CatalystX::Usul);
+       use parent qw(CatalystX::Usul);
 
 Description
     These modules provide a set of base classes for a Catalyst web
@@ -17,11 +17,11 @@ Description
 
     Thin controllers
        Most controllers make a single call to the model and so comprise of
-       only a few lines of code. The model stashes data used by the view to
-       render the page
+       only a few lines of code. The interface model stashes data used by
+       the view to render the page
 
     No further view programing required
-       A single Template::Toolkit template is used to render all pages as
+       A single template tookit instance is used to render all pages as
        either HTML or XHTML. The template forms one component of the "skin",
        the other components are: a Javascript file containing the use cases
        for the Javascript libraries, a primary CSS file with support for
@@ -29,11 +29,11 @@ Description
 
        Designers can create new skins with different layout, presentation
        and behaviour for the whole application. They can do this for the
-       example application, App::Munchies, whilst the programmers write the
+       example application, Munchies, whilst the programmers write the
        "real" application in parallel with the designers work
 
-    Agile development methodology
-       These base classes are used by an example application, App::Munchies,
+    Flexable development methodology
+       These base classes are used by an example application, Munchies,
        which can be deployed to staging and production servers at the
        beginning of the project. Setting up the example application allows
        issues regarding the software technology to be resolved whilst the
@@ -46,31 +46,32 @@ Configuration and Environment
     initialised
 
 Subroutines/Methods
-    This module provides methods common to "CatalystX::Usul::Controller" and
-    "CatalystX::Usul::Model" which both inherit from this class. This means
-    that you should probably inherit from one of them instead
+    This module provides methods common to
+    "controllers|CatalystX::Usul::Controller" and
+    "models|CatalystX::Usul::Model" which both inherit from this class. This
+    means that you should probably inherit from one of them instead
 
   new
-       $self = CatalystX::Usul->new( $app, $config );
+       $self = CatalystX::Usul->new( $app, $attrs );
 
-    This class inherits from Catalyst::Component and CatalystX::Usul::Base.
-    The Catalyst application context is $app and $config is a hash ref whose
-    contents are copied to the created object. Defines the following
-    attributes:
+    Constructor. Inherits from the base and the encoding classes. The
+    Catalyst application context is $app and $attrs is a hash ref containing
+    the object attributes. Defines the following attributes:
+
+    config
+       Hash of attributes read from the config file
 
     debug
        The application context debug is used to set this. Defaults to false
 
     encoding
-       The config supplies the encoding for the "query_array", "query_value"
-       and log methods. Defaults to *UTF-8*
+       Which character encoding to use, defaults to "UTF-8"
 
     lock
-       An IPC::SRLock object which is used to single thread the application
-       where required. This is a singleton object
+       The lock object. This is readonly and instantiates on first use
 
     log
-       The application context log. Defaults to a Class::Null object
+       The application context log. Defaults to a null object
 
     prefix
        The prefix applied to executable programs in the *bin* directory.
@@ -85,14 +86,19 @@ Subroutines/Methods
        Supplied by the config hash, it is the name of the setuid root
        program in the *bin* directory. Defaults to the null string
 
-    tabstop
-       Supplied by the config hash, it is the number of spaces to expand the
-       tab character to in the call to markdown made by "localize". Defaults
-       to 3
-
     tempdir
-       Supplied by the config hash, it is the location of any temporary
-       files created by the application. Defaults to the File::Spec tempdir
+       Location of any temporary files created by the application. Defaults
+       to the system tempdir
+
+  BUILDARGS
+    Preprocesses the are passed to the constructor
+
+  build_attributes
+       $self->build_attributes( [ qw(a list of attributes names) ], $force );
+
+    For each attribute in the list, if it is undefined or $force is true,
+    this method calls the builder method "_build_attribute_name" and sets
+    the attribute with the result
 
   build_subcomponents
        __PACKAGE__->build_subcomponents( $base_class );
@@ -100,64 +106,60 @@ Subroutines/Methods
     Class method that allows us to define components that inherit from the
     base class at runtime
 
-  get_action
-       $action = $self->get_action( $c, $action_path );
-
-    Provide defaults for the get_action method. Return the action object if
-    one exists, otherwise log a warning and return undef
-
   loc
-  localize
-       $local_text = $self->localize( $c, $message, @args );
+       $local_text = $self->loc( $args, $key, $params );
 
-    Localizes the message. Optionally calls "Text::Markdown" on the text
+    Localizes the message. Calls "localize" in CatalystX::Usul::L10N
 
   setup_plugins
-       @plugins = $self->setup_plugins( $class, $config_ref );
+       @plugins = __PACKAGE__->setup_plugins( $config_ref );
 
-    Load the given list of plugins and have the supplies class inherit from
+    Load the given list of plugins and have the supplied class inherit from
     them. Returns an array ref of available plugins
 
-  uri_for
-       $uri = $self->uri_for( $c, $action_path, @args );
+  supports
+       $bool = $self->supports( @spec );
 
-    Turns the action path into an action object by calling "get_action".
-    Calculates the number of capture args by introspecting the dispatcher
-    splits them of from passed args and then calls uri_for
+    Returns true if the hash returned by our *get_features* attribute
+    contains all the elements of the required specification
 
-  _guess_chained_action
-       $action = $self->_guess_chained_action( $c, $action_path );
-
-    Returns the action object for the given chained midpoint action path.
-    Called by "uri_for". Irons out the differences between Catalyst versions
-
-  _lock_obj
-       $self->_lock_obj( $args );
-
-    Provides defaults for and returns a new IPC::SRLock object. The keys of
-    the $args hash are:
+  _build_lock
+    A lock object which is used to single thread the application where
+    required. This is a singleton object. Provides defaults for and returns
+    a new set/reset lock object. The keys of the $attrs hash are:
 
     debug
-       Debug status. Defaults to "$usul_obj->debug"
+       Debug status. Defaults to "$self->debug"
 
     log
-       Logging object. Defaults to "$usul_obj->log"
+       Logging object. Defaults to "$self->log"
 
     tempdir
        Directory used to store the lock file and lock table if the "fcntl"
-       backend is used. Defaults to "$usul_obj->tempdir"
+       backend is used. Defaults to "$self->tempdir"
+
+  _load_component
+       $self->_load_component( $child, @parents );
+
+    Ensures that each component is loaded then fixes @ISA for the child so
+    that it inherits from the parents
 
 Diagnostics
     Setting the *debug* attribute to true causes messages to be logged at
     the debug level
 
 Dependencies
-    Catalyst::Component
     CatalystX::Usul::Base
-    Class::Null
+    CatalystX::Usul::Constants
+    CatalystX::Usul::File
+    CatalystX::Usul::Functions
+    CatalystX::Usul::L10N
+    CatalystX::Usul::Log
     IPC::SRLock
     Module::Pluggable::Object
-    Text::Markdown
+
+    To make the Captchas work GD::SecurityImage needs to be installed which
+    has a documented dependency on "libgd" which should be installed first
 
 Incompatibilities
     There are no known incompatibilities in this module
@@ -173,10 +175,10 @@ Acknowledgements
     Larry Wall - For the Perl programming language
 
 License and Copyright
-    Copyright (c) 2009 Peter Flanigan. All rights reserved
+    Copyright (c) 2012 Peter Flanigan. All rights reserved
 
     This program is free software; you can redistribute it and/or modify it
-    under the same terms as Perl itself. See perlartistic
+    under the same terms as Perl itself. See the Perl Artistic License
 
     This program is distributed in the hope that it will be useful, but
     WITHOUT WARRANTY; without even the implied warranty of MERCHANTABILITY

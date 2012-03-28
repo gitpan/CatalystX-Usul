@@ -1,142 +1,109 @@
-# @(#)$Id: Cookies.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Cookies.pm 915 2011-01-08 02:41:41Z pjf $
 
 package CatalystX::Usul::Plugin::Controller::Cookies;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 915 $ =~ /\d+/gmx );
 
-my $NUL = q();
+use CatalystX::Usul::Constants;
 
 sub delete_cookie {
    # Delete a key/value pair from the browser state cookie
-   my ($self, $c, $args) = @_; my ($cookie, $key, $name, $val);
+   my ($self, $c, $args) = @_;
 
-   return unless ($name = $args->{name} and $key = $args->{key});
+   my $name   = $args->{name} or return;
+   my $key    = $args->{key } or return;
+   my $cookie = $c->req->cookie( $name ) or return;
+   my $pairs  = NUL;
 
-   my $tokens = $NUL;
-
-   if ($cookie = $c->req->cookie( $name )) {
-      for my $token (split m{ ; }mx, $cookie) {
-         $token =~ s{ \s+ }{}gmx;
-
-         if ($token =~ m{ \A $name = }mx) {
-            $val = (split m{ = }mx, $token)[1];
-            $val =~ s{ % ([0-9A-Fa-f]{2}) }{chr( hex( $1 ) )}egmx;
-
-            for (split m{ \+ }mx, $val) {
-               unless (m{ \A $key ~ }mx) {
-                  $tokens .= q(+) if ($tokens);
-                  $tokens .= $_;
-               }
-            }
-
-            $c->res->cookies->{ $name } = { value => $tokens };
-            return;
-         }
-      }
+   for (__get_pairs_for( $cookie, $name )) {
+      m{ \A $key ~ }mx and next; $pairs and $pairs .= q(+); $pairs .= $_;
    }
 
+   $c->res->cookies->{ $name } = { value => $pairs };
    return;
+}
+
+sub get_browser_state {
+   # Extract key/value pairs from the browser state cookie
+   my ($self, $c, $name) = @_; my $cfg = $c->config; my $res = {};
+
+   my $args  = { name => $name, key => q(debug) };
+   my $debug = $self->get_cookie( $c, $args );
+
+   $res->{debug  } = $debug && $debug eq q(true) ? TRUE : FALSE;
+   $args->{key   } = q(footer);
+   $res->{fstate } = $self->get_cookie( $c, $args ) eq q(true) ? TRUE : FALSE;
+   $args->{key   } = q(language);
+   $res->{lang   } = $self->get_cookie( $c, $args );
+   $args->{key   } = q(sidebar);
+   $res->{sbstate} = $self->get_cookie( $c, $args ) ? TRUE : FALSE;
+   $args->{key   } = q(skin);
+
+   my $skin; $skin = $self->get_cookie( $c, $args )
+      and -d $self->catdir( $cfg->{skindir}, $skin )
+      and $res->{skin} = $skin;
+
+   $args->{key} = q(width);
+
+   my $width; $width = $self->get_cookie( $c, $args )
+      and $res->{width} = $width;
+
+   return $res;
 }
 
 sub get_cookie {
    # Extract the requested item from the browser cookie
-   my ($self, $c, $args) = @_; my ($cookie, $key, $name, $val);
+   my ($self, $c, $args) = @_;
 
-   return $NUL unless ($name = $args->{name} and $key = $args->{key});
+   my $name   = $args->{name} or return NUL;
+   my $key    = $args->{key } or return NUL;
+   my $cookie = $c->req->cookie( $name ) or return NUL;
 
-   if ($cookie = $c->req->cookie( $name )) {
-      for my $token (split m{ ; }mx, $cookie) {
-         $token =~ s{ \s+ }{}gmsx;
-
-         if ($token =~ m{ \A $name = }msx) {
-            $val = (split m{ = }mx, $token)[1];
-            $val =~ s{ % ([0-9A-Fa-f]{2}) }{chr(hex($1))}egmsx;
-
-            for (split m{ \+ }mx, $val) {
-               return (split m{ ~ }mx, $_)[1] if (m{ \A $key ~ }msx);
-            }
-
-            return $NUL;
-         }
-      }
+   for (__get_pairs_for( $cookie, $name )) {
+      m{ \A $key ~ }msx and return (split m{ ~ }mx, $_)[1];
    }
 
-   return $NUL;
-}
-
-sub load_stash_with_browser_state {
-   # Extract key/value pairs from the browser state cookie
-   my ($self, $c) = @_;
-   my $cfg        = $c->config;
-   my $s          = $c->stash;
-   my $args       = { name => $s->{cname}, key => q(debug) };
-   my $debug      = $self->get_cookie( $c, $args );
-
-   $s->{debug  }  = $debug && $debug eq q(true) ? 1 : 0;
-   $args->{key }  = q(footer);
-
-   my $state      = $self->get_cookie( $c, $args );
-
-   $s->{fstate }  = $state && $state eq q(true) ? 1 : 0;
-   $args->{key }  = q(pwidth);
-
-   my $pwidth     = $self->get_cookie( $c, $args );
-
-   $s->{pwidth }  = $pwidth if ($pwidth);
-   $args->{key }  = q(sidebar);
-   $s->{sbstate}  = $self->get_cookie( $c, $args ) ? 1 : 0;
-   $args->{key }  = q(skin);
-
-   my $skin       = $self->get_cookie( $c, $args );
-
-   $s->{skin   }  = $skin   if ($skin
-                                && -d $self->catdir( $cfg->{skindir}, $skin ));
-   $args->{key }  = q(width);
-
-   my $width      = $self->get_cookie( $c, $args );
-
-   $s->{width  }  = $width  if ($width);
-   return;
+   return NUL;
 }
 
 sub set_cookie {
    # Set a key/value pair in the browser state cookie
-   my ($self, $c, $args) = @_; my ($cookie, $key, $name, $val);
+   my ($self, $c, $args) = @_;
 
-   return unless ($name = $args->{name} and $key = $args->{key});
+   my $value  = $args->{value};
+   my $name   = $args->{name } or return;
+   my $key    = $args->{key  } or return; $key .= q(~);
+   my $cookie = $c->req->cookie( $name ) || NUL;
+   my $found  = FALSE;
+   my $pairs  = NUL;
 
-   my $found = 0; my $tokens = $NUL; my $value = $args->{value}; $key .= q(~);
+   for (__get_pairs_for( $cookie, $name )) {
+      $pairs and $pairs .= q(+);
 
-   if ($cookie = $c->req->cookie( $name )) {
-      for my $token (split m{ ; }mx, $cookie) {
-         $token =~ s{ \s+ }{}gmx;
-
-         if ($token =~ m{ \A $name = }mx) {
-            $val = (split m{ = }mx, $token)[1];
-            $val =~ s{ % ([0-9A-Fa-f]{2}) }{chr(hex($1))}egmx;
-
-            for (split m{ \+ }mx, $val) {
-               $tokens .= q(+) if ($tokens);
-
-               if (m{ \A $key }mx) { $tokens .= $key.$value; $found = 1 }
-               else { $tokens .= $_ }
-            }
-
-            unless ($found) {
-               $tokens .= q(+) if ($tokens);
-               $tokens .= $key.$value
-            }
-
-            $c->res->cookies->{ $name } = { value => $tokens };
-            return;
-         }
-      }
+      if (m{ \A $key }mx) { $pairs .= $key.$value; $found = TRUE }
+      else { $pairs .= $_ }
    }
 
+   unless ($found) { $pairs and $pairs .= q(+); $pairs .= $key.$value }
+
+   $c->res->cookies->{ $name } = { value => $pairs };
    return;
+}
+
+# Private functions
+
+sub __get_pairs_for {
+   my ($cookie, $name) = @_;
+
+   my $pairs = (grep   { m{ \A $name = }msx }
+                map    { s{ \s+ }{}gmx; $_  }
+                split m{ ; }mx, $cookie || NUL)[0] or return NUL;
+   my $v     = (split m{ = }mx, $pairs)[1] || NUL;
+      $v     =~ s{ % ([0-9A-Fa-f]{2}) }{chr(hex($1))}egmsx;
+
+   return split m{ \+ }mx, $v;
 }
 
 1;
@@ -151,18 +118,15 @@ CatalystX::Usul::Plugin::Controller::Cookies - Cookie multiplexing methods
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 915 $
 
 =head1 Synopsis
 
    package CatalystX::Usul;
-   use parent qw(Catalyst::Component CatalystX::Usul::Base);
+   use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
 
    package CatalystX::Usul::Controller;
-   use parent qw(CatalystX::Usul
-                 CatalystX::Usul::Cookies
-                 CatalystX::Usul::ModelHelper
-                 Catalyst::Controller);
+   use parent qw(Catalyst::Controller CatalystX::Usul);
 
    package YourApp::Controller::YourController;
    use parent qw(CatalystX::Usul::Controller);
@@ -177,13 +141,13 @@ Allows for multiple key/value pairs to be stored in a single cookie
 
 Deletes the key/value pair from the named cookie
 
+=head2 get_browser_state
+
+Stash key/value pairs from the browser state cookie
+
 =head2 get_cookie
 
 Get a key/value pair from the named cookie
-
-=head2 load_stash_with_browser_state
-
-Stash key/value pairs from the browser state cookie
 
 =head2 set_cookie
 

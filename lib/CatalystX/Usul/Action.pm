@@ -1,140 +1,164 @@
-# @(#)$Id: Action.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Action.pm 1095 2012-01-11 16:27:56Z pjf $
 
 package CatalystX::Usul::Action;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1095 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Action);
 
-use Class::C3;
-
-my $BRK = q(: );
-my $SEP = q(/);
+use MRO::Compat;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(exception);
+use Scalar::Util qw(blessed);
 
 sub execute {
-   # Action class for controllers that have buttons
-   my ($self, @rest) = @_; my ($controller, $c) = @rest;
+   # Action class for controller methods with the HasActions attribute
+   my ($self, @rest) = @_; my ($res, $verb);
 
-   my $s = $c->stash; my ($action_path, $res, $verb);
+   my @args = my ($controller, $c) = splice @rest, 0, 2;
+
+   my $s = $c->stash; my $persistant = $controller->can( q(persist_state) );
 
    # Must have a verb in order to search for an action to forward to
-   unless (defined $s->{verb} and $verb = $s->{verb} and $verb ne q(get)) {
-      return $self->next::method( @rest );
-   }
-
-   return $self->_return_options( $c ) if ($verb eq q(options));
-
-   # Search for the action whose ActionFor attribute matches this verb
-   unless ($action_path = $self->_get_action_path( @rest, $verb )) {
-      return $self->_not_implemented( @rest, $verb )
-         ? $self->next::method( @rest ) : undef;
-   }
-
-   # Test the validity of the request token if we are using it
-   if ($controller->can( q(validate_token) ) && __should_validate( $c )) {
-      unless ($controller->validate_token( $c )) {
-         return $self->_invalid_token( @rest, $verb )
-            ? $self->next::method( @rest ) : undef;
+   unless ($verb = $s->{verb} and $verb ne q(get)) {
+      if ($persistant) {
+         if ($verb) { $controller->set_uri_attrs_or_redirect( $c, @rest ) }
+         else { @rest = $controller->get_uri_args( $c ) }
       }
 
+      return $self->next::method( @args, @rest );
+   }
+
+   $verb eq q(options) and return $self->_set_options_response( $c );
+
+   # Use the persistant URI args if available
+   $persistant and @rest = $controller->get_uri_args( $c );
+
+   # Search for the action whose ActionFor attribute matches this verb
+   my $action_path = $self->_get_action_path( @args, $verb )
+      or return $self->_not_implemented( @args, [ $verb, $self->reverse ] )
+              ? $self->next::method( @args, @rest ) : undef;
+
+   # Test the validity of the request token if we are using it
+   if ($controller->can( q(validate_token) ) and __should_validate( $c )) {
+      $controller->validate_token( $c )
+         or return $self->_invalid_token( @args, [ $verb, $action_path ] )
+                 ? $self->next::method( @args, @rest ) : undef;
       $controller->remove_token( $c );
    }
 
-   # Forward to the selected action
-   unless ($c->forward( $action_path )) {
-      return $self->_error( @rest, $verb, $action_path )
-         ? $self->next::method( @rest ) : undef;
+   # Authorize the users access to the action
+   if ($controller->can( q(deny_access) )
+       and $controller->deny_access( $c, $action_path )) {
+      return $self->_access_denied( @args, [ $verb, $action_path ] )
+           ? $self->next::method( @args, @rest ) : undef;
    }
+
+   # Forward to the selected action
+   $c->forward( $action_path, [ @rest ] )
+      or return $self->_error( @args, [ $verb, $action_path ] )
+              ? $self->next::method( @args, @rest ) : undef;
 
    # The action completed successfully. Log any result message
    if ($res = $s->{result} and $res->{items}->[ 0 ]) {
-      my $leader = $action_path; $leader =~ s{ \A $SEP }{}mx;
-
-      for my $line (map { chomp; (ucfirst $leader).$BRK.(ucfirst $_) }
-                    map { $_->{content} } @{ $res->{items} }) {
-         $controller->log_info( $line );
-      }
+      $self->_log_info( @args, $action_path, $res );
    }
 
-   return $self->next::method( @rest );
+   # The action may have changed the URI args
+   $persistant and @rest = $controller->get_uri_args( $c );
+
+   return $self->next::method( @args, @rest );
 }
 
 # Private methods
 
-sub _bad_request {
-   my ($self, $controller, $c, $verb, $action_path, $key, $args) = @_;
+sub _access_denied {
+   my ($self, $controller, $c, $args) = @_;
 
-   unless ($args) {
-      if ($action_path) { $args = [ $action_path, $verb ] }
-      else { $args = [ $verb ] }
+   return $self->_bad_request
+      ( $controller, $c, 'Action [_2] method [_1] access denied', $args );
+}
+
+sub _bad_request {
+   my ($self, $controller, $c, $e, $args) = @_;
+
+   my $s = $c->stash; my $verb = $args->[ 0 ];
+
+   unless (blessed $e and $e->isa( EXCEPTION_CLASS )) {
+      $e = exception 'error' => $e, 'args' => $args;
    }
 
-   my $msg = $controller->loc( $c, $key, @{ $args } );
+   $controller->log_error_message( $e, $s );
 
-   $controller->log_error( (ucfirst $self->reverse).$BRK.(ucfirst $msg) );
+   my $msg = $controller->loc( $s, $e->error, $e->args );
 
    return $c->view( $c->{current_view} )->bad_request( $c, $verb, $msg );
 }
 
 sub _error {
-   my ($self, @rest) = @_; my ($controller, $c) = @rest;
-
-   my $s = $c->stash; my $nm;
+   my ($self, $controller, $c, $args) = @_; my $s = $c->stash; my $nm;
 
    # The stash override parameter triggers a call to FillInForm
    # in the HTML view which will preserve the contents of the form
-   $s->{override} = 1;
-
-   # The action failed capture the error and log it
-   $c->error( [] )            unless ($c->error);
-   $c->error( [ $c->error ] ) unless (ref $c->error eq q(ARRAY));
+   $s->{override} = TRUE;
+   $c->error or $c->error( [] );
+   ref $c->error eq ARRAY or $c->error( [ $c->error ] );
 
    if ($c->error->[ 0 ]) {
       for my $e (@{ $c->error }) {
-         if (ref $e eq $controller->exception_class) {
-            $nm = $self->_bad_request( @rest,
-                                       $e->as_string( $s->{debug} ? 2 : 1 ),
-                                       $e->args );
+         my $class = blessed $e || NUL;
+
+         if ($class and $e->isa( $controller->exception_class )) {
+            $s->{debug} and $s->{stacktrace} .= $class."\n".$e->stacktrace."\n";
          }
-         else { $nm = $self->_bad_request( @rest, $e ) }
+
+         $nm = $self->_bad_request( $controller, $c, $e, $args );
       }
    }
-   else { $nm = $self->_bad_request( @rest, 'Unknown error' ) }
+   else {
+      $nm = $self->_bad_request
+         ( $controller, $c, 'Action [_2] method [_1] unknown error', $args );
+   }
 
    $c->clear_errors;
    return $nm;
 }
 
 sub _get_action_path {
-   my ($self, $controller, $c, $verb) = @_; my $attrs;
+   my ($self, $controller, $c, $verb) = @_;
 
-   my $namespace = $c->action->namespace;
-   my $id        = $c->action->name.q(.).$verb;
+   my $s  = $c->stash;
+   my $ns = $c->action->namespace;
+   my $id = $c->action->name.q(.).$verb;
 
-   for my $container ($c->dispatcher->get_containers( $namespace )) {
+   for my $container ($c->dispatcher->get_containers( $ns )) {
       for my $action (values %{ $container->actions }) {
-         next unless ($attrs = $action->attributes->{ q(ActionFor) });
+         my $attrs = $action->attributes->{ q(ActionFor) } or next;
 
-         return $SEP.$action->reverse for (grep { $_ eq $id } @{ $attrs });
+         for (grep { $_ eq $id } @{ $attrs }) {
+            $s->{leader} = $action->reverse; return SEP.$action->reverse;
+         }
       }
    }
 
+   $s->{leader} = $self->reverse;
    return;
 }
 
 sub _get_allowed_methods {
-   my ($self, $c) = @_; my @allowed = ( q(get options) ); my $attrs;
+   my ($self, $c) = @_;
 
-   my $namespace = $c->action->namespace;
-   my $pattern   = $c->action->name.q(.);
+   my @allowed = ( qw(get options) );
+   my $ns      = $c->action->namespace;
+   my $pattern = $c->action->name.q(.);
 
-   for my $container ($c->dispatcher->get_containers( $namespace )) {
+   for my $container ($c->dispatcher->get_containers( $ns )) {
       for my $action (values %{ $container->actions }) {
-         next unless ($attrs = $action->attributes->{ q(ActionFor) });
+         my $attrs = $action->attributes->{ q(ActionFor) } or next;
 
-         for (grep { m{ \A $pattern }mx } @{ $attrs }) {
-            push @allowed, $1 if (m{ \A $pattern (.+) \z }mx);
+         for (@{ $attrs }) {
+            m{ \A $pattern (.+) \z }mx and push @allowed, $1;
          }
       }
    }
@@ -143,24 +167,41 @@ sub _get_allowed_methods {
 }
 
 sub _invalid_token {
-   my ($self, @rest) = @_;
+   my ($self, $controller, $c, $args) = @_; $c->stash( override => TRUE );
 
-   return $self->_bad_request( @rest, $self->reverse, 'Invalid token' );
+   return $self->_bad_request
+      ( $controller, $c, 'Action [_2] invalid token', $args );
+}
+
+sub _log_info {
+   my ($self, $controller, $c, $leader, $res) = @_; my $s = $c->stash;
+
+   my $sep = SEP; $leader =~ s{ \A $sep }{}mx; $s->{leader} = $leader;
+
+   for my $line (map { $_->{content} } @{ $res->{items} }) {
+      $controller->log_info_message( $line, $s );
+   }
+
+   return;
 }
 
 sub _not_implemented {
-   my ($self, $controller, $c, $verb) = @_;
+   my ($self, $controller, $c, $args) = @_; my $verb = $args->[ 0 ];
 
-   $c->res->header( 'Allow' => $self->_get_allowed_methods( $c ) );
+   $c->res->header( q(Allow) => $self->_get_allowed_methods( $c ) );
 
-   my $msg = $controller->loc( $c, 'Not implemented', $self->reverse, $verb );
+   my $s   = $c->stash; $s->{leader} = $self->reverse;
+   my $key = 'Action [_2] method [_1] not implemented';
+   my $e   = exception 'error' => $key, 'args' => $args;
 
-   $controller->log_error( (ucfirst $self->reverse).$BRK.(ucfirst $msg) );
+   $controller->log_error_message( $e, $s );
+
+   my $msg = $controller->loc( $s, $e->error, $e->args );
 
    return $c->view( $c->{current_view} )->not_implemented( $c, $verb, $msg );
 }
 
-sub _return_options {
+sub _set_options_response {
    my ($self, $c) = @_;
 
    $c->res->content_type( q(text/plain) );
@@ -176,7 +217,7 @@ sub __should_validate {
 
    my %will_validate = ( qw(delete 1 post 1 put 1) );
 
-   return $c->config->{token} && $will_validate{ $method };
+   return $c->stash->{token} && $will_validate{ $method };
 }
 
 1;
@@ -191,7 +232,7 @@ CatalystX::Usul::Action - A generic action class
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1095 $
 
 =head1 Synopsis
 
@@ -269,7 +310,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2011 Peter Flanigan. All rights reserved
 
 This library is free software, you can redistribute it and/or modify
 it under the same terms as Perl itself

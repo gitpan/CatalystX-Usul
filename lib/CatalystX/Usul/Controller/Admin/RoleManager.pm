@@ -1,65 +1,44 @@
-# @(#)$Id: RoleManager.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: RoleManager.pm 891 2010-09-30 01:47:24Z pjf $
 
 package CatalystX::Usul::Controller::Admin::RoleManager;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 891 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-__PACKAGE__->config( namespace => q(admin), realm_class => q(IdentityUnix) );
+use CatalystX::Usul::Constants;
 
-__PACKAGE__->mk_accessors( qw(realm_class) );
+__PACKAGE__->config( namespace => q(admin), );
 
-sub roles_base : Chained(common) PathPart(users) CaptureArgs(0) {
-   my ($self, $c) = @_; my $s = $c->stash;
+sub role_base : Chained(common) PathPart(users) CaptureArgs(0) {
+   my ($self, $c) = @_;
 
-   my $model = $c->model( $self->realm_class );
-   my $realm = $self->get_key( $c, q(realm) ) || $model->default_realm;
-   my $class = $realm ? $model->auth_realms->{ $realm } : $self->realm_class;
+   $c->stash->{role_params} = $self->get_uri_query_params( $c );
 
-   $s->{role_model} = $c->model( $class )->roles;
-
-   my $role  = $self->get_key( $c, q(role) );
-
-   if ($role && $role ne $s->{newtag} && !$s->{role_model}->is_role( $role )) {
-      $self->set_key( $c, q(role), q() );
-   }
-
-   return;
+   return $self->set_identity_model( $c );
 }
 
-sub role_manager : Chained(roles_base) Args HasActions {
-   my ($self, $c, $realm, $role) = @_;
-
-   $realm = $self->set_key( $c, q(realm), $realm );
-   $role  = $self->set_key( $c, q(role),  $role  );
-   $c->stash->{role_model}->form( $realm, $role );
-   return;
+sub role_manager : Chained(role_base) Args HasActions {
+   my ($self, $c, $role) = @_; return $c->stash->{role_model}->form( $role );
 }
 
 sub role_manager_delete : ActionFor(role_manager.delete) {
-   my ($self, $c) = @_;
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   $c->stash->{role_model}->delete;
-   $self->set_key( $c, q(role), $c->stash->{newtag} );
-   return 1;
+   $s->{role_model}->delete; $self->set_uri_args( $c, $s->{newtag} );
+   return TRUE;
 }
 
 sub role_manager_insert : ActionFor(role_manager.insert) {
    my ($self, $c) = @_;
 
-   my $role = $c->stash->{role_model}->create;
-
-   $self->set_key( $c, q(role), $role );
-   return 1;
+   $self->set_uri_args( $c, $c->stash->{role_model}->create );
+   return TRUE;
 }
 
 sub role_manager_update : ActionFor(role_manager.update) {
-   my ($self, $c) = @_;
-
-   $c->stash->{role_model}->update( $self->get_key( $c, q(role) ) );
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{role_model}->update_users;
 }
 
 1;
@@ -74,7 +53,7 @@ CatalystX::Usul::Controller::Admin::RoleManager - Maintains role membership
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 891 $
 
 =head1 Synopsis
 
@@ -91,7 +70,7 @@ realms
 
 =head1 Subroutines/Methods
 
-=head2 roles_base
+=head2 role_base
 
 Midpoint that stashes the models used by the endpoints
 

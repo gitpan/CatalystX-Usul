@@ -1,61 +1,64 @@
-# @(#)$Id: Imager.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Imager.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Model::Imager;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
+use CatalystX::Usul::Functions
+    qw(create_token is_member merge_attributes throw);
 use Imager;
 use MIME::Types;
 
 my @METHODS = qw(scale scaleX scaleY crop flip rotate convert map);
 
 __PACKAGE__->config( cache_depth => 2,
+                     cache_dir   => q(imager_cache),
                      types       => MIME::Types->new( only_complete => 1 ) );
 
-__PACKAGE__->mk_accessors( qw(cache_depth cache_root doc_root types) );
+__PACKAGE__->mk_accessors( qw(cache_depth cache_dir cache_root root types) );
 
-sub new {
-   my ($self, $app, @rest) = @_;
+sub COMPONENT {
+   my ($class, $app, $attrs) = @_; my $ac = $app->config;
 
-   my $new = $self->next::method( $app, @rest );
+   merge_attributes $attrs, $ac, $class->config, [ qw(root) ];
 
-   $new->cache_root( $new->catdir( $new->tempdir, q(imager_cache) ) );
-   $new->doc_root  ( $app->config->{root}                           );
+   my $new = $class->next::method( $app, $attrs );
+
+   defined $new->cache_root
+      or $new->cache_root( $class->catdir( $new->tempdir, $new->cache_dir ) );
 
    return $new;
 }
 
 sub transform {
-   my ($self, $args, $query) = @_; my $data; $query ||= {};
+   my ($self, $args, $query) = @_;
 
-   $self->throw( 'No method specified' ) unless ($args->[ 0 ]);
+   $args->[ 0 ] or throw 'Method not specified'; $query ||= {};
 
    my $methods = shift @{ $args }; my @methods = split m{ \+ }mx, $methods;
 
    for my $method (@methods) {
-      unless ($self->is_member( $method, @METHODS )) {
-         $self->throw( error => 'Method [_1] unknown', args => [ $method ] );
-      }
+      is_member $method, @METHODS
+         or throw error => 'Imager method [_1] unknown', args => [ $method ];
    }
 
-   $self->throw( 'No file path specified' ) unless ($args->[ 0 ]);
+   $args->[ 0 ] or throw 'File path not specified';
 
    my $stat  = delete $query->{stat};
    my $force = delete $query->{force};
    my $path  = $self->catfile( @{ $args } );
    my $key   = $self->_make_key( $methods, $path, $query );
 
-   $path = $self->catfile( $self->doc_root, $path );
+   $path = $self->catfile( $self->root, $path );
 
-   unless (-f $path) {
-      $self->throw( error => 'File [_1] not found', args => [ $path ] );
-   }
+   -f $path or throw error => 'Path [_1] not found', args => [ $path ];
 
    my $mtime = $stat ? $self->status_for( $path )->{mtime} : undef;
    my $type  = $self->types->mimeTypeOf( $self->basename( $path ) )->type;
+   my $data;
 
    if ($force or not $data = $self->_cache( $mtime, $key )) {
       $data = $self->_get_image( \@methods, $path, $query );
@@ -70,7 +73,7 @@ sub transform {
 sub _bucket {
    my ($self, $key, $depth) = @_; $depth ||= $self->cache_depth;
 
-   my $file = $self->create_token( $key );
+   my $file = create_token $key;
 
    return $self->catfile( $self->cache_root,
                           (map { substr $file, 0, $_ + 1 } (0 .. $depth - 1)),
@@ -78,15 +81,13 @@ sub _bucket {
 }
 
 sub _cache {
-   my ($self, $mtime, $key, $data) = @_; my $e;
-
-   return unless ($key);
+   my ($self, $mtime, $key, $data) = @_; $key or return;
 
    my $path = $self->_bucket( $key );
 
    if ($data) { $self->io( $path )->assert->lock->print( $data ) }
    elsif (-f $path) {
-      if (!$mtime || $mtime <= $self->status_for( $path )->{mtime}) {
+      if (not $mtime or $mtime <= $self->status_for( $path )->{mtime}) {
          $data = $self->io( $path )->lock->all;
       }
    }
@@ -95,20 +96,19 @@ sub _cache {
 }
 
 sub _get_image {
-   my ($self, $methods, $path, $query) = @_; my $data;
+   my ($self, $methods, $path, $query) = @_;
 
-   my $img  = Imager->new;
+   my $img  = Imager->new; my ($data, $transformed);
 
-   $self->throw( $img->errstr ) unless ($img->read( file => $path ));
+   $img->read( file => $path ) or throw $img->errstr;
 
    my $type = $img->tags( name => q(i_format) );
 
-   for my $method (@{ $methods }) { $img = $img->$method( %{ $query } ) }
-
-   unless ($img->write( data => \$data, type => $type )) {
-      $self->throw( $img->errstr );
+   for my $method (@{ $methods }) {
+      $transformed = $img->$method( %{ $query } ) and $img = $transformed;
    }
 
+   $img->write( data => \$data, type => $type ) or throw $img->errstr;
    return $data;
 }
 
@@ -132,15 +132,14 @@ CatalystX::Usul::Model::Imager - Manipulate images
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
    my $model = $c->model( q(Imager) );
 
-   my ($data, $type, $mtime) = eval {
+   my ($data, $type, $mtime) =
       $model->transform( [ @args ], $c->req->query_parameters );
-   };
 
    # For a thumbnail image
    # http://localhost:3000/en/imager/scale/static/images/catalyst_logo.png?scalefactor=0.5
@@ -151,7 +150,7 @@ Transform any image under the document root using the L<Imager> module
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
 
 Sets attributes for the document root and the cache root
 

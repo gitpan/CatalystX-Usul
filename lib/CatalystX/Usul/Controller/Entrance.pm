@@ -1,214 +1,154 @@
-# @(#)$Id: Entrance.pm 584 2009-06-12 15:25:11Z pjf $
+# @(#)$Id: Entrance.pm 1095 2012-01-11 16:27:56Z pjf $
 
 package CatalystX::Usul::Controller::Entrance;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1095 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-use Class::C3;
+use CatalystX::Usul::Constants;
+use MRO::Compat;
 
-my $SEP = q(/);
+__PACKAGE__->config( docs_uri         => q(/html/index.html),
+                     register_class   => q(IdentityDBIC),
+                     register_profile => q(users), );
 
-__PACKAGE__->config( docs_uri       => q(/html/index.html),
-                     realm_class    => q(IdentityUnix),
-                     register_class => q(IdentityDBIC), );
-
-__PACKAGE__->mk_accessors( qw(docs_uri realm_class register_class) );
-
-sub activate_account : Chained(register_base) Args(1) Public {
-   my ($self, $c, $key) = @_; my $model = $c->model( q(Navigation) );
-
-   $model->clear_menus;
-   $model->add_menu_blank;
-   $c->stash->{register_model}->activate_account( $key );
-   return;
-}
-
-sub auth : Chained(common) PathPart(authentication) CaptureArgs(0) {
-   my ($self, $c) = @_; my ($msg, $user_class);
-
-   my $s     = $c->stash;
-   my $model = $c->model( $self->realm_class );
-   my $realm = $self->get_key( $c, q(realm) ) || $model->default_realm;
-
-   unless ($realm && ($user_class = $model->auth_realms->{ $realm })) {
-      $user_class = $self->realm_class;
-      $msg        = 'Defaulting user class [_1]';
-      $self->log_warning( $self->loc( $c, $msg, $user_class ) );
-   }
-
-   $s->{user_model} = $c->model( $user_class )->users;
-   return;
-}
-
-sub authentication : Chained(auth) PathPart('') Args HasActions {
-   my ($self, $c, $id) = @_; $c->stash->{user_model}->form( $id ); return;
-}
-
-sub authentication_login : ActionFor(authentication.login) {
-   my ($self, $c, $no_redirect) = @_; my ($msg, $user_ref, $wanted);
-
-   my $s     = $c->stash;
-   my $model = $c->model( q(Base) );
-
-   $model->scrubbing( 1 );
-
-   my $realm = $model->query_value( q(realm)  );
-   my $user  = $model->query_value( q(user)   );
-   my $pass  = $model->query_value( q(passwd) );
-
-   if ($user && $pass) {
-      my $userinfo = { username => $user, password => $pass };
-      my @realms   = $realm ? ( $realm ) : sort keys %{ $c->auth_realms };
-
-      for $realm (@realms) {
-         next if     ($realm eq q(default));
-         next unless ($user_ref = $c->find_user( $userinfo, $realm )
-                      and $user_ref->username eq $user);
-
-         if ($c->authenticate( $userinfo, $realm )) {
-            $c->session->{elapsed} = time;
-            $msg = "User [_1] logged in to realm [_2]";
-            $self->log_info( $self->loc( $c, $msg, $user, $realm ) );
-
-            return 1 if ($no_redirect);
-
-            if ($wanted = $c->session->{wanted}) {
-               $c->session->{wanted} = q();
-               $self->redirect_to_path( $c, $wanted );
-               return 1;
-            }
-
-            $self->redirect_to_path( $c, $c->config->{default_action} );
-            return 1;
-         }
-      }
-
-      $c->logout;
-      $s->{override} = 1;
-      $s->{user    } = q(unknown);
-      $c->session_expire_key( __user => 0 );
-      $msg = 'The login id ([_1]) and password were not recognised';
-      $self->throw( error => $msg, args => [ $user ] );
-   }
-
-   $s->{user} = q(unknown);
-   $self->throw( 'Id and/or password not set' );
-   return;
-}
-
-sub base : Chained(lang) CaptureArgs(0) {
-   # PathPart set in global configuration
-}
+__PACKAGE__->mk_accessors( qw(docs_uri register_class register_profile) );
 
 sub begin : Private {
    return shift->next::method( @_ );
 }
 
-sub change_password : Chained(auth) Args HasActions {
-   my ($self, $c, $realm, $id) = @_;
+sub base : Chained(/) CaptureArgs(0) {
+   # PathPart set in global configuration
+   my ($self, $c) = @_;
 
-   $realm = $self->set_key( $c, q(realm), $realm );
-   $c->stash->{user_model}->form( $realm, $id );
+   $self->can( q(persist_state) )
+      and $self->init_uri_attrs( $c, $self->model_base_class );
+
    return;
-}
-
-sub change_password_set : ActionFor(change_password.set) {
-   my ($self, $c) = @_; $c->stash->{user_model}->change_password; return 1;
-}
-
-sub check_field : Chained(base) Args(0) HasActions Public {
-   return shift->next::method( @_ );
 }
 
 sub common : Chained(base) PathPart('') CaptureArgs(0) {
-   my ($self, $c) = @_;
+   my ($self, $c) = @_; my $s = $c->stash; my $nav = $s->{nav_model};
 
-   $self->next::method( $c );
-   $self->load_keys( $c );
+   $nav->add_header; $nav->add_footer; $nav->add_sidebar_panel;
+
    return;
 }
 
+sub activate_account : Chained(register_base) Args(1) Public {
+   my ($self, $c, $key) = @_; my $s = $c->stash;
+
+   my $nav = $s->{nav_model}; $nav->clear_menus; $nav->add_menu_blank;
+
+   $s->{register_model}->activate_account( $key );
+   return;
+}
+
+sub auth : Chained(common) PathPart(authentication) CaptureArgs(0) {
+   my ($self, $c) = @_;
+
+   $self->can( q(persist_state) )
+      and $c->stash->{user_params} = $self->get_uri_query_params( $c );
+
+   return $self->set_identity_model( $c );
+}
+
+sub authentication : Chained(auth) PathPart('') Args HasActions Public {
+   my ($self, $c, @args) = @_; return $c->stash->{user_model}->form( @args );
+}
+
+sub authentication_login : ActionFor(authentication.login) {
+   my ($self, $c) = @_; my $s = $c->stash; $s->{user_model}->authenticate;
+
+   $self->can( q(persist_state) )
+      and $self->set_uri_query_params( $c, { realm => $s->{realm} } );
+
+   $self->redirect_to_path( $c, $s->{wanted} );
+   return TRUE;
+}
+
+sub change_password : Chained(auth) Args HasActions {
+   my ($self, $c, @args) = @_; return $c->stash->{user_model}->form( @args );
+}
+
+sub change_password_set : ActionFor(change_password.set) {
+   my ($self, $c) = @_; return $c->stash->{user_model}->change_password;
+}
+
+sub check_field : Chained(base) Args(0) HasActions NoToken Public {
+   return shift->next::method( @_ );
+}
+
 sub doc_base : Chained(common) PathPart(documentation) CaptureArgs(0) {
+   my ($self, $c) = @_;
+
+   $c->stash( help_model => $c->model( $self->help_class ) );
+   return;
 }
 
 sub documentation : Chained(doc_base) PathPart('') Args(0) {
    my ($self, $c) = @_;
 
-   $c->model( q(Help) )->documentation( $c->uri_for( $self->docs_uri ) );
-   return;
+   return $c->stash->{help_model}->documentation( $self->docs_uri );
 }
 
-sub lang : Chained(/) PathPart('') CaptureArgs(1) {
-   # Capture the language selection from the requested url
+sub footer : Chained(base) Args(0) NoToken Public {
+   my ($self, $c) = @_; return $c->model( $self->help_class )->add_footer;
 }
 
 sub module_docs : Chained(doc_base) Args {
-   my ($self, $c, $module) = @_;
+   my ($self, $c, @args) = @_;
 
-   $c->model( q(Help) )->module_docs( $module || ref $self );
-   return;
+   return $c->stash->{help_model}->module_docs( @args );
 }
 
 sub modules : Chained(doc_base) Args(0) {
-   my ($self, $c) = @_; $c->model( q(Help) )->module_list; return;
+   my ($self, $c) = @_; return $c->stash->{help_model}->module_list;
+}
+
+sub navigation_sidebar : Chained(base) Args NoToken Public {
+   my ($self, $c) = @_; return $c->stash->{nav_model}->add_tree_panel;
 }
 
 sub reception_base : Chained(common) PathPart(reception) CaptureArgs(0) {
 }
 
-sub reception : Chained(reception_base) PathPart('') Args(0) HasActions {
-   my ($self, $c) = @_;
-
-   $c->model( q(Base) )->simple_page( q(reception) );
-   return;
+sub reception : Chained(reception_base) PathPart('') Args(0) Public {
 }
 
-sub redirect_to_default : Chained(base) PathPart('') Args {
-   my ($self, $c) = @_;
-
-   return $self->redirect_to_path( $c, $SEP.q(reception) );
+sub redirect_to_default : Chained(base) PathPart('') Args(0) {
+   my ($self, $c) = @_; return $self->redirect_to_path( $c, SEP.q(reception) );
 }
 
 sub register_base : Chained(common) PathPart('') CaptureArgs(0) {
    my ($self, $c) = @_; my $s = $c->stash;
 
+   $s->{register}->{profile} = $self->register_profile;
    $s->{register_model} = $c->model( $self->register_class )->users;
-
    return;
 }
 
 sub register : Chained(register_base) Args(0) HasActions {
-   my ($self, $c) = @_; $c->stash->{register_model}->form; return;
+   my ($self, $c) = @_;
+
+   return $c->stash->{register_model}->form( SEP.q(captcha) );
 }
 
 sub register_create : ActionFor(register.insert) {
-   my ($self, $c) = @_; my $s = $c->stash;
-
-   my $value = $s->{register_model}->query_value( q(security) );
-
-   unless ($c->validate_captcha( $value )) {
-      $self->throw( error => 'Security code [_1] incorrect',
-                    args  => [ $value ] );
-   }
-
-   $s->{register}->{profile} = q(users);
-   $s->{register_model}->register;
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{register_model}->register;
 }
 
 sub sitemap : Chained(common) Args(0) {
-   my ($self, $c) = @_; $c->model( q(Navigation) )->sitemap; return;
+   my ($self, $c) = @_; return $c->stash->{nav_model}->sitemap;
 }
 
 sub tutorial : Chained(reception_base) Args {
-   my ($self, $c, $n_cols) = @_;
+   my ($self, $c, $n_cols) = @_; my $model = $c->model( $self->help_class );
 
-   $c->model( q(Base) )->simple_page( q(tutorial), $n_cols );
-   $c->model( $self->realm_class )->users->authentication_reminder;
-   return;
+   return $model->stash_para_col_class( q(n_columns), $n_cols );
 }
 
 1;
@@ -223,7 +163,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 584 $
+$Revision: 1095 $
 
 =head1 Synopsis
 
@@ -255,11 +195,7 @@ to prove your identity to the system
 
 =head2 authentication_login
 
-Authenticate the user. If another controller was wanted and the user
-was forced to authenticate first, redirect the session to the
-originally requested controller. This was stored in a cookie by the
-auto method prior to redirecting to the authentication controller
-which forwarded to here
+Calls L<CatalystX::Usul::Controller/authenticate>
 
 =head2 base
 
@@ -302,10 +238,10 @@ regenerated with the command
 
    bin/munchies_cli -n -c pod2html
 
-=head2 lang
+=head2 footer
 
-Capture the required language. The actual work is done in the
-L</begin> method
+Adds some debug information to the footer div. Called via the async form
+widget
 
 =head2 module_docs
 
@@ -316,6 +252,10 @@ Displays the POD for the selected module
 Displays a table of modules used by the application and their version
 numbers. It has clickable fields that display POD for the module and
 it's source code
+
+=head2 navigation_sidebar
+
+Action for the Ajax call that puts a navigation tree in a sidebar panel
 
 =head2 reception_base
 

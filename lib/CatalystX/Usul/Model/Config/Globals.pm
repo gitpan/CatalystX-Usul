@@ -1,86 +1,79 @@
-# @(#)$Id: Globals.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Globals.pm 1062 2011-10-23 01:23:45Z pjf $
 
 package CatalystX::Usul::Model::Config::Globals;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1062 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-__PACKAGE__->config( create_msg_key    => q(Globals [_2] created),
-                     delete_msg_key    => q(Globals [_2] deleted),
-                     file              => q(default),
-                     keys_attr         => q(),
-                     schema_attributes => {
-                        attributes     => [ qw(value) ],
-                        defaults       => {},
-                        element        => q(globals),
-                        lang_dep       => {}, },
-                     typelist          => {},
-                     update_msg_key    => q(Globals [_1] updated), );
+use CatalystX::Usul::Functions qw(throw);
+use TryCatch;
+
+__PACKAGE__->config
+   ( create_msg_key => 'Global attribute [_2] created in [_1]',
+     delete_msg_key => 'Global attribute [_2] deleted from [_1]',
+     file           => q(default),
+     keys_attr      => q(globals),
+     typelist       => {},
+     update_msg_key => 'Global attribute [_2] updated in [_1]', );
 
 __PACKAGE__->mk_accessors( qw(file) );
 
 sub globals_form {
-   my $self = shift; my $s = $self->context->stash;
-   my ($clear, $e, $element, @elements, $form, $nitems, $prompt, $step, $text);
+   my $self = shift; my $s = $self->context->stash; my @elements;
 
-   $step     = 1;
-   $form     = $s->{form}->{name};
-   $prompt   = $self->loc( q(defTextPrompt) );
-   @elements = eval { $self->search( $self->file ) };
+   my $form   = $s->{form}->{name}; $s->{pwidth} -= 10;
+   my $prompt = $self->loc( q(defTextPrompt) );
 
-   return $self->add_error( $e ) if ($e = $self->catch);
+   try        { @elements = $self->search( $self->file ) }
+   catch ($e) { return $self->add_error( $e ) }
 
-   $s->{pwidth} -= 10;
-   $self->clear_form( { firstfld => $form.'.newParam' } ); $nitems = 0;
-   $self->add_field(  { id       => $form.'.newParam',
-                        stepno   => $step++ } ); $nitems++;
+   $self->clear_form( { firstfld => $form.'.newParam' } );
+   $self->add_field( { id => $form.'.newParam', stepno => 0 } );
 
-   for $element (sort { $a->name cmp $b->name } @elements) {
-      $clear = $nitems > 0 ? q(left) : q();
-      $text  = $element->name; $text =~ s{ _ }{ }gmx; $text = $prompt.$text;
-      $self->add_field( { clear    => $clear,
-                          default  => $element->value,
-                          name     => $element->name,
-                          prompt   => $text,
-                          stepno   => $step++,
-                          width    => 40 } ); $nitems++;
+   for my $element (sort { $a->name cmp $b->name } @elements) {
+      my $text = $element->name; $text =~ s{ _ }{ }gmx;
+
+      $self->add_field( { clear   => q(left),
+                          default => $element->value,
+                          name    => $element->name,
+                          prompt  => $prompt.$text,
+                          stepno  => -1,
+                          width   => 40 } );
    }
 
-   $self->group_fields( { id => $form.'.edit', nitems => $nitems } );
-   $self->add_buttons(  qw(Save Delete) );
+   $self->group_fields( { id => $form.'.edit' } );
+   $self->add_buttons( qw(Save Delete) );
    return;
 }
 
 sub save {
-   my $self = shift; my ($element, $p, $updated, $val);
+   my $self = shift; my ($element, $p, $updated, $v);
 
-   if ($p = $self->query_value( q(newParam) )) {
-      if ($self->find( $self->file, lc $p )) {
-         $self->throw( error => 'Attribute [_1] already exists',
-                       args  => [ lc $p ] );
+   if ($p = lc $self->query_value( q(newParam) )) {
+      if ($self->find( $self->file, $p )) {
+         throw error => 'Attribute [_1] already exists', args => [ $p ];
       }
 
-      $self->create( { file   => $self->file,
-                       fields => { value => q() }, name => lc $p } );
+      $self->create( $self->file, { name => $p, value => q() } );
    }
    else {
       for $element ($self->search( $self->file )) {
-         if (defined ($val = $self->query_value( $element->name ))
-             && (($val && !defined $element->value)
-                 || (defined $element->value && $element->value ne $val))) {
-            $element->value( $val );
-            $element->update;
-            $self->add_result_msg( $self->update_msg_key, $element->name );
+         if (defined ($v = $self->query_value( $element->name ))
+             and (($v and not defined $element->value)
+                  or (defined $element->value and $element->value ne $v))) {
+            $element->value( $v ); $element->update;
+            $self->add_result_msg( $self->update_msg_key,
+                                   $self->file, $element->name );
             $updated = 1;
          }
       }
 
-      $self->throw( 'Nothing updated' ) unless ($updated);
+      $updated or throw 'Nothing updated';
    }
 
-   return;
+   return 1;
 }
 
 1;
@@ -95,7 +88,7 @@ CatalystX::Usul::Model::Config::Globals - Class definition for global configurat
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 1062 $
 
 =head1 Synopsis
 

@@ -1,8 +1,8 @@
-# @(#)$Id: 06yaml.t 579 2009-06-10 10:46:22Z pjf $
+# @(#)$Id: 06yaml.t 660 2009-07-30 10:42:46Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 579 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 660 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );

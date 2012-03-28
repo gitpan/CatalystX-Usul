@@ -1,186 +1,128 @@
-# @(#)$Id: UserManager.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: UserManager.pm 941 2011-04-04 10:42:58Z pjf $
 
 package CatalystX::Usul::Controller::Admin::UserManager;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 941 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-my $SEP = q(/);
+use CatalystX::Usul::Constants;
 
-__PACKAGE__->config( namespace => q(admin), realm_class => q(IdentityUnix) );
+__PACKAGE__->config( alias_class   => q(MailAliases),
+                     namespace     => q(admin),
+                     profile_class => q(UserProfiles), );
 
-__PACKAGE__->mk_accessors( qw(realm_class) );
+__PACKAGE__->mk_accessors( qw(alias_class profile_class) );
 
 sub user_base : Chained(common) PathPart(users) CaptureArgs(0) {
-   my ($self, $c) = @_; my $s = $c->stash;
+   # Stash the identity model for the selected realm
+   my ($self, $c) = @_;
 
-   # Select the identity model used for finding our realm
-   my $model = $c->model( $self->realm_class );
+   $c->stash->{user_params} = $self->get_uri_query_params( $c );
 
-   # Select the realm from the session store
-   my $realm = $self->get_key( $c, q(realm) );
-
-   unless ($self->is_member( $realm, keys %{ $model->auth_realms } )) {
-      # Select the default realm if there isn't one in the session store
-      $realm = $model->default_realm;
-   }
-
-   # Store the selected realm on the session store
-   $self->set_key( $c, q(realm), $realm );
-
-   # Get the identity class associated with the selected realm
-   my $class = $realm ? $model->auth_realms->{ $realm } : $self->realm_class;
-
-   # Get the identity model for the selected identity class
-   $s->{identity_model} = $c->model( $class );
-   return;
+   return $self->set_identity_model( $c );
 }
 
 sub mail_aliases : Chained(user_base) PathPart(aliases) Args HasActions {
-   my ($self, $c, $alias) = @_; my $model = $c->stash->{identity_model};
+   my ($self, $c, $alias) = @_;
 
-   $model->aliases->form( $self->set_key( $c, q(alias), $alias ) );
-   return;
+   return $c->model( $self->alias_class )->form( $alias );
 }
 
 sub mail_aliases_create_or_update : ActionFor(mail_aliases.insert)
                                     ActionFor(mail_aliases.save) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
+   my ($self, $c) = @_;
 
-   $self->set_key( $c, q(alias), $model->aliases->create_or_update );
-   return 1;
+   $self->set_uri_args( $c, $c->model( $self->alias_class )->create_or_update );
+   return TRUE;
 }
 
 sub mail_aliases_delete : ActionFor(mail_aliases.delete) {
-   my ($self, $c) = @_; my $s = $c->stash; my $model = $s->{identity_model};
+   my ($self, $c) = @_; my $model = $c->model( $self->alias_class );
 
-   $model->aliases->delete; $self->set_key( $c, q(alias), $s->{newtag} );
-   return 1;
+   $model->delete; $self->set_uri_args( $c, $c->stash->{newtag} );
+   return TRUE;
 }
 
 sub user_admin : Chained(user_base) PathPart('') Args(0) Public {
    my ($self, $c) = @_;
 
-   return $self->redirect_to_path( $c, $SEP.q(user_manager) );
+   return $self->redirect_to_path( $c, SEP.q(user_manager) );
 }
 
 sub user_manager : Chained(user_base) PathPart(manager) Args HasActions {
-   my ($self, $c, $realm, $user, $profile) = @_;
-
-   my $model = $c->stash->{identity_model};
-
-   $realm   = $self->set_key( $c, q(realm),   $realm   );
-   $user    = $self->set_key( $c, q(user),    $user    );
-   $profile = $self->set_key( $c, q(profile), $profile );
-
-   $model->users->form( $realm, $user, $profile );
-   return;
+   my ($self, $c, $user) = @_; return $c->stash->{user_model}->form( $user );
 }
 
 sub user_manager_create_or_update : ActionFor(user_manager.insert)
                                     ActionFor(user_manager.save) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
+   my ($self, $c) = @_;
 
-   $self->set_key( $c, q(user), $model->users->create_or_update );
-   return 1;
+   $self->set_uri_args( $c, $c->stash->{user_model}->create_or_update );
+   return TRUE;
 }
 
 sub user_manager_delete : ActionFor(user_manager.delete) {
-   my ($self, $c) = @_; my $s = $c->stash; my $model = $s->{identity_model};
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   $model->users->delete; $self->set_key( $c, q(user), $s->{newtag} );
-   return 1;
+   $s->{user_model}->delete; $self->set_uri_args( $c, $s->{newtag} );
+   return TRUE;
 }
 
 sub user_manager_fill : ActionFor(user_manager.fill) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
-
-   $model->users->user_fill;
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{user_model}->user_fill;
 }
 
 sub user_profiles : Chained(user_base) PathPart(profiles) Args HasActions {
-   my ($self, $c, $profile) = @_; my $model = $c->stash->{identity_model};
+   my ($self, $c, $profile) = @_;
 
-   $model->profiles->form( $self->set_key( $c, q(profile), $profile ) );
-   return;
+   return $c->model( $self->profile_class )->form( $profile );
 }
 
 sub user_profiles_create_or_update : ActionFor(user_profiles.insert)
                                      ActionFor(user_profiles.save) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
+   my ($self, $c) = @_; my $model = $c->model( $self->profile_class );
 
-   $self->set_key( $c, q(profile), $model->profiles->create_or_update );
-   return 1;
+   $self->set_uri_args( $c, $model->create_or_update );
+   return TRUE;
 }
 
 sub user_profiles_delete : ActionFor(user_profiles.delete) {
-   my ($self, $c) = @_; my $s = $c->stash; my $model = $s->{identity_model};
+   my ($self, $c) = @_; my $model = $c->model( $self->profile_class );
 
-   $model->profiles->delete; $self->set_key( $c, q(profile), $s->{newtag} );
-   return 1;
+   $model->delete; $self->set_uri_args( $c, $c->stash->{newtag} );
+   return TRUE;
 }
 
 sub user_report : Chained(user_base) PathPart(report) Args HasActions {
-   my ($self, $c, $report) = @_; my $model = $c->stash->{identity_model};
+   my ($self, $c, $report) = @_;
 
-   $report = $self->set_key( $c, q(userReport), $report );
-   $model->users->form( $self->get_key( $c, q(realm) ), $report );
-   return;
+   return $c->stash->{user_model}->form( $report );
 }
 
 sub user_report_execute : ActionFor(user_report.execute) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
-
-   $model->users->user_report( q(csv) );
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{user_model}->user_report( q(csv) );
 }
 
 sub user_report_list : ActionFor(user_report.list) {
-   my ($self, $c) = @_; $self->set_key( $c, q(userReport), 0 ); return 1;
+   my ($self, $c) = @_; $self->set_uri_args( $c, NUL ); return TRUE;
 }
 
 sub user_report_purge : ActionFor(user_report.purge) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
-
-   $model->users->purge;
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{user_model}->purge;
 }
 
 sub user_security : Chained(user_base) PathPart(security) Args HasActions {
-   my ($self, $c, $realm, $user) = @_; my $model = $c->stash->{identity_model};
-
-   $realm = $self->set_key( $c, q(realm), $realm );
-   $user  = $self->set_key( $c, q(user),  $user  );
-   $model->users->form( $realm, $user  );
-   return;
+   my ($self, $c, $user) = @_; return $c->stash->{user_model}->form( $user );
 }
 
 sub user_security_set : ActionFor(user_security.set) {
-   my ($self, $c) = @_; my $model = $c->stash->{identity_model};
-
-   $model->users->set_password( $self->get_key( $c, q(user) ) );
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{user_model}->set_password;
 }
 
 sub user_security_update : ActionFor(user_security.update) {
-   my ($self, $c) = @_; my $s = $c->stash; my $model = $s->{identity_model};
-
-   my $args = { user => $self->get_key( $c, q(user) ) };
-
-   if ($model->roles->query_value( q(groups_n_added) )) {
-      $args->{field} = q(groups_added);
-      $model->roles->add_roles_to_user( $args );
-   }
-
-   if ($model->roles->query_value( q(groups_n_deleted) )) {
-      $args->{field} = q(groups_deleted);
-      $model->roles->remove_roles_from_user( $args );
-   }
-
-   return 1;
+   my ($self, $c) = @_; return $c->stash->{role_model}->update_roles;
 }
 
 sub user_sessions : Chained(user_base) PathPart(sessions) Args(0) HasActions {
@@ -202,7 +144,7 @@ CatalystX::Usul::Controller::Admin::UserManager - User account management
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 941 $
 
 =head1 Synopsis
 

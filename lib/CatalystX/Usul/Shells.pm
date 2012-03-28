@@ -1,29 +1,32 @@
-# @(#)$Id: Shells.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Shells.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Shells;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
-
-__PACKAGE__->config( default => q(/bin/ksh), path => q(/etc/shells), );
 
 __PACKAGE__->mk_accessors( qw(default path shells) );
 
+sub new {
+   my ($class, $app, $attrs) = @_;
+
+   $attrs->{default} ||= q(/bin/ksh);
+   $attrs->{path   } ||= q(/etc/shells);
+
+   return $class->next::method( $app, $attrs );
+}
+
 sub retrieve {
-   my $self = shift; my $class = ref $self || $self;
+   my $self = shift;
+   my $new  = bless { default => $self->default }, ref $self || $self;
 
-   my $new = bless { default => $self->default, shells => [] }, $class;
+   $new->shells
+      ( [ q(/bin/false),
+          sort grep { $_ and '#' ne substr $_, 0, 1 and not m{ false }mx }
+          $self->io( $self->path )->chomp->getlines ] );
 
-   for my $line ($self->io( $self->path )->chomp->getlines) {
-      if ($line and $line !~ m{ \A \# }mx and $line !~ m{ /bin/false }mx) {
-         push @{ $new->shells }, $line;
-      }
-   }
-
-   @{ $new->shells } = sort @{ $new->shells };
-   unshift @{ $new->shells }, q(/bin/false);
    return $new;
 }
 
@@ -39,18 +42,22 @@ CatalystX::Usul::Shells - Access the available shells list
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::Shells
 
-   $model  = CatalystX::Usul::Shells->new( $app, $config );
+   $model  = CatalystX::Usul::Shells->new( $attrs, $app );
    $shells = $model->retrieve;
 
 =head1 Description
 
 =head1 Subroutines/Methods
+
+=head2 new
+
+Constructor
 
 =head2 retrieve
 

@@ -1,38 +1,106 @@
-# @(#)$Id: Help.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Help.pm 1123 2012-03-14 23:26:02Z pjf $
 
 package CatalystX::Usul::Model::Help;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1123 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Model CatalystX::Usul::Email);
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(distname merge_attributes);
 use CatalystX::Usul::Table;
-use Class::C3;
-use File::Spec;
-use Pod::Html;
+use CatalystX::Usul::Time;
+use Time::Elapsed qw(elapsed);
+use MRO::Compat;
 
-my $NUL  = q();
-my $SEP  = q(/);
-my $SPC  = q( );
+__PACKAGE__->config( cpan_dist_uri => q(http://search.cpan.org/dist/),
+                     default_css   => NUL,
+                     name          => NUL, );
 
-__PACKAGE__->mk_accessors( qw(default_css libsdir name) );
+__PACKAGE__->mk_accessors( qw(cpan_dist_uri default_css name) );
 
-sub new {
-   my ($self, $app, @rest) = @_;
+sub COMPONENT {
+   my ($class, $app, $attrs) = @_; my $ac = $app->config;
 
-   my $new      = $self->next::method( $app, @rest );
-   my $app_conf = $app->config || {};
+   merge_attributes $attrs, $ac, $class->config, [ qw(default_css name) ];
 
-   $new->default_css( $app_conf->{default_css} );
-   $new->libsdir    ( $app_conf->{libsdir    } );
-   $new->name       ( $app_conf->{name       } );
+   return $class->next::method( $app, $attrs );
+}
 
-   return $new;
+sub about_form {
+   my $self = shift; my $s = $self->context->stash;
+
+   $s->{title} = $s->{header}->{title} = $self->loc( 'About' );
+   return;
+}
+
+sub add_debug_info {
+   my ($self, $prefix) = @_; my $c = $self->context; my $s = $c->stash;
+
+   my $cfg = $c->config; my $data = $s->{user}.q(@).$s->{host_port};
+
+   $s->{tip_title} = $self->loc( 'Debug Info' );
+   $self->_add_template_data( $prefix, $data, q(yourIdentity) );
+
+   # Useful numbers and such
+   $cfg->{version} and $self->_add_template_data( $prefix, $cfg->{version},
+                                                  q(moduleVersion) );
+
+   defined $s->{version} and $self->_add_template_data( $prefix, $s->{version},
+                                                        q(levelVersion) );
+
+   $self->_add_template_data( $prefix, time2str(), q(pageGenerated) );
+
+   $s->{elapsed} and $self->_add_template_data( $prefix,
+                                                elapsed( $s->{elapsed} ),
+                                                q(elapsedTime) );
+
+   $self->_add_template_data( $prefix, $s->{user_agent}->name, 'User agent' );
+   $data = $s->{user_agent}->version;
+   $self->_add_template_data( $prefix, $data, 'User agent version' );
+}
+
+sub add_footer {
+   my $self = shift; my $s = $self->context->stash; my $prefix = q(footer);
+
+   $self->add_select_language( $prefix );
+   $s->{debug} and $self->add_debug_info( $prefix );
+   $self->add_field ( {
+      container => FALSE, name => $prefix, type => q(template), } );
+   $self->stash_meta( { id => $prefix.q(.data) } );
+   return;
+}
+
+sub add_select_language {
+   my ($self, $prefix) = @_; my $c = $self->context; my $s = $c->stash;
+
+   my $cfg = $c->config; my @languages = split SPC, $cfg->{languages} || LANG;
+
+   my ($classes, $labels) = ({}, {}); my $name = q(select_language);
+
+   for my $lang (@languages) {
+      $classes->{ $lang } = q(flag_).$lang;
+      $labels->{ $lang } = $self->loc( q(lang_).$lang );
+   }
+
+   $self->add_field( { classes => $classes,
+                       default => $s->{lang},
+                       id      => $prefix.q(.).$name,
+                       labels  => $labels,
+                       values  => \@languages } );
+   $self->add_field( { default => $self->query_value( q(val) ),
+                       name    => q(referer),
+                       type    => q(hidden) } );
+
+   my $action = $c->uri_for_action( SEP.$name );
+
+   $self->form_wrapper( { action => $action, name => $name } );
+   return;
 }
 
 sub documentation {
-   my ($self, $uri) = @_;
+   my ($self, $path) = @_; my $uri = $self->context->uri_for( $path );
 
    $self->add_field( { path => $uri, subtype => q(html), type => q(file) } );
    return;
@@ -40,18 +108,18 @@ sub documentation {
 
 sub feedback_form {
    my ($self, @rest) = @_;
+   my $nbsp          = NBSP;
    my $s             = $self->context->stash;
    my $subject       = $self->query_value( q(subject) );
    my $form          = $s->{form}->{name};
 
-   $subject ||= $self->loc( $form.q(.subject), $self->name, join $SEP, @rest );
-   ($s->{html_subject} = $subject) =~ s{ \s+ }{&nbsp;}gmx;
+   $subject ||= $self->loc( $form.q(.subject), $self->name, join SEP, @rest );
+   ($s->{html_subject} = $subject) =~ s{ \s+ }{$nbsp}gmx;
 
-   $self->add_header;
-   $self->clear_form(  { firstfld => $form.q(.body),
+   $self->clear_form ( { firstfld => $form.q(.body),
                          title    => $self->loc( $form.q(.title) ) } );
-   $self->add_field(   { id       => $form.q(.body) } );
-   $self->add_hidden(  q(subject), $subject );
+   $self->add_field  ( { id       => $form.q(.body) } );
+   $self->add_hidden ( q(subject), $subject );
    $self->add_buttons( qw(Send) );
    return;
 }
@@ -60,156 +128,136 @@ sub feedback_send {
    my $self    = shift;
    my $s       = $self->context->stash;
    my $subject = $self->query_value( q(subject) ) || $self->name.' feedback';
-   my $args    = { attributes  => { charset      => $s->{encoding},
+   my $post    = { attributes  => { charset      => $s->{encoding},
                                     content_type => q(text/html) },
-                   body        => $self->query_value( q(body) ) || $NUL,
+                   body        => $self->query_value( q(body) ) || NUL,
                    from        => $s->{user_email},
                    mailer      => $s->{mailer},
                    mailer_host => $s->{mailer_host},
                    subject     => $subject,
                    to          => $s->{feedback_email} };
 
-   $self->add_result( $self->send_email( $args ) );
-   return;
-}
-
-sub get_help {
-   # Generate the context sensitive help from the POD in the code
-   my ($self, @args) = @_; my $e;
-
-   return unless ($args[ 0 ]);
-
-   my $controller = ucfirst ((split m{ \# }mx, $args[ 0 ])[ 0 ]);
-   my $title      = $self->loc( q(helpTitle), $controller );
-
-   $self->clear_form( { title => $title } );
-
-   my $src   = $self->catfile( $self->libsdir,
-                               $self->catfile( split m{ :: }mx, $self->name ),
-                               q(Controller),
-                               $controller.q(.pm) );
-   my $page  = eval { $self->retrieve( $src ) };
-
-   if ($e = $self->catch) { $self->add_error( $e ) }
-   else { $self->stash_content( $page, q(sdata) ) }
-
-   return;
+   $self->add_result( $self->send_email( $post ) );
+   return TRUE;
 }
 
 sub module_docs {
-   my ($self, $module) = @_; my $c = $self->context; my $s = $c->stash; my $e;
+   my ($self, $module, $name) = @_; my $c = $self->context; my $s = $c->stash;
 
-   my $model = $c->model( q(Navigation) );
+   $module ||= $self->name; $name ||= $module;
 
-   $model->select_this( 0, 2 );
-   $model->append_to_selected( 0, $SEP.$module );
+   my $src   = $self->find_source( $module )
+      or return $self->add_error_msg( 'Module [_1] not found', $module );
+   my $url   = $c->uri_for_action( $c->config->{module_docs}, '%s' );
+   my $help  = $self->loc( 'Help' );
+   my $title = $name.SPC.$help;
+   my $nav   = $s->{nav_model};
 
-   my $title = $self->loc( q(helpTitle), $module );
+   $nav->clear_controls; $nav->add_menu_close;
 
-   $self->clear_form( { title => $title } );
+   $s->{title     } = $s->{application}.SPC.$help;
+   $s->{page_title} = $title.q( - ).$s->{application}.SPC.$s->{platform};
 
-   my $page  = eval { $self->retrieve( $self->find_source( $module ) ) };
-
-   if ($e = $self->catch) { $self->add_error( $e ) }
-   else { $self->stash_form( $page ) }
-
+   $self->clear_form( { title => $s->{title} } );
+   $self->add_field ( { src   => $src,
+                        title => $title,
+                        type  => q(POD),
+                        url   => $url, } );
    return;
 }
 
 sub module_list {
-   my $self = shift; my $s = $self->context->stash; my $name;
+   my $self = shift; my $c = $self->context; my $s = $c->stash; my $name;
 
+   # TODO: Switch to using Module::Versions
    # Otherwise lots from modules that don't set VERSION
    no warnings; ## no critic
 
    my $count = 0;
-   my $table = CatalystX::Usul::Table->new
-      ( align  => { help    => 'center',
-                    name    => 'left',
-                    source  => 'center',
-                    version => 'right' },
-        flds   => [ qw(source help name version) ],
-        hclass => { help    => q(minimal),
-                    name    => q(most),
-                    source  => q(minimal),
-                    version => q(some) },
-        labels => { help    => q(&nbsp;),
-                    name    => 'Module Name',
-                    source  => q(&nbsp;),
-                    version => 'Version' } );
+   my $docs  = $c->action->namespace.SEP.q(module_docs);
+   my $table = __get_module_table();
 
    for my $path (sort keys %INC) {
-      next if ($path =~ m{ \A [/] }mx);
+      $path =~ m{ \A [/] }mx and next;
 
       ($name = $path) =~ s{ [/] }{::}gmx; $name =~ s{ \.pm }{}gmx;
 
-      my $href  = $self->uri_for( $SEP.q(module_docs), $s->{lang}, $name );
-      my $vsap  = q(root).$SEP.q(view_source);
-      my $sref  = $self->uri_for( $vsap, $s->{lang}, $name );
+      my $c_uri = $self->cpan_dist_uri.(distname $name);
+      my $h_uri = $c->uri_for_action( $docs, $name );
+      my $s_uri = $c->uri_for_action( SEP.q(view_source), $name );
       my $flds  = {};
 
       $flds->{name   } = $name;
-      $flds->{help   } = _make_icon( 'Doucumentation',
-                                     $s->{assets}.'help.gif', $href );
-      $flds->{source } = _make_icon( 'Source', $s->{assets}.'f.gif', $sref );
+      $flds->{cpan   } = __make_icon( 'CPAN',           q(link_icon), $c_uri );
+      $flds->{help   } = __make_icon( 'Doucumentation', q(help_icon), $h_uri );
+      $flds->{source } = __make_icon( 'View Source',    q(file_icon), $s_uri );
       $flds->{version} = eval { $name->VERSION() };
 
-      push @{ $table->values }, $flds;
-      $count++;
+      push @{ $table->values }, $flds; $count++;
    }
 
    $table->count( $count );
-   $self->add_field(    { data => $table, type => q(table) } );
-   $self->group_fields( { id   => q(module_list.select), nitems => 1 } );
+   $self->add_field( { data => $table, number_rows => TRUE, type => q(table) });
+   $self->group_fields( { id => q(module_list.select) } );
    return;
 }
 
 sub overview {
    my $self = shift;
 
-   $self->add_field ( { name => q(overview), type => q(label) } );
-   $self->stash_meta( { id   => q(overview) } );
-   delete $self->context->stash->{token};
+   $self->add_field ( { id => q(overview) } );
+   $self->stash_meta( { id => q(overview) } );
    return;
 }
 
-sub retrieve {
-   my ($self, $src) = @_; my $s = $self->context->stash; my $line;
+# Private methods
 
-   no warnings; ## no critic
+sub _add_template_data {
+   my ($self, $name, $data, $alt) = @_; my $s = $self->context->stash;
 
-   my $body = 0; my $page = $NUL; my $tmp = $self->tempfile;
+   my $key = "template_data_${name}";
+   my $tip = ($s->{tip_title} || DOTS).TTS.$self->loc( $alt || 'None' );
 
-   pod2html( '--backlink='.$self->loc( q(Back to Top) ),
-             '--cachedir='.$self->tempdir,
-             '--css='.$self->catfile( $s->{assets}, $self->default_css ),
-             '--infile='.$src,
-             '--outfile='.$tmp->pathname,
-             '--quiet',
-             '--title='.$s->{title} );
-
-   while (defined ($line = $tmp->getline) ) {
-      $body  = 0     if ($line =~ m{ \</body }mx);
-      $page .= $line if ($body);
-      $body  = 1     if ($line =~ m{ \<body }mx);
-   }
-
-   return $page;
+   $s->{ $key } ||= []; push @{ $s->{ $key } }, { text => $data, tip => $tip };
+   return;
 }
 
 # Private subroutines
 
-sub _make_icon {
-   my ($alt, $src, $href) = @_;
+sub __get_module_table {
+   return CatalystX::Usul::Table->new
+      ( class    => { cpan    => q(icons),
+                      help    => q(icons),
+                      name    => q(data_value),
+                      source  => q(icons),
+                      version => q(data_value), },
+        flds     => [ qw(source help cpan name version) ],
+        hclass   => { cpan    => q(minimal),
+                      help    => q(minimal),
+                      name    => q(most),
+                      source  => q(minimal),
+                      version => q(some) },
+        labels   => { cpan    => 'CPAN',
+                      help    => 'Help',
+                      name    => 'Module Name',
+                      source  => 'Source',
+                      version => 'Version' },
+        typelist => { version => q(numeric), } );
+}
 
-   return { container => 0,
-            fhelp     => $alt,
+sub __make_icon {
+   my ($alt, $imgclass, $href) = @_;
+
+   return { class     => q(icon),
+            container => FALSE,
             href      => $href,
-            imgclass  => q(normal),
-            sep       => q(),
-            text      => $src,
+            imgclass  => $imgclass,
+            sep       => NUL,
+            target    => q(documentation),
+            text      => NUL,
+            tip       => $alt,
             type      => q(anchor),
-            widget    => 1 };
+            widget    => TRUE };
 }
 
 1;
@@ -220,11 +268,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Help - Create HTML from POD
+CatalystX::Usul::Model::Help - Provides data for help pages
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1123 $
 
 =head1 Synopsis
 
@@ -249,10 +297,28 @@ L<Pod::Html> on the controller source
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
 
-Constructor sets attributes for: default CSS filename, libsdir, and
+Constructor sets attributes for: default CSS filename and the
 application name from the application config
+
+=head2 about_form
+
+Provides information about the application. Content is implemented in a
+template
+
+=head2 add_debug_info
+
+Adds some useful information to the footer if debug is turned on
+
+=head2 add_footer
+
+Calls L</add_debug_info> and L</add_select_language>
+
+=head2 add_select_language
+
+Adds a form containing a popup menu that allows the user to select from
+the list of supported languages. Called from L</add_footer>
 
 =head2 documentation
 
@@ -271,8 +337,7 @@ Sends an email to the site administrators
 
 =head2 get_help
 
-Add the field to the stash that is the rendered HTML created by
-calling L</retrieve>
+Add a field of type I<POD>
 
 =head2 module_docs
 
@@ -286,10 +351,6 @@ is using. Links allow the source code and the POD to be viewed
 =head2 overview
 
 Generate the data for an XML response to a Javascript C<XMLHttpRequest()>
-
-=head2 retrieve
-
-Calls L<Pod::Html> to create the help text from the controller POD
 
 =head1 Diagnostics
 
@@ -306,8 +367,6 @@ None
 =item L<CatalystX::Usul::Model>
 
 =item L<CatalystX::Usul::Table>
-
-=item L<Pod::Html>
 
 =back
 

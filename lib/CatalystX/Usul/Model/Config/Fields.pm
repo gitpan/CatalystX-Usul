@@ -1,29 +1,20 @@
-# @(#)$Id: Fields.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Fields.pm 1076 2011-10-30 02:03:52Z pjf $
 
 package CatalystX::Usul::Model::Config::Fields;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1076 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 __PACKAGE__->config
-   ( create_msg_key    => q(Field [_1]/[_2] created),
-     delete_msg_key    => q(Field [_1]/[_2] deleted),
-     keys_attr         => q(field),
-     schema_attributes => {
-      attributes       => [ qw(type prompt clear width maxlength tip
-                               required validate onchange height palign
-                               atitle align behaviour checked class
-                               ctitle edit fhelp max_integer min_integer
-                               min_password_length nowrap onkeypress
-                               pwidth select sep subtype text) ],
-      defaults         => { prompt => q() },
-      element          => q(fields),
-      lang_dep         => { qw(atitle 1 ctitle 1 fhelp 1
-                               prompt 1 text   1 tip   1) } },
-     typelist          => { fhelp => q(textarea), tip => q(textarea) },
-     update_msg_key    => q(Field [_1]/[_2] updated), );
+   ( classes        => { fhelp => q(ifield autosize),
+                         tip   => q(ifield autosize), },
+     create_msg_key => 'Field [_1]/[_2] created',
+     delete_msg_key => 'Field [_1]/[_2] deleted',
+     keys_attr      => q(fields),
+     typelist       => { fhelp => q(textarea), tip => q(textarea) },
+     update_msg_key => 'Field [_1]/[_2] updated', );
 
 1;
 
@@ -37,7 +28,7 @@ CatalystX::Usul::Model::Config::Fields - Class definition for fields
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 1076 $
 
 =head1 Synopsis
 
@@ -49,9 +40,9 @@ Defines the attributes of the <field> elements in the configuration files
 
 There are twenty one language independent attributes to the I<fields>
 element; I<type>, I<clear>, I<width>, I<maxlength>, I<required>,
-I<validate>, I<onchange>, I<height>, I<palign>, I<align>,
-I<behaviour>, I<checked>, I<class>, I<max_integer>, I<min_integer>,
-I<min_password_length>, I<nowrap>, I<onkeypress>, I<pwidth>, I<sep>
+I<validate>, I<onchange>, I<height>, I<pclass>, I<align>,
+I<checked>, I<class>, I<max_integer>, I<min_integer>,
+I<min_password_length>, I<onkeypress>, I<pwidth>, I<sep>
 and I<subtype>
 
 There are six language dependent attributes to the I<fields>

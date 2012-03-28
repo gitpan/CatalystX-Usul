@@ -1,90 +1,73 @@
-# @(#)$Id: Credentials.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Credentials.pm 959 2011-04-23 13:27:40Z pjf $
 
 package CatalystX::Usul::Model::Config::Credentials;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 959 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
+use CatalystX::Usul::Functions;
 use CatalystX::Usul::Schema;
-use Class::C3;
+use MRO::Compat;
+use TryCatch;
 
 __PACKAGE__->config
-   ( create_msg_key    => q(Credentials [_1]/[_2] created),
-     delete_msg_key    => q(Credentials [_1]/[_2] deleted),
-     keys_attr         => q(acct),
-     schema_attributes => {
-        attributes     => [ qw(driver host password port user) ],
-        defaults       => {},
-        element        => q(credentials),
-        lang_dep       => undef, },
-     typelist          => {},
-     update_msg_key    => q(Credentials [_1]/[_2] updated) );
+   ( create_msg_key         => 'Credentials [_1]/[_2] created',
+     delete_msg_key         => 'Credentials [_1]/[_2] deleted',
+     keys_attr              => q(credentials),
+     typelist               => {},
+     schema_class           => q(CatalystX::Usul::Schema),
+     update_msg_key         => 'Credentials [_1]/[_2] updated' );
 
-__PACKAGE__->mk_accessors( qw(ctrldir) );
-
-sub new {
-   my ($self, $app, @rest) = @_;
-
-   my $new = $self->next::method( $app, @rest );
-
-   $new->ctrldir( $app->config->{ctrldir} || q() );
-   return $new;
-}
+__PACKAGE__->mk_accessors( qw(schema_class) );
 
 sub create_or_update {
-   my ($self, $args) = @_; my $req = $self->context->req; my $val;
+   my ($self, $ns, $args) = @_; my $req = $self->context->req; my $v;
 
-   if (defined ($val = $self->query_value( q(password) ))) {
-      $val = CatalystX::Usul::Schema->encrypt( $self->_seed, $val );
-      $req->params->{password} = q(encrypt=).$val;
+   if (defined ($v = $self->query_value( q(password) ))) {
+      $v = $self->schema_class->encrypt( $self->_seed, $v );
+      $req->params->{password} = q(encrypt=).$v;
    }
 
-   $self->next::method( $args );
+   $self->next::method( $ns, $args );
    return;
 }
 
 sub credentials_form {
-   my ($self, $level, $acct) = @_; my ($def, $e, $id);
+   my ($self, $ns, $acct) = @_; my ($config_obj, $def, $id);
 
-   my $data   = eval { $self->get_list( $level, $acct ) };
+   try        { $config_obj = $self->list( $ns, $acct ) }
+   catch ($e) { return $self->add_error( $e ) }
 
-   return $self->add_error( $e ) if ($e = $self->catch);
-
-   my $s      = $self->context->stash; $s->{pwidth} -= 10;
-   my $creds  = $data->list; unshift @{ $creds }, q(), $s->{newtag};
-   my $levels = [ sort keys %{ $s->{levels} } ];
+   my $creds  = $config_obj->list;
+   my $fields = $config_obj->result;
+   my $s      = $self->context->stash;
    my $form   = $s->{form}->{name};
-   my $fields = $data->element;
-   my $nitems = 0;
-   my $stepno = 1;
+   my $spaces = [ sort keys %{ $s->{ $self->ns_key } } ];
 
-   unshift @{ $levels }, q(), q(default);
+   unshift @{ $creds  }, q(), $s->{newtag};
+   unshift @{ $spaces }, q(), q(default);
 
    if ($fields->password and $fields->password =~ m{ \A encrypt= (.+) \z }mx) {
-      my $schema_class = q(CatalystX::Usul::Schema);
-
-      $fields->password( $schema_class->decrypt( $self->_seed, $1 ) );
+      $fields->password( $self->schema_class->decrypt( $self->_seed, $1 ) );
    }
 
-   $self->clear_form(   { firstfld => $form.q(.acct) } );
-   $self->add_field(    { default  => $level,
-                          id       => q(config.level),
+   $self->clear_form(   { firstfld => $form.q(.credentials) } );
+   $self->add_field(    { default  => $ns,
+                          id       => q(config.).$self->ns_key,
                           stepno   => 0,
-                          values   => $levels } ); $nitems++;
+                          values   => $spaces } );
 
-   if ($level) {
+   if ($ns) {
       $self->add_field( { default  => $acct,
-                          id       => $form.q(.acct),
-                          stepno   => 0,
-                          values   => $creds } ); $nitems++;
+                          id       => $form.q(.credentials),
+                          values   => $creds } );
    }
 
-   $self->group_fields( { id       => $form.q(.select),
-                          nitems   => $nitems } ); $nitems = 0;
+   $self->group_fields( { id       => $form.q(.select) } );
 
-   return unless ($level and $acct and $self->is_member( $acct, @{ $creds } ));
+   ($ns and $acct and is_member $acct, $creds) or return;
 
    if ($acct eq $s->{newtag}) {
       $self->add_buttons( qw(Insert) ); $def = q(); $id = $form.'.nameNew';
@@ -96,24 +79,18 @@ sub credentials_form {
    $self->add_field(    { ajaxid  => $form.'.name',
                           default => $def,
                           id      => $id,
-                          name    => q(name),
-                          stepno  => $stepno++ } ); $nitems++;
+                          name    => q(name) } );
    $self->add_field(    { ajaxid  => $form.'.driver',
-                          default => $fields->driver,
-                          stepno  => $stepno++ } ); $nitems++;
+                          default => $fields->driver } );
    $self->add_field(    { ajaxid  => $form.'.host',
-                          default => $fields->host,
-                          stepno  => $stepno++ } ); $nitems++;
+                          default => $fields->host } );
    $self->add_field(    { ajaxid  => $form.'.port',
-                          default => $fields->port,
-                          stepno  => $stepno++ } ); $nitems++;
+                          default => $fields->port } );
    $self->add_field(    { ajaxid  => $form.'.user',
-                          default => $fields->user,
-                          stepno  => $stepno++ } ); $nitems++;
+                          default => $fields->user } );
    $self->add_field(    { default => $fields->password,
-                          id      => $form.'.password',
-                          stepno  => $stepno++ } ); $nitems++;
-   $self->group_fields( { id      => $form.'.edit', nitems => $nitems } );
+                          id      => $form.'.password' } );
+   $self->group_fields( { id      => $form.'.edit' } );
    return;
 }
 
@@ -140,7 +117,7 @@ CatalystX::Usul::Model::Config::Credentials - Database connection definitions
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 959 $
 
 =head1 Synopsis
 

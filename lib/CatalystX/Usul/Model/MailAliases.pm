@@ -1,106 +1,108 @@
-# @(#)$Id: MailAliases.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: MailAliases.pm 1062 2011-10-23 01:23:45Z pjf $
 
 package CatalystX::Usul::Model::MailAliases;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1062 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
-use CatalystX::Usul::MailAliases;
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(throw);
+use File::MailAlias;
+use MRO::Compat;
+use TryCatch;
 
-my $NUL = q();
-
-__PACKAGE__->mk_accessors( qw(domain_attributes domain_model) );
+__PACKAGE__->mk_accessors( qw(user_model) );
 
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_;
 
    my $new   = $self->next::method( $c, @rest );
-   my $attrs = $new->domain_attributes || {};
+   my $attrs = { %{ $new->domain_attributes || {} } };
 
-   $new->domain_model( CatalystX::Usul::MailAliases->new( $c, $attrs ) );
+   $attrs->{ioc_obj} = $new;
+   $attrs->{path   } = $c->config->{aliases_path};
+
+   $new->domain_model( File::MailAlias->new( $attrs ) );
+   $new->user_model  ( $c->model( q(UsersUnix) ) );
 
    return $new;
 }
 
 sub create_or_update {
-   my $self = shift; my ($alias, $flds, $name, $recipients);
+   my $self = shift;
+   my $name = $self->query_value( q(name) )
+      or throw 'Alias name not specified';
 
-   my $s = $self->context->stash;
+  (my $recipients = $self->query_value( q(recipients) )) =~ s{ \s+ }{ }gmsx;
 
-   unless ($name = $self->query_value( q(name) )) {
-      $self->throw( 'No alias name specified' );
-   }
+   my $s      = $self->context->stash;
+   my $fields = { name       => $name,
+                  alias_name => $name,
+                  comment    => $self->query_array( q(comment) ) || [],
+                  owner      => $s->{user},
+                  recipients => [ split SPC, $recipients ] };
+   my $alias  = $self->query_value( q(alias) ) || NUL;
+   my $key    = $alias eq $s->{newtag}
+              ? 'Alias [_1] created' : 'Alias [_1] updated';
+   my $method = $alias eq $s->{newtag} ? q(create) : q(update);
+   my $out;
 
-   ($recipients = $self->query_value( q(recipients) )) =~ s{ \s+ }{ }gmsx;
-   $flds  = { alias_name => $name,
-              comment    => $self->query_value( q(comment) ),
-              owner      => $s->{user},
-              recipients => [ split q( ), $recipients ] };
-   $flds  = $self->check_form( $flds );
-   $alias = $self->query_value( q(alias) ) || $NUL;
-
-   if ($alias eq $s->{newtag}) {
-      $self->add_result( $self->domain_model->create( $flds ) );
-   }
-   else { $self->add_result( $self->domain_model->update( $flds ) ) }
-
+   ($name, $out) = $self->domain_model->$method( $self->check_form( $fields ) );
+   $self->add_result_msg( $key, $name );
+   $self->add_result( $out );
+   $self->user_model->domain_model->cache->{dirty} = TRUE;
    return $name;
 }
 
 sub delete {
-   my $self = shift; my $alias = $self->query_value( q(alias) );
+   my $self  = shift;
+   my $alias = $self->query_value( q(alias) )
+      or throw 'Alias name not specified';
+   my ($name, $out) = $self->domain_model->delete( { name => $alias } );
 
-   $self->throw( 'No alias name specified' ) unless ($alias);
-
-   $self->add_result( $self->domain_model->delete( $alias ) );
+   $self->add_result_msg( 'Alias [_1] deleted', $name );
+   $self->add_result( $out );
+   $self->user_model->domain_model->cache->{dirty} = TRUE;
    return;
 }
 
 sub mail_aliases_form {
-   my ($self, $alias) = @_;
+   my ($self, $alias) = @_; my $data;
 
    # Retrieve data from model
-   my $data    = eval { $self->domain_model->retrieve( $alias ) }; my $e;
+   try        { $data = $self->domain_model->list( $alias ) }
+   catch ($e) { return $self->add_error( $e ) }
 
-   return $self->add_error( $e ) if ($e = $self->catch);
-
-   my $s       = $self->context->stash; $s->{pwidth} -= 10;
-   my $aliases = $data->aliases; unshift @{ $aliases }, $NUL, $s->{newtag};
-   my $form    = $s->{form}->{name};
-   my $nitems  = 0;
-   my $step    = 1;
+   my $s       = $self->context->stash;
+   my $form    = $s->{form}->{name}; $s->{pwidth} -= 20;
+   my $aliases = [ NUL, $s->{newtag}, @{ $data->list } ];
+   my $element = $data->result;
 
    # Add HTML elements items to form
    $self->clear_form( { firstfld => $form.'.alias' } );
    $self->add_field(  { default  => $alias,
                         id       => $form.'.alias',
-                        values   => $aliases } ); $nitems++;
+                        values   => $aliases } );
 
-   if ($data->owner) {
-      $s->{owner} = $data->owner; $s->{created} = $data->created;
-      $self->add_field( { id => $form.'.note' } ); $nitems++;
+   if ($data->found and $element->owner) {
+      $s->{owner  } = $element->owner;
+      $s->{created} = $element->created;
+      $self->add_field( { id => $form.'.note' } );
    }
 
-   $self->group_fields( { id => $form.'.select', nitems => $nitems } );
-
-   return unless ($alias);
-
-   my $default = $alias ne $s->{newtag} ? $alias : $NUL;
+   $self->group_fields( { id => $form.'.select' } ); $alias or return;
 
    $self->add_field(    { ajaxid  => $form.'.alias_name',
-                          default => $default,
-                          name    => 'name',
-                          stepno  => $step++ } ); $nitems = 1;
-   $self->add_field(    { default => $data->comment,
-                          id      => $form.'.comment',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => (join "\r", @{ $data->recipients }),
-                          id      => $form.'.recipients',
-                          stepno  => $step++ } ); $nitems++;
-   $self->group_fields( { id      => $form.'.edit', nitems => $nitems } );
+                          default => $alias ne $s->{newtag} ? $alias : NUL,
+                          name    => 'name' } );
+   $self->add_field(    { default => $element->comment || '-',
+                          id      => $form.'.comment' } );
+   $self->add_field(    { default =>
+                             (join "\r", @{ $element->recipients || [] } ),
+                          id      => $form.'.recipients' } );
+   $self->group_fields( { id      => $form.'.edit' } );
 
    # Add buttons to form
    if ($alias eq $s->{newtag}) { $self->add_buttons( qw(Insert) ) }
@@ -121,7 +123,7 @@ CatalystX::Usul::Model::MailAliases - Manipulate the mail aliases file
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1062 $
 
 =head1 Synopsis
 

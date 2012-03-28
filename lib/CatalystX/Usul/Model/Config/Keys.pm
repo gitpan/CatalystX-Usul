@@ -1,30 +1,24 @@
-# @(#)$Id: Keys.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Keys.pm 1065 2011-10-26 13:22:21Z pjf $
 
 package CatalystX::Usul::Model::Config::Keys;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1065 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 __PACKAGE__->config
-   ( create_msg_key    => q(Keys [_1]/[_2] created),
-     delete_msg_key    => q(Keys [_1]/[_2] deleted),
-     keys_attr         => q(key),
-     schema_attributes => {
-        attributes     => [ qw(vals) ],
-        defaults       => { vals => {} },
-        element        => q(keys),
-        lang_dep       => q(), },
-     table_data        => { vals => { align  => { name => q(left),
-                                                  key  => q(left) },
-                                      flds   => [ qw(name key) ],
-                                      labels => { name => q(Key),
-                                                  key  => q(Default) },
-                                      sizes  => { name => 16,
-                                                  key  => 32 } } },
-     typelist          => {},
-     update_msg_key    => q(Keys [_1]/[_2] updated), );
+   ( create_msg_key => 'Keys [_1]/[_2] created',
+     delete_msg_key => 'Keys [_1]/[_2] deleted',
+     keys_attr      => q(keys),
+     table_data     => {
+        vals        => {
+           align    => { name => q(left), key => q(left), order => q(right) },
+           flds     => [ qw(name key order) ],
+           labels   => { name => 'Key',  key => 'Default', order => 'Order' },
+           sizes    => { name => 16,     key => 16,        order => 2 }, }, },
+     typelist       => { vals => q(table) },
+     update_msg_key => 'Keys [_1]/[_2] updated', );
 
 1;
 
@@ -38,7 +32,7 @@ CatalystX::Usul::Model::Config::Keys - Class definition for keys configuration e
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 1065 $
 
 =head1 Synopsis
 

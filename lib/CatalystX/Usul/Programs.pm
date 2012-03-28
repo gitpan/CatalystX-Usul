@@ -1,299 +1,338 @@
-# @(#)$Id: Programs.pm 612 2009-06-29 13:39:56Z pjf $
+# @(#)$Id: Programs.pm 1127 2012-03-22 20:01:35Z pjf $
 
 package CatalystX::Usul::Programs;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 612 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul CatalystX::Usul::Utils);
+use attributes ();
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1127 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul CatalystX::Usul::IPC);
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(app_prefix class2appdir elapsed
+    env_prefix exception is_arrayref is_member say split_on__ throw
+    untaint_identifier untaint_path);
 use CatalystX::Usul::InflateSymbols;
-use Class::C3;
+use Class::Inspector;
 use Class::Null;
 use Config;
-use Cwd qw(abs_path);
-use English qw(-no_match_vars);
+use English         qw(-no_match_vars);
+use File::HomeDir;
 use File::Spec;
-use Getopt::Mixed qw(nextOption);
+use Getopt::Mixed   qw(nextOption);
 use IO::Interactive qw(is_interactive);
-use IPC::SRLock;
+use List::Util      qw(first);
 use Log::Handler;
+use MRO::Compat;
 use Pod::Man;
+use Pod::Select ();
 use Pod::Usage;
+use Scalar::Util    qw(blessed);
 use Sys::Hostname;
 use Term::ReadKey;
 use Text::Autoformat;
-use XML::Simple;
-use YAML::Syck;
+use TryCatch;
 
-my $BRK    = q(: );
-my @EXTNS  = qw(.pl .pm .t);
-my $NO     = q(n);
-my $NUL    = q();
-my $PREFIX = q(/opt);
-my $QUIT   = q(q);
-my $SPC    = q( );
-my $WIDTH  = 80;
-my $YES    = q(y);
+require Cwd;
+
+my %CONFIG =
+   ( conf_extn       => q(.xml),
+     default_dirs    => { vardir       => [ qw(var)                ],
+                          ctrldir      => [ qw(var etc)            ],
+                          dbasedir     => [ qw(var db)             ],
+                          localedir    => [ qw(var locale)         ],
+                          logsdir      => [ qw(var logs)           ],
+                          root         => [ qw(var root)           ],
+                          rprtdir      => [ qw(var root reports)   ],
+                          rundir       => [ qw(var run)            ],
+                          skindir      => [ qw(var root skins)     ],
+                          tempdir      => [ qw(var tmp)            ],
+                          template_dir => [ qw(var root templates) ], },
+     doc_title       => 'User Contributed Documentation',
+     extensions      => [ qw(.pl .pm .t) ],
+     log_extn        => q(.log),
+     man_page_cmd    => [ qw(nroff -man) ],
+     no_char         => q(n),
+     paragraph       => { cl => TRUE, fill => TRUE, nl => TRUE },
+     path_prefix     => [ NUL, qw(opt) ],
+     pi_arrays       => [ qw(actions arrays attrs copy_files create_dirs
+                             create_files credentials link_files
+                             post_install_cmds wait_for) ],
+     pi_config_attrs => { storage_attributes => { root_name => q(config) } },
+     pi_config_file  => q(build.xml),
+     quit            => q(q),
+     shell           => [ NUL, qw(bin ksh) ],
+     well_known      => [ NUL, qw(etc default) ],
+     width           => 80,
+     yes_char        => q(y), );
 
 sub new {
-   my ($self, @rest) = @_;
+   my ($self, @rest) = @_; my $class = blessed $self || $self;
 
-   autoflush STDOUT 1; autoflush STDERR 1;
+   my $attrs = BUILDARGS( q(_arg_list), $class, @rest );
 
-   my $strap = $self->_bootstrap( $self->arg_list( @rest ) );
-   my $new   = $strap->next::method( $strap, {} );
+   $class->mk_accessors( keys %{ $attrs } );
 
-   Getopt::Mixed::init( $new->arglist );
+   my $new = $class->next::method( {}, $attrs ); BUILD( $new );
 
-   $new->_load_args_ref();
+   return $new;
+}
+
+sub BUILDARGS {
+   my ($next, $class, @rest) = @_; my $args = $class->$next( @rest );
+
+   autoflush STDOUT TRUE; autoflush STDERR TRUE;
+
+   my $attrs = { config => { %{ $args->{config} || {} } } };
+
+   $attrs->{arglist}  = q(c=s D H h L=s n o=s q );
+   $attrs->{arglist} .= $args->{arglist } if ($args->{arglist});
+   $attrs->{args   }  = exists $args->{n} ? { n => TRUE } : {};
+   $attrs->{quiet  }  = exists $args->{quiet} ? TRUE : FALSE;
+   $attrs->{script }  = $class->basename( $args->{script} || $PROGRAM_NAME );
+   $attrs->{program}  = $class->basename( lc $attrs->{script},
+                                          @{ $CONFIG{extensions} } );
+
+   $class->_load_config    ( $attrs, $args );
+   $class->_inflate_symbols( $attrs ); # Expand pathnames
+   $class->_set_defaults   ( $attrs );
+
+   return $attrs;
+}
+
+sub BUILD {
+   my $self = shift;
+
+   Getopt::Mixed::init( $self->arglist );
+
+   $self->_copy_args_ref; $self->_copy_vars_ref;
 
    Getopt::Mixed::cleanup();
 
-   $new->_set_attr       ( q(c), q(method)        );
-   $new->_set_attr       ( q(L), q(language)      );
-   $new->_set_attr       ( q(S), q(silent)        );
-   $new->debug           ( $new->get_debug_option );
-   $new->lock->debug     ( $new->debug            );
-   $new->lock->log       ( $new->log              );
-   $new->_load_messages  ( $new->language         );
-   $new->_load_os_depends(                        );
-   $new->_load_vars_ref  (                        );
+   $self->_set_attr( q(c), q(method)   );
+   $self->_set_attr( q(L), q(language) );
+   $self->_set_attr( q(q), q(quiet)    );
 
-   return $new;
+   $self->build_attributes( [ qw(debug log lock l10n os) ], TRUE );
+
+   return;
 }
 
 sub add_leader {
    my ($self, $text, $args) = @_; $args ||= {};
 
-   $text   = $self->loc( $self, $text, @{ $args->{args} || [] } );
-   $text ||= '[no message]'; $text = $NUL.$text; chomp $text;
+   $text = $self->loc( $text || '[no message]', $args->{args} || [] );
 
-   my $leader = exists $args->{noLead} || exists $args->{no_lead}
-              ? $NUL : (ucfirst $self->name).$BRK;
+   my $leader = exists $args->{no_lead} || exists $args->{noLead}
+              ? NUL : (ucfirst $self->name).BRK;
 
    if ($args->{fill}) {
-      my $width = $args->{width} || $WIDTH;
+      my $width = $args->{width} || $self->config->{width};
 
       $text = autoformat $text, { right => $width - 1 - length $leader };
    }
 
-   return join "\n", map { (m{ \A $leader }mx ? $NUL : $leader).$_ }
+   return join "\n", map { (m{ \A $leader }mx ? NUL : $leader).$_ }
                      split  m{ \n }mx, $text;
 }
 
 sub anykey {
-   my ($self, $prompt) = @_;
+   my ($self, $prompt) = @_; $prompt ||= 'Press any key to continue...';
 
-   $prompt = 'Press any key to continue...' unless ($prompt);
-
-   return $self->prompt( -p => $prompt, -e => $NUL, -1 );
+   return $self->prompt( -p => $prompt, -e => NUL, -1 => TRUE );
 }
 
-sub config {
-   my $self = shift; return $self;
+sub can_call {
+   my ($self, $method) = @_;
+
+   return (is_member $method, __list_methods_of( $self )) ? TRUE : FALSE;
 }
 
-sub dispatch {
-   my $self = shift; my ($e, $method, $parms, $rv, $text);
+sub debug_flag {
+   my $self = shift; return $self->debug ? q(-D) : q(-n);
+}
 
-   $self->usage(1) if     (exists $self->args->{h});
-   $self->usage(2) if     (exists $self->args->{H});
-   $self->usage(0) unless ($method = $self->method);
-
-   umask $self->mode;
-
-   $parms = exists $self->parms->{ $method } ? $self->parms->{ $method } : [];
-   $text  = 'Started by '.$self->logname.' Version '.$self->version.$SPC;
-   $text .= 'Pid '.(abs $PID);
-   $self->output( $text );
-
-   if ($self->can( $method )) {
-      $rv = eval { $self->$method( @{ $parms } ) };
-
-      if ($e = $self->catch) {
-         my $class = ref $e;
-
-         if ($class and $class eq $self->exception_class) {
-            $self->output( $e->out ) if ( $e->out );
-            $self->error ( $e->as_string( $self->debug ? 2 : 1 ),
-                           { args => $e->args } );
-            $rv = $e->rv || -1 unless (defined $rv);
-         }
-         else { $self->error( $e ); $rv = -1 }
-      }
-      else {
-         unless (defined $rv) {
-            if ($EVAL_ERROR) { $self->error( $EVAL_ERROR ) }
-            else { $self->error( "Method $method undefined error" ) }
-
-            $rv = -1;
-         }
-      }
-   }
-   else {
-      $self->error( "Method $method not defined in class ".(ref $self) );
-      $rv = -1;
-   }
-
-   if (defined $rv && $rv == 0) { $self->output( 'Finished' ) }
-   else { $self->output( "Terminated code $rv" ) }
-
-   $self->delete_tmp_files;
-   return $rv;
+sub dump_self : method {
+   $_[ 0 ]->dumper( $_[ 0 ] ); return OK;
 }
 
 sub error {
-   my ($self, $text, $args) = @_;
+   my ($self, $err, $args) = @_;
 
-   $text = $self->add_leader( $text, $args );
+   $self->log_error( $_ ) for (split m{ \n }mx, $err.NUL);
 
-   $self->log_error( $_ ) for (split m{ \n }mx, $text);
-
-   print {*STDERR} $text."\n"
-      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
-
+   $self->_print_fh( \*STDERR, $self->add_leader( $err, $args )."\n" );
    return;
 }
 
 sub fatal {
-   my ($self, $text, $args) = @_; my (undef, $file, $line) = caller 0;
+   my ($self, $err, $args) = @_; my (undef, $file, $line) = caller 0;
 
-   $text  = $self->add_leader( $text, $args );
-   $text .= ' at '.abs_path( $file ).' line '.$line;
+   my $posn = ' at '.Cwd::abs_path( $file )." line ${line}";
 
-   $self->log_alert( $_ ) for (split m{ \n }mx, $text);
+   $err ||= 'unknown';
 
-   print {*STDERR} $text."\n"
-      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
-   exit 1;
-}
+   $self->log_alert( $_ ) for (split m{ \n }mx, $err.$posn);
 
-sub get_debug_option {
-   my $self = shift; my $args = $self->args || {};
+   $self->_print_fh( \*STDERR, $self->add_leader( $err, $args ).$posn."\n" );
 
-   return 1 if (exists $args->{D});
+   $err and blessed $err
+        and $err->can( q(stacktrace) )
+        and $self->_print_fh( \*STDERR, $err->stacktrace."\n" );
 
-   return 0 if (exists $args->{n} || exists $args->{h} || exists $args->{H});
-
-   return 0 unless (is_interactive());
-
-   return $self->yorn( 'Do you want debugging turned on', 0, 1 );
+   exit FAILED;
 }
 
 sub get_line {
    # General text input routine.
-   my ($self, $question, $default, $quit, $width, $newline, $pword) = @_;
-   my ($advice, $left_x, $left_prompt, $right_prompt, $prompt);
-   my ($result, $right_x, $total);
+   my ($self, $question, $default, $quit, $width, $multiline, $noecho) = @_;
 
-   if ($quit) { $advice = "($QUIT to quit) " }
-   else { $advice = $NUL; $quit = 0 }
+   $question ||= 'Enter your answer';
+   $default    = defined $default ? $default : NUL;
 
-   $right_prompt = $advice.($default ? q([).$default.q(]) : $NUL);
+   my $quit_char    = $self->config->{quit};
+   my $max_width    = $width || $self->pwidth || 60;
+   my $advice       = $quit ? "(${quit_char} to quit)" : NUL;
+   my $right_prompt = $advice.($multiline ? NUL : SPC.q([).$default.q(]));
+   my $left_prompt  = $question;
 
    if (defined $width) {
-      $total       = $width || $self->pwidth || 40;
-      $right_x     = length $right_prompt;
-      $left_x      = $total - $right_x;
+      my $left_x = $max_width - (length $right_prompt);
+
       $left_prompt = sprintf '%-*s', $left_x, $question;
    }
-   else { $left_prompt = $question }
 
-   $default ||= $NUL;
-   $prompt    = $left_prompt.$SPC.$right_prompt.$BRK;
-   $prompt   .= "\n" if ($newline);
+   my $prompt  = $left_prompt.SPC.$right_prompt;
 
-   if ($pword) {
-      $result = $self->prompt( -d => $default, -e => q(*), -p => $prompt );
+   if ($multiline) {
+      $right_prompt = q([).$default.q(]).BRK;
+
+      my $left_x = 3 + $max_width - (length $right_prompt);
+
+      $prompt .= "\n".(SPC x ($left_x > 0 ? $left_x : 0)).$right_prompt;
    }
-   else { $result = $self->prompt( -d => $default, -p => $prompt ) }
+   else { $prompt .= BRK }
 
-   exit 1 if ($quit and defined $result and lc $result eq $QUIT);
+   my $result  = $noecho
+               ? $self->prompt( -d => $default, -p => $prompt, -e => q(*) )
+               : $self->prompt( -d => $default, -p => $prompt );
 
-   return $NUL.$result;
+   $quit and defined $result and lc $result eq $quit_char and exit FAILED;
+
+   return NUL.$result;
 }
 
 sub get_meta {
-   my ($self, $path) = @_;
+   my ($self, $path) = @_; my $meta_class = __PACKAGE__.q(::Meta);
 
-   unless ($path and -f $path) {
-      $path = $self->catfile( $self->appldir, q(META.yml) );
+   my @paths = ( $self->catfile( $self->config->{appldir}, q(META.yml) ),
+                 $self->catfile( $self->config->{ctrldir}, q(META.yml) ),
+                 q(META.yml) );
+
+   $path and unshift @paths, $path;
+
+   for (grep { -f $_ } @paths) {
+      my $data = $self->{_meta_cache}->{ $_ } ||= $meta_class->load_file( $_ );
+
+      $data->name and return $data;
    }
 
-   my @fields   = ( qw(abstract author name version) );
-   my %attrs    = map { $_ => $NUL } @fields;
-   my $meta_obj = bless \%attrs, ref $self || $self;
+   throw 'No META.yml file';
+   return; # Never reached
+}
 
-   __PACKAGE__->mk_accessors( @fields );
+sub get_option {
+   my ($self, $question, $default, $quit, $width, $options) = @_;
 
-   return $meta_obj unless (-f $path);
+   $question ||= 'Select one option from the following list:';
 
-   my $data = LoadFile( $path );
+   $self->output( $question, { cl => TRUE } ); my $count = 1;
 
-   for (@fields) {
-      my $val = ref $data->{ $_ } eq q(ARRAY)
-              ? $data->{ $_ }->[ 0 ] : $data->{ $_ };
-      $meta_obj->$_( $val );
-   }
+   my $text = join "\n", map { $count++.q( - ).$_ } @{ $options };
 
-   return $meta_obj;
+   $self->output( $text, { cl => TRUE, nl => TRUE } );
+
+   my $opt = $self->get_line( 'Select option', $default, $quit, $width );
+
+   $opt !~ m{ \A \d+ \z }mx and $opt = defined $default ? $default : 0;
+
+   return $opt - 1;
+}
+
+sub get_owner {
+   my ($self, $pi_cfg) = @_; $pi_cfg ||= {};
+
+   return ($self->vars->{uid} || getpwnam( $pi_cfg->{owner} ) || 0,
+           $self->vars->{gid} || getgrnam( $pi_cfg->{group} ) || 0);
 }
 
 sub info {
-   my ($self, $text, $args) = @_;
+   my ($self, $err, $args) = @_;
 
-   $text = $self->add_leader( $text, $args );
+   $self->log_info( $_ ) for (split m{ [\n] }mx, $err);
 
-   $self->log_info( $_ ) for (split m{ \n }mx, $text);
-
-   $self->say( $text ) unless ($self->silent);
-
+   $self->quiet or say $self->add_leader( $err, $args );
    return;
+}
+
+sub interpolate_cmd {
+   my ($self, $cmd, @args) = @_;
+
+   my $ref = $self->can( q(_interpolate_).$cmd.q(_cmd) )
+          or return [ $cmd, @args ];
+
+   return $self->$ref( $cmd, @args );
+}
+
+sub list_methods : method {
+   say __list_methods_of( shift ); return OK;
+}
+
+sub loc {
+   my ($self, @rest) = @_;
+
+   my $params = { lang => $self->language, ns => $self->name };
+
+   return $self->next::method( $params, @rest );
 }
 
 sub output {
    my ($self, $text, $args) = @_;
 
-   return if ($self->silent);
-
-   $self->say if ($args and $args->{cl});
-
-   $self->say( $self->add_leader( $text, $args ) );
-
-   $self->say if ($args and $args->{nl});
-
+   $self->quiet and return;
+   $args and $args->{cl} and say;
+   say $self->add_leader( $text, $args );
+   $args and $args->{nl} and say;
    return;
 }
 
 sub prompt {
-   my ($self, @args) = @_; my ($len, $newlines, $next, $text);
+   my ($self, @rest) = @_; my ($len, $newlines, $next, $text);
 
    my $IN      = \*STDIN;
    my $OUT     = \*STDOUT;
-   my $args    = $self->_get_prompt_args( \@args );
+   my $args    = $self->_map_prompt_args( $self->_arg_list( @rest ));
    my $default = $args->{default};
    my $echo    = $args->{echo   };
    my $onechar = $args->{onechar};
-   my $input   = $NUL;
+   my $input   = NUL;
 
    unless (is_interactive()) {
-      return $default if ($ENV{PERL_MM_USE_DEFAULT});
-      return getc $IN if ($onechar);
+      $ENV{PERL_MM_USE_DEFAULT} and return $default;
+      $onechar and return getc $IN;
       return scalar <$IN>;
    }
 
    my ($cntl, %cntl) = $self->_get_control_chars( $IN );
-   local $SIG{INT}   = sub { $self->_restore_mode( $IN ); exit };
+   local $SIG{INT}   = sub { $self->_restore_mode( $IN ); exit FAILED };
 
    $self->_print_fh( $OUT, $args->{prompt} );
    $self->_raw_mode( $IN );
 
-   while (1) {
+   while (TRUE) {
       if (defined ($next = getc $IN)) {
          if ($next eq $cntl{INTERRUPT}) {
-            $self->_restore_mode( $IN );
-            exit;
+            $self->_restore_mode( $IN ); exit FAILED;
          }
          elsif ($next eq $cntl{ERASE}) {
             if ($len = length $input) {
@@ -306,14 +345,14 @@ sub prompt {
          elsif ($next eq $cntl{EOF}) {
             $self->_restore_mode( $IN );
             close $IN
-               or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
+               or throw error => 'IO error [_1]', args =>[ $ERRNO ];
             return $input;
          }
          elsif ($next !~ m{ $cntl }mx) {
             $input .= $next;
 
             if ($next eq "\n") {
-               if ($input eq "\n" and $default) {
+               if ($input eq "\n" and defined $default) {
                   $text = defined $echo ? $echo x length $default : $default;
                   $self->_print_fh( $OUT, "[${text}]\n" );
                   $self->_restore_mode( $IN );
@@ -330,9 +369,7 @@ sub prompt {
 
       if ($onechar or not defined $next or $input =~ m{ \Q$RS\E \z }mx) {
          chomp $input; $self->_restore_mode( $IN );
-
-         $self->_print_fh( $OUT, $newlines ) if (defined $newlines);
-
+         defined $newlines and $self->_print_fh( $OUT, $newlines );
          return $onechar ? substr $input, 0, 1 : $input;
       }
    }
@@ -340,183 +377,196 @@ sub prompt {
    return;
 }
 
-sub stash {
-   my $self = shift; return $self;
+{  my $_cache;
+
+   sub read_post_install_config {
+      my $self  = shift; defined $_cache and return $_cache;
+
+      my $cfg   = $self->config;
+      my $attrs = {
+         storage_attributes => { force_array => $cfg->{pi_arrays} } };
+      my $path  = $self->catfile( $cfg->{ctrldir}, $cfg->{pi_config_file} );
+
+      return $_cache = $self->file_dataclass_schema( $attrs )->load( $path );
+   }
+}
+
+sub run {
+   my $self = shift; my ($parms, $rv, $text);
+
+   exists $self->args->{h} and $self->usage( 1 ); # Usage never returns
+   exists $self->args->{H} and $self->usage( 2 );
+
+   my $method = $self->method || $self->usage( 0 ); umask $self->mode;
+
+   $parms = exists $self->parms->{ $method } ? $self->parms->{ $method } : [];
+   $text  = 'Started by '.$self->logname.' Version '.$self->version.SPC;
+   $text .= 'Pid '.(abs $PID);
+   $self->output( $text );
+
+   if ($self->can( $method ) and $self->can_call( $method )) {
+      try {
+         defined ($rv = $self->$method( @{ $parms } ))
+            or throw error => "Method [_1] return value undefined",
+                     args  => [ $method ];
+      }
+      catch ($error) {
+         my $e = exception $error;
+
+         $e->out and $self->output( $e->out );
+         $self->error( $e->error, { args => $e->args } );
+         $self->debug and $self->_print_fh( \*STDERR, $e->stacktrace."\n" );
+         $rv = $e->rv || -1;
+      }
+
+      not defined $rv and $rv = -1
+         and $self->error( "Method ${method} error uncaught/rv undefined" );
+   }
+   else {
+      $self->error( "Method ${method} not defined in class ".(blessed $self) );
+      $rv = -1;
+   }
+
+   if (defined $rv and not $rv) {
+      $self->output( 'Finished in '.elapsed.' seconds' );
+   }
+   elsif (defined $rv) { $self->output( "Terminated code ${rv}" ) }
+   else { $self->output( 'Terminated with undefined rv' ); $rv = FAILED }
+
+   $self->delete_tmp_files;
+   return $rv;
 }
 
 sub usage {
-   my ($self, $verbose) = @_;
+   my ($self, $verbose) = @_; my $method = $ARGV[ 0 ];
 
-   if ($verbose < 2) {
-      pod2usage( { -input   => $self->pathname,
-                   -message => $SPC, -verbose => $verbose } );
-      exit 0; # Never reached
-   }
+   $method and $self->can_call( $method ) and exit $self->_usage_for( $method );
 
-   my $name     = $self->basename( $self->script, @EXTNS );
-   my $parser   = Pod::Man->new( center  => $self->doc_title,
-                                 name    => $name,
-                                 release => 'Version '.$main::VERSION,
-                                 section => q(3m) );
-   my $tempfile = $self->tempfile;
-   my $cmd      = 'cat '.$tempfile->pathname.' | nroff -man';
+   $verbose > 1 and exit $self->_man_page_from( $self );
 
-   $parser->parse_from_file( $self->pathname, $tempfile->pathname );
-   system $cmd;
-   exit 0;
+   pod2usage( { -input   => $self->pathname, -message => SPC,
+                -verbose => $verbose } );
+   exit OK; # Never reached
 }
 
 sub warning {
-   my ($self, $text, $args) = @_;
+   my ($self, $err, $args) = @_;
 
-   $text = $self->add_leader( $text, $args );
+   $self->log_warn( $_ ) for (split m{ \n }mx, $err);
 
-   $self->log_warning( $_ ) for (split m{ \n }mx, $text);
-
-   $self->say( $text ) unless ($self->silent);
-
+   $self->quiet or say $self->add_leader( $err, $args );
    return;
 }
 
 sub yorn {
    # General yes or no input routine
-   my ($self, $question, $default, $quit, $width, $newline) = @_; my $result;
+   my ($self, $question, $default, $quit, $width, $newline) = @_;
 
-   $quit    = $quit    ? $QUIT : $NUL;
-   $default = $default ? $YES  : $NO;
+   my $cfg  = $self->config; my $result;
 
-   my $advice       = $quit ? "($YES/$NO, $quit) " : "($YES/$NO) ";
-   my $right_prompt = $advice.q([).$default.q(]);
-   my $left_prompt  = $question;
+   my $noc  = $cfg->{no_char}; my $yesc = $cfg->{yes_char};
+
+   $default = $default ? $yesc : $noc; $quit = $quit ? $cfg->{quit} : NUL;
+
+   my $advice   = $quit ? "(${yesc}/${noc}, ${quit}) " : "(${yesc}/${noc}) ";
+   my $r_prompt = $advice.q([).$default.q(]);
+   my $l_prompt = $question;
 
    if (defined $width) {
-      my $total    = $width || $self->pwidth || 40;
-      my $right_x  = length $right_prompt;
-      my $left_x   = $total - $right_x;
+      my $max_width = $width || $self->pwidth || 40;
+      my $right_x   = length $r_prompt;
+      my $left_x    = $max_width - $right_x;
 
-      $left_prompt = sprintf '%-*s', $left_x, $question;
+      $l_prompt  = sprintf '%-*s', $left_x, $question;
    }
 
-   my $prompt = $left_prompt.$SPC.$right_prompt.$BRK;
+   my $prompt = $l_prompt.SPC.$r_prompt.BRK;
 
-   $prompt .= "\n" if (defined $newline && $newline == 1);
+   $newline and $prompt .= "\n";
 
-   while ($result = $self->prompt( -d => $default, -p => $prompt )) {
-      exit   1 unless (defined $result);
-      exit   1 if     ($quit and $result =~ m{ \A (?: $quit | [\e] ) }imx);
-      return 1 if     ($result =~ m{ \A $YES }imx);
-      return 0 if     ($result =~ m{ \A $NO  }imx);
+   while (defined ($result = $self->prompt( -d => $default, -p => $prompt ))) {
+      $quit and $result =~ m{ \A (?: $quit | [\e] ) }imx and exit FAILED;
+      $result =~ m{ \A $noc  }imx and return FALSE;
+      $result =~ m{ \A $yesc }imx and return TRUE;
+   }
+
+   exit FAILED;
+}
+
+# Private methods
+
+sub _assert_directory {
+   my ($self, $path) = @_; $path or return;
+
+   $path = Cwd::abs_path( untaint_path $path ) or return;
+
+   return -d $path ? $path : undef;
+}
+
+sub _build_debug {
+   my $self = shift; my $args = $self->args || {};
+
+   exists $args->{D}   and return TRUE;
+   __dont_ask( $args ) and return FALSE;
+   is_interactive()    or  return FALSE;
+
+   return $self->yorn( 'Do you want debugging turned on', FALSE, TRUE );
+}
+
+sub _build_log {
+   my $self = shift; $self->logfile or return Class::Null->new;
+
+   my $dir = $self->dirname( $self->logfile );
+
+   -d $dir or return Class::Null->new;
+
+   return Log::Handler->new
+      ( file      => {
+         filename => $self->logfile,
+         maxlevel => $self->debug ? 7 : $self->config->{log_level} || 6,
+         mode     => q(append), } );
+}
+
+sub _build_os {
+   my $self = shift;
+   my $file = q(os_).$Config{osname}.$self->config->{conf_extn};
+   my $path = $self->catfile( $self->config->{ctrldir}, $file );
+
+   ($path = untaint_path( $path ) and -f $path) or return;
+
+   return $self->file_dataclass_schema->load( $path )->{ q(os) } || {};
+}
+
+sub _copy_args_ref {
+   my $self = shift; my $args = $self->args; my ($k, $v);
+
+   while (($k, $v) = nextOption()) {
+      if ($args->{ $k }) {
+         if (is_arrayref $args->{ $k }) { push @{ $args->{ $k } }, $v }
+         else { $args->{ $k } = [ $args->{ $k }, $v ] }
+      }
+      else { $args->{ $k } = $v }
    }
 
    return;
 }
 
-# Private methods
+sub _copy_vars_ref {
+   my $self = shift; my $args = $self->args; my $vars = $self->vars;
 
-sub _bootstrap {
-   my ($proto, $args) = @_; my $e;
+   exists $args->{o} or return; my $opts = $args->{o};
 
-   Class::C3::initialize();
+   for my $opt ((is_arrayref $opts) ? @{ $opts } : ( $opts )) {
+      my ($k, $v) = split m{ [=] }mx, $opt;
 
-   my $self           = bless {}, ref $proto || $proto;
-   $self->{arglist }  = q(c=s D H h L=s n o=s S );
-   $self->{arglist } .= $args->{arglist} if ($args->{arglist});
-   $self->{args    }  = $args->{n      } ? { n => 1 } : {};
-   $self->{silent  }  = $args->{silent } ? 1 : 0;
-
-   $self->{script  }  = $self->basename( $args->{script} || $PROGRAM_NAME );
-   my $stem           = $self->basename( lc $self->{script}, @EXTNS );
-   $self->{prefix  }  = $args->{prefix  } || (split m{ _ }mx, $stem)[0];
-   $self->{appclass}  = $args->{appclass} || ucfirst $self->{prefix};
-   $self->{home    }  = $self->_get_homedir( $self->{appclass}, $args );
-
-   # Now we know where the config file should be we can try parsing it
-   my $file = $self->app_prefix( $self->{appclass} );
-   my $path = $self->catfile( $self->{home}, $file.q(.xml) );
-   my $cfg  = {};
-
-   if (-f $path) {
-      $cfg = eval { XML::Simple->new( SuppressEmpty => 1 )->xml_in( $path ) };
-
-      $self->throw( $e ) if ($e = $self->catch);
+      if ($vars->{ $k }) {
+         if (is_arrayref $vars->{ $k }) { push @{ $vars->{ $k } }, $v }
+         else { $vars->{ $k } = [ $vars->{ $k }, $v ] }
+      }
+      else { $vars->{ $k } = $v }
    }
 
-   my $inflator        = CatalystX::Usul::InflateSymbols->new( $self );
-   $self->{appldir   } = $inflator->appldir;
-   $self->{binsdir   } = $inflator->binsdir;
-   $self->{libsdir   } = $inflator->libsdir;
-   $self->{debug     } = $cfg->{debug};
-   my $dir             = '__appldir('.$self->catdir( qw(var etc) ).')__';
-   $self->{ctrldir   } = $self->_inflate( $cfg->{ctrldir}     || $dir );
-   $dir                = '__appldir('.$self->catdir( qw(var db) ).')__';
-   $self->{dbasedir  } = $self->_inflate( $cfg->{dbasedir}    || $dir );
-   $self->{doc_title } = $cfg->{doc_title}                    || $NUL;
-   $self->{encoding  } = $cfg->{encoding}                     || q(UTF-8);
-   $self->{hostname  } = hostname;
-   $self->{language  } = $NUL;
-   $self->{lock      } = $cfg->{lock};
-   $self->{log       } = undef;
-   $self->{log_level } = $cfg->{log_level}                    || 6;
-   $self->{logname   } = $ENV{USER}                           || $ENV{LOGNAME};
-   $dir                = '__appldir('.$self->catdir( qw(var logs) ).')__';
-   $self->{logsdir   } = $self->_inflate( $cfg->{logsdir}     || $dir );
-   $self->{messages  } = {};
-   $self->{method    } = $NUL;
-   $self->{mode      } = oct ($cfg->{mode}                    || q(027) );
-   $self->{name      } = (split m{ _ }mx, $stem)[1]           || $stem;
-   $self->{no_thrash } = $cfg->{no_thrash}                    || 3;
-   $self->{os        } = {};
-   $self->{owner     } = $self->{prefix}                      || q(root);
-   $self->{parms     } = {};
-   $self->{pwidth    } = 60;
-   $dir                = '__appldir('.$self->catdir( qw(var root) ).')__';
-   $self->{root      } = $self->_inflate( $cfg->{root}        || $dir );
-   $dir                = '__appldir('.$self->catdir( qw(var run) ).')__';
-   $self->{rundir    } = $self->_inflate( $cfg->{rundir}      || $dir );
-   $path               = '__appldir('.$self->catdir( qw(var tmp),
-                                                     q(config_cache) ).')__';
-   $self->{share_file} = $self->_inflate( $cfg->{share_file}  || $path );
-   $self->{secret    } = $cfg->{secret}                     || $self->{prefix};
-   $self->{shell     } = $cfg->{shell}                        || q(/bin/pdksh);
-   $self->{ssh_id    } = $NUL;
-   $path               = '__binsdir('.$self->{prefix}.'_admin)__';
-   $self->{suid      } = $self->_inflate( $cfg->{suid}        || $path );
-   $dir                = '__appldir('.$self->catdir( q(var tmp) ).')__';
-   $dir                = $self->_inflate( $cfg->{tempdir}     || $dir );
-   $self->{tempdir   } = -d $dir ? $dir : File::Spec->tmpdir;
-   ($self->{tempdir} ) = $self->{tempdir} =~ m{ \A ([[:print:]]+) \z }msx;
-   $dir                = '__appldir(var)__';
-   $self->{vardir    } = $self->_inflate( $cfg->{vardir}      || $dir );
-   $self->{vars      } = {};
-   $self->{version   } = $VERSION;
-
-   $self->{logsdir   } = $self->{tempdir} unless (-d $self->{logsdir});
-
-   $self->{ctlfile   } = $self->catfile( $self->{ctrldir},
-                                         $self->{name}.q(.xml) );
-   $self->{logfile   } = $self->catfile( $self->{logsdir},
-                                         $self->{name}.q(.log) );
-   ($self->{logfile} ) = $self->{logfile} =~ m{ \A ([[:print:]]+) \z }msx;
-   $self->{pathname  } = $self->catfile( $self->{binsdir}, $self->{script} );
-   $self->{verdir    } = $self->basename( $self->{appldir} ) || $NUL;
-
-   $self->{log       } = $self->_new_log_object;
-
-   if ($self->{verdir} =~ m{ \A v (\d+) \. (\d+) p (\d+) \z }msx) {
-      $self->{major  } = $1;
-      $self->{minor  } = $2;
-      $self->{phase  } = $3;
-   }
-   else {
-      $self->{major  } = $cfg->{major} || 0;
-      $self->{minor  } = $cfg->{minor} || 1;
-      $self->{phase  } = $cfg->{phase} || 3;
-      $self->{verdir } = undef;
-   }
-
-   __PACKAGE__->mk_accessors( keys %{ $self } );
-
-   return $self;
+   return;
 }
 
 sub _get_control_chars {
@@ -526,177 +576,126 @@ sub _get_control_chars {
 }
 
 sub _get_homedir {
-   my ($self, $class, $args) = @_;
+   my ($self, $class, $path) = @_; my $cfg = \%CONFIG;
 
-   my $path = $ENV{ $args->{evar} || $self->env_prefix( $class ).q(_HOME) };
+   # 0. Pass the directory in
+   $path = $self->_assert_directory( $path ) and return $path;
 
-   return $path if ($path && -d $path);
+   # 1. Environment variable
+   $path = $ENV{ (env_prefix $class).q(_HOME) };
+   $path = $self->_assert_directory( $path ) and return $path;
 
-   my $app_prefix = $self->app_prefix( $class );
+   # 2a. Users home directory - application directory
+   my $appdir   = class2appdir $class;
+   my $classdir = $self->classdir( $class );
 
-   $path = $self->catfile( $NUL, qw(etc default), $app_prefix );
+   $path = $self->catdir( File::HomeDir->my_home, $appdir );
+   $path = $self->catdir( $path, qw(default lib), $classdir );
+   $path = $self->_assert_directory( $path ) and return $path;
 
-   my $well_known = $args->{install} || $path; $path = undef;
+   # 2b. Users home directory - dotfile
+   $path = $self->catdir( File::HomeDir->my_home, q(.).$appdir );
+   $path = $self->catdir( $path, q(lib), $classdir );
+   $path = $self->_assert_directory( $path ) and return $path;
 
-   if (-f $well_known) {
-      for (grep { !m{ \A \# }mx } $self->io( $well_known )->chomp->getlines) {
-         if (length $_) { $path = $_; last }
-      }
+   # 3. Well known path
+   my $well_known = $self->catfile( @{ $cfg->{well_known} }, $appdir );
+
+   $path = $self->_read_appldir_from( $well_known );
+   $path and $path = $self->catdir( $path, q(lib), $classdir );
+   $path = $self->_assert_directory( $path ) and return $path;
+
+   # 4. Default install prefix
+   $path = $self->catdir( @{ $cfg->{path_prefix} }, $appdir );
+   $path = $self->catdir( $path, qw(default lib), $classdir );
+   $path = $self->_assert_directory( $path ) and return $path;
+
+   # 5. Config file found in @INC
+   my $file = app_prefix $class;
+
+   for my $dir (map { $self->catdir( Cwd::abs_path( $_ ), $classdir ) } @INC) {
+      $path = untaint_path $self->catfile( $dir, $file.$cfg->{conf_extn} );
+
+      -f $path and return $self->dirname( $path );
    }
 
-   return $path if ($path && -d $path);
-
-   $path = $self->catdir( $PREFIX, $self->class2appdir( $class ) );
-
-   my $prefix   = $args->{prefix} || $path;
-   my $dir_path = $self->catdir( split m{ :: }mx, $class );
-
-   $path = $self->catdir( $prefix, qw(default lib), $dir_path );
-
-   return $path if (-d $path);
-
-   for (@INC) {
-      $path = $self->catfile( $_, $dir_path, $app_prefix.q(.xml) );
-
-      return abs_path( $self->dirname( $path ) ) if (-f $path);
-   }
-
-   return File::Spec->tmpdir;
+   # 6. Default to /tmp
+   return untaint_path( File::Spec->tmpdir );
 }
 
-sub _get_prompt_args {
-   my ($self, $data) = @_; my $args = {};
+sub _inflate_symbols {
+   my ($self, $attr) = @_; my $cfg = $attr->{config};
 
-   for (my $i = 0; $i < @{ $data }; $i++) {
-      if    ($data->[ $i ] eq q(-1)) { $args->{onechar} = 1 }
-      elsif ($data->[ $i ] eq q(-d)) { $args->{default} = $data->[ ++$i ] }
-      elsif ($data->[ $i ] eq q(-e)) { $args->{echo   } = $data->[ ++$i ] }
-      elsif ($data->[ $i ] eq q(-p)) { $args->{prompt } = $data->[ ++$i ] }
+   my $inflator = CatalystX::Usul::InflateSymbols->new( $attr );
+
+   $inflator->visit_all; $inflator->inflate_symbols( $cfg->{default_dirs} );
+
+   my $dir = -d $cfg->{tempdir} ? $cfg->{tempdir} : File::Spec->tmpdir;
+
+      $cfg->{tempdir} = untaint_path $dir;
+   -d $cfg->{logsdir} or $cfg->{logsdir} = $cfg->{tempdir};
+
+   my $paths = {
+      aliases_path  => $self->catfile( $cfg->{ctrldir}, q(aliases) ),
+      profiles_path => $self->catfile( $cfg->{ctrldir}, q(user_profiles),
+                                       $cfg->{conf_extn} ),
+      suid          => $self->catfile( $cfg->{binsdir},
+                                       $cfg->{prefix}.q(_admin) ),
+   };
+
+   $inflator->inflate_symbols( $paths );
+   return;
+}
+
+sub _load_config {
+   my ($self, $attr, $args) = @_;
+
+   my $prefix = $args->{prefix  } || split_on__ $attr->{program};
+   my $class  = $args->{appclass} || ucfirst $prefix;
+   my $home   = $self->_get_homedir( $class, $args->{homedir} );
+   my $path   = $self->catfile( $home, (app_prefix $class).$CONFIG{conf_extn} );
+   my $loaded = {};
+
+   # Now we know where the config file should be we can try parsing it
+   -f $path and $loaded = $self->file_dataclass_schema->load( $path );
+
+   my $cfg = $attr->{config} = { %CONFIG, %{ $attr->{config} }, %{ $loaded } };
+
+   $cfg->{prefix} ||= $prefix; $cfg->{class} ||= $class; $cfg->{home} ||= $home;
+
+   return;
+}
+
+sub _man_page_from {
+   my ($self, $src) = @_; my $cmd = $self->config->{man_page_cmd} || [];
+
+   my $parser   = Pod::Man->new( center  => $self->config->{doc_title} || NUL,
+                                 name    => $self->script,
+                                 release => 'Version '.$self->version,
+                                 section => q(3m) );
+   my $tempfile = $self->tempfile;
+
+   $parser->parse_from_file( $src->pathname, $tempfile->pathname );
+   say $self->run_cmd( [ @{ $cmd }, $tempfile->pathname ] )->out;
+   return OK;
+}
+
+sub _map_prompt_args {
+   my ($self, $args) = @_;
+
+   my %map = ( qw(-1 onechar -d default -e echo -p prompt) );
+
+   for (keys %{ $args }) {
+      exists $map{ $_ } and $args->{ $map{ $_ } } = delete $args->{ $_ };
    }
 
    return $args;
 }
 
-sub _inflate {
-   my ($self, $val) = @_;
-
-   return unless (defined $val);
-
-TRY: {
-   if ($val =~ m{ __binsdir\((.*)\)__  }mx) {
-      $val = $self->catdir( $self->{binsdir}, $1 ); last TRY;
-   }
-
-   if ($val =~ m{ __libsdir\((.*)\)__  }mx) {
-      $val = $self->catdir( $self->{libsdir}, $1 ); last TRY;
-   }
-
-   if ($val =~ m{ __appldir\((.*)\)__ }mx) {
-      $val = $self->catdir( $self->{appldir}, $1 ); last TRY;
-   }
-
-   if ($val =~ m{ __path_to\((.*)\)__  }mx) {
-      $val = $self->catdir( $self->{home}, $1 );
-   }
-   } # TRY
-
-   $val = abs_path( $val ) if (-e $val);
-
-   return $val;
-}
-
-sub _load_args_ref {
-   my $self = shift; my $args = $self->args; my ($opt, $val);
-
-   while (($opt, $val) = nextOption()) {
-      if ($args->{ $opt }) {
-         if (ref $args->{ $opt } eq q(ARRAY)) {
-            push @{ $args->{ $opt } }, $val;
-         }
-         else { $args->{ $opt } = [ $args->{ $opt }, $val ] }
-      }
-      else { $args->{ $opt } = $val }
-   }
-
-   return;
-}
-
-sub _load_messages {
-   my ($self, $lang) = @_; my ($cfg, $path, $text);
-
-   return unless ($lang);
-
-   $path   = $self->catfile( $self->ctrldir, q(default_).$lang.q(.xml) );
-   ($path) = $path =~ m{ \A ([[:print:]]+) \z }msx; # Untaint
-
-   if ($path && -f $path) {
-      $text = $self->io( $path )->lock->all;
-      $text = join "\n", grep { !m{ <! .+ > }mx } split  m{ \n }mx, $text;
-      $cfg  = eval {
-         XML::Simple->new( ForceArray => [ q(messages) ] )->xml_in( $text );
-      };
-      $self->error   ( $EVAL_ERROR      ) if ($EVAL_ERROR);
-      $self->messages( $cfg->{messages} ) if ($cfg && $cfg->{messages});
-   }
-
-   return;
-}
-
-sub _load_os_depends {
-   my $self = shift; my ($cfg, $path, $text);
-
-   $path   = $self->catfile( $self->ctrldir, q(os_).$Config{osname}.q(.xml) );
-   ($path) = $path =~ m{ \A ([[:print:]]+) \z }msx; # Untaint
-
-   if ($path && -f $path) {
-      $text = $self->io( $path )->lock->all;
-      $text = join "\n", grep { !m{ <! .+ > }mx } split  m{ \n }mx, $text;
-      $cfg  = eval {
-         XML::Simple->new( ForceArray => [ q(os) ] )->xml_in( $text );
-      };
-      $self->error( $EVAL_ERROR ) if ($EVAL_ERROR);
-      $self->os   ( $cfg->{os}  ) if ($cfg && $cfg->{os});
-   }
-
-   return;
-}
-
-sub _load_vars_ref {
-   my $self = shift; my $args = $self->args; my $vars = $self->vars;
-
-   return unless (exists $args->{o});
-
-   for my $opt (ref $args->{o} eq q(ARRAY) ? @{ $args->{o} } : ($args->{o})) {
-      my ($var, $val) = split m{ [=] }mx, $opt;
-
-      if ($vars->{ $var }) {
-         if (ref $vars->{ $var } eq q(ARRAY)) {
-            push @{ $vars->{ $var } }, $val;
-         }
-         else { $vars->{ $var } = [ $vars->{ $var }, $val ] }
-      }
-      else { $vars->{ $var } = $val }
-   }
-
-   return;
-}
-
-sub _new_log_object {
-   my $self = shift;
-
-   return Class::Null->new() unless (-d $self->{logsdir});
-
-   return Log::Handler->new( filename => $self->{logfile},
-                             maxlevel => $self->{debug}
-                                         ? 7 : $self->{log_level},
-                             mode     => q(append) );
-}
-
 sub _print_fh {
-   my ($self, $handle, $text) = @_;
+   my ($self, $handle, $text) = @_; $text ||= NUL;
 
-   print {$handle} $text
-      or $self->throw( error => 'IO error [_1]', args =>[ $ERRNO ] );
+   print {$handle} $text or throw error => 'IO error [_1]', args => [ $ERRNO ];
    return;
 }
 
@@ -704,24 +703,123 @@ sub _raw_mode {
    my ($self, $handle) = @_; ReadMode q(raw), $handle; return;
 }
 
+sub _read_appldir_from {
+   my ($self, $path) = @_;
+
+   return -f $path ? first { length }
+                     map   { (split q(=), $_)[ 1 ] }
+                     grep  { m{ \A APPLDIR= }mx }
+                     $self->io( $path )->chomp->getlines
+                   : undef;
+}
+
 sub _restore_mode {
    my ($self, $handle) = @_; ReadMode q(restore), $handle; return;
 }
 
 sub _set_attr {
-   my ($self, $opt, $attr) = @_; my ($untainted, $val);
+   my ($self, $opt, $attr) = @_; exists $self->args->{ $opt } or return;
 
-   if (exists $self->args->{ $opt }) {
-      if ($self->arglist =~ m{ $opt =s }mx) {
-         if ($val = $self->args->{ $opt }) {
-            ($untainted) = $val =~ m{ \A ([[:print:]]+) \z }msx;
-            $self->$attr( $untainted );
-         }
-      }
-      else { $self->$attr( 1 ) }
+   if ($self->arglist =~ m{ $opt =s }mx) {
+      my $v; $v = $self->args->{ $opt } and $self->$attr( untaint_path $v );
    }
+   else { $self->$attr( TRUE ) }
 
    return;
+}
+
+sub _set_defaults {
+   my ($class, $attr) = @_;
+
+   my $conf = $attr->{config}; my $prog = delete $attr->{program};
+
+   $attr->{hostname} = hostname;
+   $attr->{l10n    } = {};
+   $attr->{language} = NUL;
+   $attr->{lock    } = {};
+   $attr->{method  } = NUL;
+   $attr->{os      } = {};
+   $attr->{parms   } = {};
+   $attr->{vars    } = {};
+   $attr->{version } = $VERSION;
+
+   $attr->{debug   } = $conf->{debug}        || FALSE;
+   $attr->{logname } = $ENV{USER}            || $ENV{LOGNAME};
+   $attr->{mode    } = oct ($conf->{mode}    || q(027) );
+   $attr->{name    } = (split_on__ $prog, 1) || $prog;
+   $attr->{owner   } = $conf->{owner}        || $conf->{prefix} || q(root);
+   $attr->{pwidth  } = $conf->{pwidth}       || 60;
+   $attr->{shell   } = $class->catfile( $conf->{shell} );
+
+   my $file = $attr->{name}.$conf->{conf_extn};
+
+   $attr->{ctlfile } = untaint_path $class->catfile( $conf->{ctrldir}, $file );
+
+   $file = $attr->{name}.$conf->{log_extn};
+
+   $attr->{logfile } = untaint_path $class->catfile( $conf->{logsdir}, $file );
+   $attr->{pathname} = $class->catfile( $conf->{binsdir}, $attr->{script} );
+
+   return;
+}
+
+sub _usage_for {
+   my ($self, $method) = @_; my @classes = (blessed $self);
+
+   $method = untaint_identifier $method;
+
+   while (my $class = shift @classes) {
+      no strict q(refs);
+
+      if (defined &{ "${class}::${method}" }) {
+         my $selector = Pod::Select->new(); $selector->select( q(/).$method );
+         my $source   = $self->find_source( $class );
+         my $tempfile = $self->tempfile;
+
+         $selector->parse_from_file( $source, $tempfile->pathname );
+         return $self->_man_page_from( $tempfile );
+      }
+
+      push @classes, $_ for (@{ "${class}::ISA" });
+   }
+
+   return FAILED;
+}
+
+# Private subroutines
+
+sub __dont_ask {
+   return exists $_[ 0 ]->{n} || exists $_[ 0 ]->{h} || exists $_[ 0 ]->{H}
+        ? TRUE : FALSE;
+}
+
+sub __list_methods_of {
+   my $arg = shift; my $class = blessed $arg || $arg;
+
+   return map  { s{ \A .+ :: }{}msx; $_ }
+          grep { my $x = $_;
+                 grep { $_ eq q(method) } attributes::get( \&{ $x } ) }
+              @{ Class::Inspector->methods( $class, 'full', 'public' ) };
+}
+
+# Response classes
+
+package # Hide from indexer
+   CatalystX::Usul::Programs::Meta;
+
+use parent qw(CatalystX::Usul::Base);
+
+use YAML::Syck;
+
+__PACKAGE__->mk_accessors( qw(abstract author license name
+                              provides version) );
+
+sub load_file {
+   my ($self, $path) = @_; my $class = ref $self || $self; my $data;
+
+   $path and -f $path and $data = LoadFile( $path );
+
+   return bless $data || {}, $class;
 }
 
 1;
@@ -736,7 +834,7 @@ CatalystX::Usul::Programs - Provide support for command line programs
 
 =head1 Version
 
-0.3.$Revision: 612 $
+This document describes CatalystX::Usul::Programs version 0.4.$Revision: 1127 $
 
 =head1 Synopsis
 
@@ -744,9 +842,9 @@ CatalystX::Usul::Programs - Provide support for command line programs
    use base qw(CatalystX::Usul::Programs);
 
    # In yourProg.pl
-   use base qw(YourClass);
+   use YourClass;
 
-   exit YourClass->new( appclass => 'MyApplication' )->dispatch;
+   exit YourClass->new( appclass => 'YourApplicationClass' )->run;
 
 =head1 Description
 
@@ -757,16 +855,16 @@ constructor can initialise a multi-lingual message catalog if required
 
 =head2 new
 
-   $obj = CatalystX::Usul::Programs->new({ ... })
+   $self = CatalystX::Usul::Programs->new({ ... })
 
 Return a new program object. The optional argument is a hash ref which
 may contain these attributes:
 
-=head3 applclass
+=head3 appclass
 
 The name of the application to which the program using this class
 belongs. It is used to find the application installation directory
-which will contain the configuration XML file
+which will contain the configuration file
 
 =head3 arglist
 
@@ -777,7 +875,7 @@ appended to the default list shown below:
 
 =item c method
 
-The method in the subclass to dispatch to
+The method in the subclass to call
 
 =item D
 
@@ -805,9 +903,9 @@ Do not prompt to turn debugging on
 The method that is dispatched to can access the key/value pairs
 from the C<< $self->vars >> hash ref
 
-=item S
+=item q
 
-Suppresses the usual started/finished information messages
+Quiet. Suppresses the usual started/finished information messages
 
 =back
 
@@ -840,104 +938,138 @@ Defaults to /opt/<application name>
 
 The name of the program. Defaults to the value returned by L<caller>
 
-=head3 silent
+=head3 quiet
 
 Boolean which if true suppresses the usual started/finished
 information messages. Defaults to false
 
+=head2 BUILDARGS
+
+Initialise the contents of the hash used to instantiate the object. It
+is a private method, so do not call it
+
+=head2 BUILD
+
+Called by the constructor to complete the object instantiation
+
 =head2 add_leader
 
-   $leader = $obj->add_leader( $text, $args );
+   $leader = $self->add_leader( $text, $args );
 
-Prepend C<< $obj->name >> to each line of C<$text>. If
+Prepend C<< $self->name >> to each line of C<$text>. If
 C<< $args->{no_lead} >> exists then do nothing. Return C<$text> with
 leader prepended
 
 =head2 anykey
 
-   $key = $obj->anykey( $prompt );
+   $key = $self->anykey( $prompt );
 
 Prompt string defaults to 'Press any key to continue...'. Calls and
 returns L<prompt|/prompt>. Requires the user to press any key on the
 keyboard (that generates a character response)
 
-=head2 config
+=head2 can_call
 
-   $obj = $obj->config();
+   $bool = $self->can_call( $method );
 
-Return a reference to self
+Returns true if C<$self> has a method given by C<$method> that has defined
+the I<method> method attribute
 
-=head2 dispatch
+=head2 debug_flag
 
-   $rv = $obj->dispatch;
+Returns the command line debug flag to match the current debug state
 
-Call the method specified by the C<-c> option on the command
-line. Returns the exit code
+=head2 dump_self
+
+   $self->dump_self;
+
+Dumps out the self referential object using L<Data::Dumper>
 
 =head2 error
 
-   $obj->error( $text, $args );
+   $self->error( $text, $args );
 
-Calls L<CatalystX::Usul::localize|CatalystX::Usul/localize> with
-the passed args. Logs the result at the error level, then adds the
-program leader and prints the result to I<STDERR>
+Calls L</loc> with the passed args. Logs the result at the error
+level, then adds the program leader and prints the result to I<STDERR>
 
 =head2 fatal
 
-   $obj->fatal( $text, $args );
+   $self->fatal( $text, $args );
 
-Calls L<CatalystX::Usul::localize|CatalystX::Usul/localize> with
-the passed args. Logs the result at the alert level, then adds the
-program leader and prints the result to I<STDERR>. Exits with a return
-code of one
-
-=head2 get_debug_option
-
-   $obj->get_debug_option();
-
-If it is an interactive session prompts the user to turn debugging
-on. Returns true if debug is on. Also offers the option to quit
+Calls L</loc> with the passed args. Logs the result at the alert
+level, then adds the program leader and prints the result to
+I<STDERR>. Exits with a return code of one
 
 =head2 get_line
 
-   $line = $obj->get_line( $question, $default, $quit, $width, $newline );
+   $line = $self->get_line( $question, $default, $quit, $width, $newline );
 
 Prompts the user to enter a single line response to C<$question> which
 is printed to I<STDOUT> with a program leader. If C<$quit> is true
 then the options to quit is included in the prompt. If the C<$width>
 argument is defined then the string is formatted to the specified
-width which is C<$width> or C<< $obj->pwdith >> or 40. If C<$newline>
+width which is C<$width> or C<< $self->pwdith >> or 40. If C<$newline>
 is true a newline character is appended to the prompt so that the user
 get a full line of input
 
 =head2 get_meta
 
-   $res_obj = $obj->get_meta( $dir );
+   $res_obj = $self->get_meta( $dir );
 
 Extracts; I<name>, I<version>, I<author> and I<abstract> from the
 F<META.yml> file.  Optionally look in C<$dir> for the file instead of
-C<< $obj->appldir >>. Returns a response object with accessors
+C<< $self->appldir >>. Returns a response object with accessors
 defined
+
+=head2 get_option
+
+   $option = $self->get_line( $question, $default, $quit, $width, $options );
+
+Prompts the user to select one from the list of options
+
+=head2 get_owner
+
+   ($uid, $gid) = $self->get_owner( $post_install_config_hash_ref );
+
+Returns the numeric user and group ids of the application owner
 
 =head2 info
 
-   $obj->info( $text, $args );
+   $self->info( $text, $args );
 
-Calls L<CatalystX::Usul::localize|CatalystX::Usul/localize> with
-the passed args. Logs the result at the info level, then adds the
-program leader and prints the result to I<STDOUT>
+Calls L</loc> with the passed args. Logs the result at the info level,
+then adds the program leader and prints the result to I<STDOUT>
+
+=head2 interpolate_cmd
+
+   $self->interpolate_cmd( $cmd, @args );
+
+Flattens C<@args> and returns an array ref of all the passed parameters. If
+C<_interpolate_${cmd}_cmd> exists it is called instead and is expected to
+create the returned array ref
+
+=head2 list_methods
+
+   $self->list_methods
+
+Prints a list of methods that can be called through this program
+
+=head2 loc
+
+   $local_text = $self->loc( $key, $args );
+
+Localizes the message. Calls L<CatalystX::Usul/loc>
 
 =head2 output
 
-   $obj->output( $text, $args );
+   $self->output( $text, $args );
 
-Calls L<CatalystX::Usul::localize|CatalystX::Usul/localize> with
-the passed args. Adds the program leader and prints the result to
-I<STDOUT>
+Calls L</loc> with the passed args. Adds the program leader and prints
+the result to I<STDOUT>
 
 =head2 prompt
 
-   $line = $obj->prompt( 'key' => 'value', ... );
+   $line = $self->prompt( 'key' => 'value', ... );
 
 This was taken from L<IO::Prompt> which has an obscure bug in it. Much
 simplified the following keys are supported
@@ -962,49 +1094,65 @@ Prompt string
 
 =back
 
-=head2 stash
+=head2 read_post_install_config
 
-Return C<$self>
+   $picfg_hash_ref = $self->read_post_install_config;
+
+Returns a hash ref of the post installation config which was written to
+the control directory during the installation process
+
+=head2 run
+
+   $rv = $self->run;
+
+Call the method specified by the C<-c> option on the command
+line if it exists and L</can_call> returns true. Returns the exit code
 
 =head2 usage
 
-   $obj->usage( $verbosity );
+   $self->usage( $verbosity );
 
 Print out usage information from POD. The C<$verbosity> is; 0, 1 or 2
 
 =head2 warning
 
-   $obj->warning( $text, $args );
+   $self->warning( $text, $args );
 
-Calls L<CatalystX::Usul::localize|CatalystX::Usul/localize> with
-the passed args. Logs the result at the warning level, then adds the
-program leader and prints the result to I<STDOUT>
+Calls L</loc> with the passed args. Logs the result at the warn level,
+then adds the program leader and prints the result to I<STDOUT>
 
 =head2 yorn
 
-   $obj->yorn( $question, $default, $quit, $width );
+   $self->yorn( $question, $default, $quit, $width );
 
 Prompt the user to respond to a yes or no question. The C<$question>
 is printed to I<STDOUT> with a program leader. The C<$default>
 argument is C<0|1>. If C<$quit> is true then the option to quit is
 included in the prompt. If the C<$width> argument is defined then the
 string is formatted to the specified width which is C<$width> or
-C<< $obj->pwdith >> or 40
+C<< $self->pwdith >> or 40
 
-=head2 _bootstrap
+=head2 _assert_directory
 
-Initialise the contents of the self referential hash
+=head2 _build_debug
+
+   $self->_build_debug();
+
+If it is an interactive session prompts the user to turn debugging
+on. Returns true if debug is on. Also offers the option to quit
+
+=head2 _build_log
 
 =head2 _get_control_chars
 
-   ($cntrl, %cntrl) = $obj->_get_control_chars( $handle );
+   ($cntrl, %cntrl) = $self->_get_control_chars( $handle );
 
 Returns a string of pipe separated control characters and a hash of
 symbolic names and values
 
 =head2 _get_homedir
 
-   $path = $obj->_get_homedir( 'myApplication' );
+   $path = $self->_get_homedir( 'myApplication' );
 
 Search through subdirectories of @INC looking for the file
 myApplication.xml. Uses the location of this file to return the path to
@@ -1012,17 +1160,13 @@ the installation directory
 
 =head2 _inflate
 
-   $tempdir = $obj->inflate( '__appldir(var/tmp)__' );
+   $tempdir = $self->inflate( '__appldir(var/tmp)__' );
 
 Inflates symbolic pathnames with their actual runtime values
-
-=head2 _load_messages
 
 =head2 _load_os_depends
 
 =head2 _load_vars_ref
-
-=head2 _new_log_object
 
 =head2 _set_attr
 
@@ -1030,13 +1174,13 @@ Sets the specified attribute from the command line option
 
 =head2 _raw_mode
 
-   $obj->_raw_mode( $handle );
+   $self->_raw_mode( $handle );
 
 Puts the terminal in raw input mode
 
 =head2 _restore_mode
 
-   $obj->_restore_mode( $handle );
+   $self->_restore_mode( $handle );
 
 Restores line input mode to the terminal
 
@@ -1062,13 +1206,11 @@ Turning debug on produces some more output
 
 =item L<IO::Interactive>
 
-=item L<IPC::SRLock>
-
 =item L<Log::Handler>
 
 =item L<Term::ReadKey>
 
-=item L<XML::Simple>
+=item L<Text::Autoformat>
 
 =back
 
@@ -1088,7 +1230,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2011 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

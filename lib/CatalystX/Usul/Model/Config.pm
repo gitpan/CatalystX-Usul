@@ -1,332 +1,372 @@
-# @(#)$Id: Config.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Config.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Model::Config;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
-use CatalystX::Usul::File;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions
+    qw(escape_TT is_arrayref is_hashref merge_attributes throw unescape_TT);
+use CatalystX::Usul::Config;
 use CatalystX::Usul::Table;
-use Class::C3;
+use MRO::Compat;
+use Scalar::Util qw(blessed);
+use TryCatch;
 
-my $NUL = q();
-my $SPC = q( );
+__PACKAGE__->config( ctrldir      => NUL,
+                     default_ns   => q(default),
+                     domain_class => q(CatalystX::Usul::Config),
+                     ns_key       => q(namespace),
+                     localedir    => NUL, );
 
-__PACKAGE__->config( default_level => q(default) );
+__PACKAGE__->mk_accessors( qw(classes create_msg_key ctrldir default_ns
+                              delete_msg_key fields keys_attr localedir
+                              ns_key table_data typelist update_msg_key) );
 
-__PACKAGE__->mk_accessors( qw(create_msg_key ctrldir default_level
-                              delete_msg_key domain_model keys_attr lang
-                              schema_attributes table_data typelist
-                              update_msg_key) );
+sub COMPONENT {
+   my ($class, $app, $attrs) = @_; my $ac = $app->config;
 
-sub new {
-   my ($self, $app, @rest) = @_;
+   merge_attributes $attrs, $ac, $class->config, [ qw(ctrldir localedir) ];
 
-   my $new = $self->next::method( $app, @rest );
-
-   $new->ctrldir( $new->ctrldir || $app->config->{ctrldir} || $NUL );
-
-   return $new;
+   return $class->next::method( $app, $attrs );
 }
 
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_;
 
-   my $new   = $self->next::method( $c, @rest);
-   my $attrs = { schema_attributes => $new->schema_attributes };
+   my $new   = $self->next::method( $c, @rest );
+   my $attrs = { %{ $new->domain_attributes || {} },
+                 ioc_obj   => $new,
+                 lang      => $c->stash->{lang},
+                 localedir => $self->localedir, };
 
-   $new->domain_model( CatalystX::Usul::File->new( $c, $attrs ) );
-   $new->lang        ( $c->stash->{lang} || q(en) );
+   $new->domain_model( $new->domain_class->new( $attrs ) );
 
    return $new;
 }
 
-sub add_to_attribute_list {
-   my ($self, $args) = @_;
-
-   $args->{path } = $self->_get_path( $args->{file} );
-   $args->{items} = $self->query_array( $args->{field} );
-
-   $args->{lang } = $self->lang if ($self->lang);
-
-   my $added    = $self->domain_model->add_to_attribute_list( $args );
-   my $aname    = $args->{file}.q( / ).$args->{name};
-   my $msg_args = [ $aname, (join q(, ), @{ $added }) ];
-
-   $self->add_result_msg( $args->{msg}, $msg_args );
-   return;
-}
-
 sub config_form {
-   my ($self, $level, $name) = @_; my $e;
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $labels = {};
 
-   my $s = $self->context->stash; my $newtag = $s->{newtag};
+   my $newtag = $s->{newtag}; my $names = [ NUL, $newtag ]; my $result;
 
-   $level ||= $self->default_level; $name ||= $newtag;
+   $ns ||= $self->default_ns; $name ||= $newtag;
 
-   my $config_ref = eval {
-      my $args = { file => $level, lang => $self->lang,
-                   name => $name,  path => $self->_get_path( $level ) };
+   try {
+      my $config_obj = $self->list( $ns, $name );
 
-      $self->domain_model->get_list( $args );
-   };
-
-   return $self->add_error( $e ) if ($e = $self->catch);
-
-   my $list       = $config_ref->list; unshift @{ $list }, $NUL, $newtag;
-   my $first_fld  = $name eq $newtag ? q(config.name) : q(config.attr);
-   my $levels     = [ $self->default_level, sort keys %{ $s->{levels} } ];
-   my $schema     = $self->domain_model->result_source->schema;
-   my $attr       = $s->{key_attr} = $self->keys_attr;
-   my $def_prompt = $self->loc( q(defTextPrompt) );
-   my $form       = $s->{form}->{name};
-   my $step       = 1;
-
-   $s->{pwidth}  -= 10;
-   $self->clear_form(   { firstfld => $first_fld } ); my $nitems = 0;
-   $self->add_field(    { default  => $level,
-                          id       => q(config.level),
-                          stepno   => 0,
-                          values   => $levels } ); $nitems++;
-   $self->add_field(    { default  => $name,
-                          id       => q(config.attr),
-                          name     => $attr,
-                          stepno   => 0,
-                          values   => $list } ); $nitems++;
-
-   if ($name eq $newtag) {
-      $self->add_field( { id       => q(config.name),
-                          stepno   => 0 } ); $nitems++;
+      push @{ $names }, @{ $config_obj->list };
+      $labels = $config_obj->labels; $result = $config_obj->result;
    }
+   catch ($e) { $self->add_error( $e ) }
+
+   my $first_fld = $name eq $newtag ? q(config.name) : q(config.attr);
+   my $form      = $s->{form}->{name}; $s->{key_attr} = $self->keys_attr;
+   my $spaces    = [ NUL, $self->default_ns,
+                     sort keys %{ $s->{ $self->ns_key } } ];
+
+   $self->clear_form ( { firstfld => $first_fld } );
+   $self->add_buttons( $name eq $newtag ? q(Insert) : qw(Save Delete) );
+   $self->add_field  ( { default  => $ns,
+                         id       => q(config.).$self->ns_key,
+                         values   => $spaces } );
+   $self->add_field  ( { default  => $name,
+                         id       => q(config.attr),
+                         labels   => $labels,
+                         name     => $s->{key_attr},
+                         values   => $names } );
+
+   if ($name eq $newtag) { $self->add_field( { id => q(config.name) } ) }
    else { $self->add_hidden( q(name), $name ) }
 
-   $self->group_fields( { id       => $form.q(.select),
-                          nitems   => $nitems } ); $nitems = 0;
+   $self->group_fields( { id => $form.q(.select) } );
 
-   if ($name eq $newtag) { $self->add_buttons( q(Insert) ) }
-   else { $self->add_buttons( qw(Save Delete) ) }
+   $result or return; my $clear = NUL;
 
-   for my $attr (@{ $schema->attributes }) {
-      my $field = $config_ref->element->$attr;
-      my $clear = $nitems > 0 ? q(left) : $NUL;
-
-      if (ref $schema->defaults->{ $attr } eq q(HASH)) {
-         my $data = CatalystX::Usul::Table->new
-            ( $self->table_data->{ $attr } );
-         my $count = $data->{count} = 0;
-
-         $data->{values} = [];
-
-         if (ref $field eq q(HASH)) {
-            for my $key (sort keys %{ $field }) {
-               my $ref = { name => $key }; my $value = $field->{ $key };
-
-               for (grep { $_ ne q(name) } @{ $data->{flds} }) {
-                  $ref->{ $_ } = $self->escape_TT( $value->{ $_ } );
-               }
-
-               push @{ $data->{values} }, $ref;
-               $count++;
-            }
-         }
-
-         $data->{count} = $count;
-         $self->add_field( { clear   => $clear,
-                             data    => $data,
-                             id      => $form.q(.).$attr,
-                             stepno  => $step++ } ); $nitems++;
-      }
-      else {
-         my $default = $self->escape_TT( $field );
-         my $prompt  = lc $attr; $prompt =~ s{ _ }{ }gmx;
-         my $type    = $self->typelist->{ $attr } || q(textfield);
-         my $width   = $type eq q(textarea) ? 38 : 40;
-
-         $self->add_field( { clear   => $clear,
-                             default => $default,
-                             id      => $form.q(.).$attr,
-                             prompt  => $def_prompt.$prompt,
-                             stepno  => $step++,
-                             type    => $type,
-                             width   => $width } ); $nitems++;
-      }
+   for my $attr (@{ $self->fields || $self->_source->attributes }) {
+      $self->_add_field( $form, $clear, $attr, $result->$attr );
+      $clear = q(left);
    }
 
-   $self->group_fields( { id => $form.q(.edit), nitems => $nitems } );
-
+   $self->group_fields( { id => $form.q(.edit) } );
    return;
 }
 
 sub create {
-   my ($self, $args) = @_;
+   my ($self, $ns, $args) = @_;
 
-   $args->{path  } = $self->_get_path( $args->{file} );
-   $args->{fields} = $self->check_form( $args->{fields} || {} );
+   my $name = $self->_resultset( $ns )->create( $args );
 
-   $args->{lang  } = $self->lang  if ($self->lang);
+   $self->add_result_msg( $self->create_msg_key, [ $ns, $name ] );
 
-   my $name = $self->domain_model->create( $args );
-
-   $self->add_result_msg( $self->create_msg_key, [ $args->{file}, $name ] );
    return $name;
 }
 
 sub create_or_update {
-   my ($self, $args) = @_; my ($type, $val);
+   my ($self, $ns, $args) = @_; $args ||= {};
 
-   my $schema = $self->domain_model->result_source->schema;
+   my $key    = $self->keys_attr;
+   my $s      = $self->context->stash;
+   my $val    = $self->query_value( $key ) || NUL;
+   my $method = ! $val || $val eq $s->{newtag} ? q(create) : q(update);
+   my $name   = $method eq q(create) ? $self->query_value( q(name) ) : $val;
 
-   for my $attr (@{ $schema->attributes }) {
-      if ($type = $schema->defaults->{ $attr } and ref $type eq q(HASH)) {
-         my $key    = $self->table_data->{ $attr }->{flds}->[0];
-         my $nrows  = $self->query_value( $attr.q(_nrows) );
-         my $count  = undef;
-         my $suffix = $NUL;
+   $args->{name} ||= $name;
+   $args = $self->check_form( $self->_query_form( $args ) );
 
-         while (!$count || $count <= $nrows) {
-            if ($val = $self->query_value( $attr.q(_).$key.$suffix )) {
-               for my $field (@{ $self->table_data->{ $attr }->{flds} }) {
-                  next if ($field eq $key);
-
-                  my $qv = $self->query_value( $attr.q(_).$field.$suffix );
-
-                  if (defined $qv) {
-                     $args->{fields}->{ $attr }->{ $val }->{ $field }
-                        = $self->unescape_TT( $qv );
-                  }
-               }
-            }
-
-            $count  = defined $count ? $count + 1 : 0;
-            $suffix = $count;
-         }
-      }
-      elsif ($type and ref $type eq q(ARRAY)) {
-         $args->{fields}->{ $attr } = [ map { $self->unescape_TT( $_ ) }
-                                           @{ $self->query_array( $attr ) } ];
-      }
-      elsif (defined ($val = $self->query_value( $attr ))) {
-         $args->{fields}->{ $attr } = $self->unescape_TT( $val );
-      }
-   }
-
-   my $query_key = $self->query_value( $self->keys_attr ) || $NUL;
-   my $newtag    = $self->context->stash->{newtag};
-
-   return $self->create( $args ) if ($query_key eq $newtag);
-
-   return $self->update( $args );
+   return $self->$method( $ns, $args );
 }
 
 sub delete {
-   my ($self, $args) = @_;
+   my ($self, $ns, $name) = @_;
 
-   $args->{path} = $self->_get_path( $args->{file} );
+   my $args = { name => $name || $self->query_value( $self->keys_attr ) };
 
-   $args->{lang} = $self->lang if ($self->lang);
-
-   my $name = $self->domain_model->delete( $args );
-
-   $self->add_result_msg( $self->delete_msg_key, [ $args->{file}, $name ] );
+   $name = $self->_resultset( $ns )->delete( $args );
+   $self->add_result_msg( $self->delete_msg_key, [ $ns, $name ] );
    return;
 }
 
 sub find {
-   my ($self, $file, $name) = @_;
+   my ($self, $ns, $name) = @_;
 
-   my $args = { file => $file,
-                name => $name,
-                path => $self->_get_path( $file ) };
-
-   $args->{lang} = $self->lang if ($self->lang);
-
-   return $self->domain_model->find( $args );
+   return $self->_resultset( $ns )->find( { name => $name } );
 }
 
-sub get_list {
-   my ($self, $file, $name) = @_;
+sub list {
+   my ($self, $ns, $name) = @_;
 
-   my $args = { file => $file,
-                name => $name || $NUL,
-                path => $self->_get_path( $file ) };
-
-   $args->{lang} = $self->lang if ($self->lang);
-
-   return $self->domain_model->get_list( $args );
+   return $self->_resultset( $ns )->list( { name => $name || NUL } );
 }
 
-sub load_files {
+sub load {
    my ($self, @files) = @_;
 
-   my @paths = map { $self->_get_path( $_ ) } @files;
-
-   return $self->domain_model->load_files( @paths );
+   return $self->domain_model->load( map { $self->_get_path( $_ ) } @files );
 }
 
-sub remove_from_attribute_list {
-   my ($self, $args) = @_;
+sub push_attribute {
+   my ($self, $ns, $args) = @_; my $count = 0;
 
-   $args->{path } = $self->_get_path( $args->{file} );
-   $args->{items} = $self->query_array( $args->{field} );
+   my $added    = $self->_resultset( $ns )->push( $args ) || [];
 
-   $args->{lang } = $self->lang if ($self->lang);
+   not ($count  = @{ $added }) and return 0;
 
-   my $removed  = $self->domain_model->remove_from_attribute_list( $args );
-   my $aname    = $args->{file}.q( / ).$args->{name};
-   my $msg_args = [ $aname, (join q(, ), @{ $removed }) ];
+   my $msg_args = [ $ns.q( / ).$args->{name}, (join q(, ), @{ $added }) ];
 
-   $self->add_result_msg( $args->{msg}, $msg_args );
-   return;
+   $self->add_result_msg( $args->{msgs}->{added}, $msg_args );
+
+   return $count;
 }
 
 sub search {
-   my ($self, $file, $criterion) = @_;
+   my ($self, $ns, $where) = @_;
 
-   my $args = { criterion => $criterion,
-                path      => $self->_get_path( $file ) };
+   return $self->_resultset( $ns )->search( $where );
+}
 
-   $args->{lang} = $self->lang if ($self->lang);
+sub splice_attribute {
+   my ($self, $ns, $args) = @_; my $count;
 
-   return $self->domain_model->search( $args );
+   my $removed  = $self->_resultset( $ns )->splice( $args ) || [];
+
+   not ($count  = @{ $removed }) and return 0;
+
+   my $msg_args = [ $ns.q( / ).$args->{name}, (join q(, ), @{ $removed }) ];
+
+   $self->add_result_msg( $args->{msgs}->{deleted}, $msg_args );
+
+   return $count;
 }
 
 sub update {
-   my ($self, $args) = @_;
+   my ($self, $ns, $args) = @_; my $name;
 
-   $args->{path  } = $self->_get_path( $args->{file} );
-   $args->{fields} = $self->check_form( $args->{fields} || {} );
+   if ($name = $self->_resultset( $ns )->update( $args ) ) {
+      $self->add_result_msg( $self->update_msg_key, [ $ns, $name ] );
+   }
 
-   $args->{lang  } = $self->lang if ($self->lang);
-
-   my $name = $self->domain_model->update( $args );
-
-   $self->add_result_msg( $self->update_msg_key, [ $args->{file}, $name ] );
    return $name;
+}
+
+sub update_list {
+   my ($self, $ns, $args) = @_; my $count = 0;
+
+   return $self->update_group_membership( {
+      add_method    => sub { $self->push_attribute( $ns, @_ ) },
+      delete_method => sub { $self->splice_attribute( $ns, @_ ) },
+      field         => $args->{field},
+      method_args   => {
+         name       => $args->{name},
+         list       => $args->{list},
+         msgs       => $args->{msgs} },
+   } );
 }
 
 # Private methods
 
-sub _get_path {
-   my ($self, $path, $args) = @_; $args ||= {};
+sub _add_field {
+   my ($self, $form, $clear, $attr, $value) = @_;
 
-   $self->throw( 'No file path specified' ) unless ($path);
+   my $def_prompt = $self->loc( q(defTextPrompt) );
+   my $prompt     = $def_prompt.(lc $attr); $prompt =~ s{ _ }{ }gmx;
+   my $params     = { clear => $clear, id => $form.q(.).$attr, stepno => -1 };
+   my $type       = $params->{type} = $self->_get_widget_type( $attr );
 
-   return $path if (ref $path);
+   $params->{prompt} = $prompt;
 
-   return $self->io( $path ) if (-f $path);
+   $self->classes and exists $self->classes->{ $attr }
+      and $params->{class} = $self->classes->{ $attr };
 
-   $path = $self->catfile( $self->ctrldir, $path.q(.xml) );
+   if ($type eq q(table)) {
+       $params->{data} = $self->_get_table_data( $attr, $value );
+   }
+   elsif ($type eq q(freelist) or $type eq q(popupmenu)) {
+      $params->{values} = [ map { escape_TT $_ } @{ $value } ];
+   }
+   else {
+      $params->{default} = (is_arrayref $value)
+                         ? join "\n", map { escape_TT $_ } @{ $value }
+                         : escape_TT $value;
+   }
 
-   # TODO: Test for a permission error rather than returning undef
-   return $self->io( $path ) if (-f $path or $args->{ignore_error});
-
-   my $msg = $self->loc( 'File [_1] not found', $path );
-
-   $self->log_info( (ref $self).$SPC.$msg );
-
+   $self->add_field( $params );
    return;
+}
+
+sub _get_field_type {
+   my ($self, $attr) = @_; my $def = $self->_source->defaults || {};
+
+   return exists $def->{ $attr } ? ref $def->{ $attr } || q(SCALAR) : q(SCALAR);
+}
+
+sub _get_path {
+   my ($self, $name) = @_; my $s = $self->context->stash;
+
+   $s->{leader} = blessed $self; $name or throw 'File name not specified';
+
+   my $extn = $self->domain_model->storage->extn || NUL;
+
+   return $self->io( [ $self->ctrldir, $name.$extn ] );
+}
+
+sub _get_table_data {
+   my ($self, $attr, $values) = @_;
+
+   my $data = CatalystX::Usul::Table->new( $self->table_data->{ $attr } );
+
+   if (is_arrayref $values) {
+      push @{ $data->{values} }, map { { text => escape_TT $_ } } @{ $values };
+   }
+   elsif (is_hashref $values) {
+      for my $key (sort keys %{ $values }) {
+         my $ref = { name => $key }; my $value = $values->{ $key };
+
+         for (grep { $_ ne q(name) } @{ $data->{flds} }) {
+            $ref->{ $_ } = escape_TT $value->{ $_ };
+         }
+
+         push @{ $data->{values} }, $ref;
+      }
+   }
+
+   $data->{count} = @{ $data->{values} };
+
+   return $data;
+}
+
+sub _get_widget_type {
+   my ($self, $attr) = @_; my $list = $self->typelist || {};
+
+   my $type = $list->{ $attr } || q(textfield);
+   my $map  = { date  => q(textfield),
+                money => q(textfield), numeric => q(textfield) };
+
+   return exists $map->{ $type } ? $map->{ $type } : $type;
+}
+
+sub _query_form {
+   my ($self, $args) = @_; $args ||= {};
+
+   my $form = $self->context->stash->{form}->{name};
+
+   for my $attr (@{ $self->fields || $self->_source->attributes }) {
+      my $type = $self->_get_field_type( $attr );
+
+      if ($type eq HASH) { $args->{ $attr } = $self->_query_hash( $attr ) }
+      elsif ($type eq ARRAY) {
+         my @attr_list = grep { length }
+                          map { unescape_TT __dos2unix( $_ ) }
+                             @{ $self->query_array( $attr ) };
+
+         $args->{ $attr } = @attr_list > 0 ? [ @attr_list ] : undef;
+      }
+      else {
+         my $qv = $args->{ $attr } || $self->query_value( $attr );
+            $qv = unescape_TT __dos2unix( $qv );
+
+         $args->{ $attr } = length $qv ? $qv : undef;
+      }
+   }
+
+   return $args;
+}
+
+sub _query_hash {
+   my ($self, $attr) = @_;
+
+   my $nrows  = $self->query_value( "_${attr}_nrows" ) || 0;
+   my $fields = $self->table_data->{ $attr }->{flds};
+   my $ncols  = @{ $fields };
+   my $result = $ncols > 1 ? {} : [];
+   my $r_no   = 0;
+
+   while ($r_no < $nrows) {
+      my $c_no = 0; my $prefix = "${attr}_${r_no}_";
+
+      if (my $key = $self->query_value( $prefix.$c_no )) {
+         if ($ncols > 1) {
+            for my $field (@{ $fields }) {
+               if ($c_no > 0) {
+                  my $qv = $self->query_value( $prefix.$c_no );
+                     $qv = unescape_TT __dos2unix( $qv );
+
+                  $result->{ $key }->{ $field } = length $qv ? $qv : undef;
+               }
+
+               $c_no++;
+            }
+         }
+         else { push @{ $result }, unescape_TT __dos2unix( $key ) }
+      }
+
+      $r_no++;
+   }
+
+   return $result;
+}
+
+sub _resultset {
+   my ($self, $ns) = @_;
+
+   my $dm = $self->domain_model; $dm->path( $self->_get_path( $ns ) );
+
+   return $dm->resultset( $self->keys_attr ) or throw 'No resultset object';
+}
+
+sub _source {
+   my $self = shift; my $dm = $self->domain_model;
+
+   return $dm->source( $self->keys_attr ) or throw 'No source object';
+}
+
+# Private functions
+
+sub __dos2unix {
+   (my $y = shift || NUL) =~ s{ [\r][\n] }{\n}gmsx; return $y;
 }
 
 1;
@@ -341,7 +381,7 @@ CatalystX::Usul::Model::Config - Read and write configuration files
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -354,7 +394,7 @@ schema a subclass is defined that inherits from this class
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
 
 The constructor sets up the C<ctrldir> attribute which acts as a default
 directory if one is not supplied in the file name
@@ -370,19 +410,7 @@ stashed language
 
 Creates the form to edit an element
 
-=head2 add_to_attribute_list
-
-   $c->model( q(Config::*) )->add_to_attribute_list( $args );
-
-Add new items to an attribute list. The C<$args> hash requires these
-keys; I<file> the name of the file to edit, I<name> the name of the
-element to edit, I<list> the attribute of the named element containing
-the list of existing items, I<req> the request object and I<field> the
-field on the request object containing the list of new items
-
 =head2 create
-
-   $c->model( q(Config::*) )->create( $args );
 
 Creates a new element. The C<$args> hash requires these keys; I<file>
 the name of the file to edit, I<name> the name of the element to edit
@@ -405,25 +433,29 @@ Deletes an element
 
 =head2 find
 
-   $c->model( q(Config::*) )->find( $file, $name );
+   $c->model( q(Config::*) )->find( $ns, $name );
 
-=head2 get_list
+=head2 list
 
-   $c->model( q(Config::*) )->get_list( $file, $name );
+   $c->model( q(Config::*) )->list( $ns, $name );
 
 Retrieves the named element and a list of elements
 
-=head2 load_files
+=head2 load
 
-   $config = eval { $c->model( q(Config) )->load_files( @{ $files } ) };
+   $config = $c->model( q(Config) )->load( @{ $files } );
 
 Loads the required configuration files. Returns a hash ref
 
-=head2 remove_from_attribute_list
+=head2 push_attribute
 
-   $c->model( q(Config::*) )->remove_from_attribute_list( $args );
+   $c->model( q(Config::*) )->push_attribute( $args );
 
-Removes items from an attribute list
+Add new items to an attribute list. The C<$args> hash requires these
+keys; I<file> the name of the file to edit, I<name> the name of the
+element to edit, I<list> the attribute of the named element containing
+the list of existing items, I<req> the request object and I<field> the
+field on the request object containing the list of new items
 
 =head2 search
 
@@ -432,11 +464,27 @@ Removes items from an attribute list
 Searches the given file for elements matching the given criteria. Returns an
 array of L<element|CatalystX::Usul::File::Element> objects
 
+=head2 splice_attribute
+
+   $c->model( q(Config::*) )->splice_attribute( $args );
+
+Removes items from an attribute list
+
 =head2 update
 
-   $c->model( q(Config::*) )->update( $args );
-
 Updates the named element
+
+=head2 update_list
+
+   $bool = $c->model( q(Config::*) )->update_list( $namespace, $args );
+
+Calls
+L<update_group_membership|CatalystX::Usul::Plugin::Model::StashHelper/update_group_membership>
+which will push/splice attributes to/from the selected list
+
+=head2 _resultset
+
+Return a L<File::DataClass::ResultSet> for the supplied file
 
 =head1 Diagnostics
 

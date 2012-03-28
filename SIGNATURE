@@ -1,5 +1,5 @@
 This file contains message digests of all files listed in MANIFEST,
-signed via the Module::Signature module, version 0.55.
+signed via the Module::Signature module, version 0.66.
 
 To verify the content in this distribution, first make sure you have
 Module::Signature installed, then type:
@@ -14,119 +14,133 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 80e2edd6e998f001664290481fb6394651937df6 Changes
-SHA1 0190f62d6871f7927dcc90e40797c0f20645ddea LICENSE
-SHA1 a86d71dcee15fb623239df203ca1fac9c62d9859 MANIFEST
-SHA1 1d86e0a0a772d90f63f5d4e5211e696f225b0044 META.yml
-SHA1 6d5ec22e54e80b4bd4094385aa7b08c26cc5534a Makefile.PL
-SHA1 f9cd7272855844c5b832acc7a36bf81fac643567 README
-SHA1 1dd85382d318f656c9e993d9844d8c61c4e34ee1 lib/CatalystX/Usul.pm
-SHA1 15158b4d45e5bb3fc4180f6e34abed0067f1f480 lib/CatalystX/Usul/Action.pm
-SHA1 3856caf992a46e4f6ae0629d595520a966966080 lib/CatalystX/Usul/Authentication.pm
-SHA1 89eb4f38f9be5f85937c6ff09a50c17690b716e7 lib/CatalystX/Usul/Base.pm
-SHA1 acc27099947a519e64655fbfde3c00c7c996bfce lib/CatalystX/Usul/Build.pm
-SHA1 33df0ba4e639138393b4ddad9906c52a2dfeda89 lib/CatalystX/Usul/Controller.pm
-SHA1 33df6fd497d4c929f32b2444cb6f93a1d4806b9f lib/CatalystX/Usul/Controller/Admin.pm
-SHA1 90cf5a7bded98fee9d6718b11ac15158e1e0cc32 lib/CatalystX/Usul/Controller/Admin/Backup.pm
-SHA1 42cff96695d27462aae39c1531d40c79f4f95b27 lib/CatalystX/Usul/Controller/Admin/Config.pm
-SHA1 3253d8906c007ebeb7f7be1b96f1e21119a6ac4b lib/CatalystX/Usul/Controller/Admin/Locks.pm
-SHA1 1c0e15b25ec9fe7bcfd9b9d282b0f68b7cd9f9d9 lib/CatalystX/Usul/Controller/Admin/Navigation.pm
-SHA1 6907a0709505b48b40760b3024fcff80ffcf6c8a lib/CatalystX/Usul/Controller/Admin/Processes.pm
-SHA1 317325e722c00f0693cb4c1927d5c58229cac6c8 lib/CatalystX/Usul/Controller/Admin/RoleManager.pm
-SHA1 84b1b36b0803c758a059d922c0a00c0387bf0f89 lib/CatalystX/Usul/Controller/Admin/UserManager.pm
-SHA1 ef5dc9ae3fd891514dff36e8793e00f9bd8e62a0 lib/CatalystX/Usul/Controller/Entrance.pm
-SHA1 2323f717b63c0855a9f757a306c3e54d7e47ac1f lib/CatalystX/Usul/Controller/Root.pm
-SHA1 1c11e5242a02c8ae791aa1c4f3332d87aa818794 lib/CatalystX/Usul/Encoding.pm
-SHA1 222ba726f63c8e923daef657cfc7043081c47e40 lib/CatalystX/Usul/Exception.pm
-SHA1 6f288c0c82943f8f78b94a3b17230bc06b3ae1f4 lib/CatalystX/Usul/File.pm
-SHA1 abe98377dc5037da53dd528c0cff87e1d194dc37 lib/CatalystX/Usul/File/Element.pm
-SHA1 be5e5eb7f91cc443fb99c34a9097289602bb0446 lib/CatalystX/Usul/File/HashMerge.pm
-SHA1 08d4c49b6687225a1f4d8e4e3342375042f7a602 lib/CatalystX/Usul/File/IO.pm
-SHA1 e15e261ad632d9e865190e8170925aebc9bf26e2 lib/CatalystX/Usul/File/List.pm
-SHA1 6181a9a5a8ff193b8f968bb674653b10ab9f49a9 lib/CatalystX/Usul/File/ResultSet.pm
-SHA1 18070a4b321f43be36b1f8d68bee9be0bda6f1a7 lib/CatalystX/Usul/File/ResultSource.pm
-SHA1 282b1d5ea3e9b4d02ba3d3114350efc0ce938013 lib/CatalystX/Usul/File/Schema.pm
-SHA1 a6e19f635e08a5124e4aa0a47d845e01cd575073 lib/CatalystX/Usul/File/Storage.pm
-SHA1 01445ee549f4a10b7591218fa66ff24f0ebb8e50 lib/CatalystX/Usul/File/Storage/XML.pm
-SHA1 faa4445c65467fa076d94957c290dfd6da1ae653 lib/CatalystX/Usul/File/Storage/XML/Bare.pm
-SHA1 ecd5acbaf65ebff3feea3434544a3e613ec18a4c lib/CatalystX/Usul/File/Storage/XML/Simple.pm
-SHA1 5b0dfdf778a5641bbf39b3d96fbf512a985aff10 lib/CatalystX/Usul/FileSystem.pm
-SHA1 428982043e03911160a158778f18b6b3aac6a537 lib/CatalystX/Usul/InflateSymbols.pm
-SHA1 b396850f188e719467e4e34de2f9c4a8300bcb6d lib/CatalystX/Usul/MailAliases.pm
-SHA1 f18b088f70601a3f004fe9fda07c2586f56389a7 lib/CatalystX/Usul/Model.pm
-SHA1 0a995009a3f022f48b8d1adc937272aa784a7f2c lib/CatalystX/Usul/Model/Config.pm
-SHA1 ef1fef3d531323dda0ec17e6de0e281d71d6e05d lib/CatalystX/Usul/Model/Config/Buttons.pm
-SHA1 492abdc9fb48cc7a042d741f9e93c65c389c564b lib/CatalystX/Usul/Model/Config/Credentials.pm
-SHA1 da94369a25aadb0bdd45f9f8af4c4bdd4200dd6b lib/CatalystX/Usul/Model/Config/Fields.pm
-SHA1 809a19f686282ab7dedb5782f58a76988865ca92 lib/CatalystX/Usul/Model/Config/Globals.pm
-SHA1 08f7a588be3363df6ad9fc40abc940a2bc00b794 lib/CatalystX/Usul/Model/Config/Keys.pm
-SHA1 b0d0381d5cc7682e4409b36afa8bd83441cd01eb lib/CatalystX/Usul/Model/Config/Levels.pm
-SHA1 9b235f8af11dd6c9e0feec5a5937c340a9af7c58 lib/CatalystX/Usul/Model/Config/Messages.pm
-SHA1 05555791f28452aa4f5f2f565ae949579674d707 lib/CatalystX/Usul/Model/Config/Pages.pm
-SHA1 cc386a9420b371c0fa978113515e67c17c9dcae2 lib/CatalystX/Usul/Model/Config/Rooms.pm
-SHA1 d98024dd551c62c9d947d72bba7ed383adc9de5a lib/CatalystX/Usul/Model/FileSystem.pm
-SHA1 ec774d390472fcef0062639727fc73a8bb062389 lib/CatalystX/Usul/Model/Help.pm
-SHA1 ca719ce9b662aaa210f5ab1952b15f704be82c80 lib/CatalystX/Usul/Model/Identity.pm
-SHA1 84aa0d0c1344b96dfff5027a85b05de1a4a8cd59 lib/CatalystX/Usul/Model/Imager.pm
-SHA1 3d062932b5f079d47597ef30a04d03f49d19e730 lib/CatalystX/Usul/Model/MailAliases.pm
-SHA1 2a92515c76627bce67bded53f3e5944e66782127 lib/CatalystX/Usul/Model/Navigation.pm
-SHA1 25a12eb57881d9d03cd162471881c24b5d2b0adc lib/CatalystX/Usul/Model/Process.pm
-SHA1 c380ae09cf96a9e17d9872c71cc45b48d62bc12a lib/CatalystX/Usul/Model/Roles.pm
-SHA1 971d8ca1498fc1840d392b1ef6aa30680923fe5d lib/CatalystX/Usul/Model/Schema.pm
-SHA1 3d6c69730d7e0db89bb890507cc186035f0c349d lib/CatalystX/Usul/Model/Session.pm
-SHA1 26e8e4dbdaccbb4c785fb2969db51b7c12ae94c3 lib/CatalystX/Usul/Model/Tapes.pm
-SHA1 02e0a6359cf5300ff9a6d334305d23d087be16ce lib/CatalystX/Usul/Model/UserProfiles.pm
-SHA1 ac9ea47d3b415060e8c76c5d68601ebcae6b5b4d lib/CatalystX/Usul/Model/Users.pm
-SHA1 5ad6f11820716b477d54ca6197f634a96570178b lib/CatalystX/Usul/PersistentState.pm
-SHA1 981037757846e4df9781651142dd0eb13f692eb2 lib/CatalystX/Usul/Plugin/Controller/Cookies.pm
-SHA1 6885005a7d6c24983d70d234292f1804419d51bb lib/CatalystX/Usul/Plugin/Controller/ModelHelper.pm
-SHA1 b8279b0080229c403844cec83e370831256f52c1 lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
-SHA1 ade7a7fa2d3282f93287e1a915033b530443d418 lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
-SHA1 0c3732cd19a0d16a70c84c5e77e44fb02705f369 lib/CatalystX/Usul/Process.pm
-SHA1 5f573386474c0445ee70818843bdfa1d33cfa7b1 lib/CatalystX/Usul/Programs.pm
-SHA1 118c4d10f1b4803a8ff30e326e0af38a633d9ff2 lib/CatalystX/Usul/ProjectDocs.pm
-SHA1 da7f2347cc0ffb61234320a10009d20934ab072d lib/CatalystX/Usul/Response.pm
-SHA1 9d354c8a4254f9fd23e5846fe4d6686df0108680 lib/CatalystX/Usul/Roles.pm
-SHA1 f95c1d19f3cb6b7fa8700ad8d7c3fe9a6155e51c lib/CatalystX/Usul/Roles/DBIC.pm
-SHA1 3a71f8ab7d69cf857820676d971d4fc5e855c099 lib/CatalystX/Usul/Roles/Unix.pm
-SHA1 d04291b43c36bb756d0bbf9b66f8f00b0dbb2da1 lib/CatalystX/Usul/Schema.pm
-SHA1 6fbe27de6de1ca4252d53288cfc27e3bfc7d9603 lib/CatalystX/Usul/Shells.pm
-SHA1 5c6e86c8ef01a2c854671bd6be0a4704cdaaa3b0 lib/CatalystX/Usul/Table.pm
-SHA1 1051c7ae8e7a76d0ccbb1f67bd63f0530f81824f lib/CatalystX/Usul/TapeDevice.pm
-SHA1 30a69da3fcce2c31ff7693f52098d0d47a900e0b lib/CatalystX/Usul/Time.pm
-SHA1 9d1f3b88a87e9d000c5b1fa9505d2db131cb72b9 lib/CatalystX/Usul/Users.pm
-SHA1 142d2cce6721adc76e07514bbb324434ed04487d lib/CatalystX/Usul/Users/DBIC.pm
-SHA1 ebeed6db1a83a855ce847d74ca8741599cc95042 lib/CatalystX/Usul/Users/Suid.pm
-SHA1 bea95e4228e244da8936b03f3a02b7f8c5283bd6 lib/CatalystX/Usul/Users/Unix.pm
-SHA1 2ffa762b74af1cb5010762f523ca67c34e3df06f lib/CatalystX/Usul/Utils.pm
-SHA1 80c48ccf1a54ab76d268557eaa1e117470993319 lib/CatalystX/Usul/View.pm
-SHA1 5b7795eb362ceac4153855660fdece9844102376 lib/CatalystX/Usul/View/HTML.pm
-SHA1 ed5cae18d79c2887378f0b6d1d38ea6857ea6018 lib/CatalystX/Usul/View/JSON.pm
-SHA1 ea0c06c76c37ef3dfc21943ec7b46ee23bab964e lib/CatalystX/Usul/View/Serializer.pm
-SHA1 3dd1391e9af3d4d0055b9a12573c0c32c3529bdf lib/CatalystX/Usul/View/XML.pm
+SHA1 b43a0f7f0f4dcc77f5dcf964671fcb686ea6e9fd Build.PL
+SHA1 fe57f1a6e5bc4747d94490ff1185b9dd35cf6f51 Changes
+SHA1 0890c7d901c3958ec8476f1edc1c11ae676990fb LICENSE
+SHA1 d532a4fcb6ad7a38560b3c7be59e3cb97a78b624 MANIFEST
+SHA1 d7bad055d39158a3d63f32f626a01c91139d87d7 META.json
+SHA1 16ef1721d1d9a2827d2d521dced65fcd9e12b76a META.yml
+SHA1 15e74e112943f631f61f701e05286d1de2949908 README
+SHA1 96da7fdb1136936f1bbac130e2618fbd04f29c4b inc/Bob.pm
+SHA1 775b3a052a1f4c99a744d0563ee3b1c12dddc049 inc/CPANTesting.pm
+SHA1 8afc1e0eb09efda7fed4f1a48da793d353e960f7 lib/CatalystX/Usul.pm
+SHA1 c1dcff1d035ee7ada36618fe9f3af1428a366a28 lib/CatalystX/Usul/Action.pm
+SHA1 a954edb7d98212b2cea6f9890f1a4383c753b64c lib/CatalystX/Usul/Admin.pm
+SHA1 25ab208297e54e4538ac1dd9607cea1a137b3ec9 lib/CatalystX/Usul/Authentication.pm
+SHA1 66a1c5423b0ad279f1dde224f21f638c636b0f74 lib/CatalystX/Usul/Base.pm
+SHA1 0ebfb9a379dc410cfa1659ee4dccee3898eb9811 lib/CatalystX/Usul/Build.pm
+SHA1 ba2afdaeb8b02e07844af4439ab0f234ff47149c lib/CatalystX/Usul/CLI.pm
+SHA1 9a2b7e54058cb0819b74fc84ad45cf0380c81906 lib/CatalystX/Usul/Captcha.pm
+SHA1 df38530e5eb3c748d7e5a753b82611b6a58f98e8 lib/CatalystX/Usul/Config.pm
+SHA1 6e7e9ce0b0a19fff0cdf10ec2f0a3676233a1b5b lib/CatalystX/Usul/Constants.pm
+SHA1 b3a8214d4fb11c7ff93b4b3e0529a5368983b63e lib/CatalystX/Usul/Controller.pm
+SHA1 832969f74a6568180148e4c066a2d330ae483178 lib/CatalystX/Usul/Controller/Admin.pm
+SHA1 147e56b87e89e7af78093f65abfd7cca155926a8 lib/CatalystX/Usul/Controller/Admin/Backup.pm
+SHA1 d97561a88b88c5f63edde668cde56c4b095de524 lib/CatalystX/Usul/Controller/Admin/Config.pm
+SHA1 ee0486b4a50224fe5b576662ddf9c1dbcdd78b24 lib/CatalystX/Usul/Controller/Admin/Locks.pm
+SHA1 0780098cfc5645b131f0d853fac24d749f45ef5b lib/CatalystX/Usul/Controller/Admin/Navigation.pm
+SHA1 bb67044903017e80f4a333b4661e24c6a00afae5 lib/CatalystX/Usul/Controller/Admin/Processes.pm
+SHA1 29e91989e97adb977e214e96e71ced70c243c138 lib/CatalystX/Usul/Controller/Admin/RoleManager.pm
+SHA1 4b87843f5995a9421a15ae4a8eed86f7287d0d09 lib/CatalystX/Usul/Controller/Admin/UserManager.pm
+SHA1 971adae321d4531fb5bcac6b4b214a6ce4dd7ec7 lib/CatalystX/Usul/Controller/Entrance.pm
+SHA1 4424d450b01d4a196b0cccf02b01b4ff06f5af21 lib/CatalystX/Usul/Controller/Root.pm
+SHA1 cfe10897f3ac3a906b118878b42e99b45afc56c9 lib/CatalystX/Usul/Email.pm
+SHA1 2e6444f13739380d5cd5b03be537a4ac8431b1f8 lib/CatalystX/Usul/Encoding.pm
+SHA1 ffb8d249e5ac781547e745e540aaf550b2568c54 lib/CatalystX/Usul/Exception.pm
+SHA1 e2b95b20c0dc88ef2fd127191ad98cf4fc85d582 lib/CatalystX/Usul/File.pm
+SHA1 c0d814042147d3e36500c01c9772d3c0da7a33df lib/CatalystX/Usul/FileSystem.pm
+SHA1 e1491656029935947ab160bc09c6a3bd868684bc lib/CatalystX/Usul/Functions.pm
+SHA1 3cd55b142bde675548c250be8a2df8bbad7f128c lib/CatalystX/Usul/IPC.pm
+SHA1 ce12f4be4011480eef36ee7fa8d8cb411a711adc lib/CatalystX/Usul/IPC/Response.pm
+SHA1 2cebc8315efc2964efdaf63685838ec53a533fcc lib/CatalystX/Usul/InflateSymbols.pm
+SHA1 ba7de54e49eb5ebe556997a5cdea9f1f8dc5c5ea lib/CatalystX/Usul/L10N.pm
+SHA1 517b8a1ae9b45beddbd7b9a6b1f5ac41e32c1fcb lib/CatalystX/Usul/Log.pm
+SHA1 8708948b7ff1571d9497186b01ec04de10e5131e lib/CatalystX/Usul/Model.pm
+SHA1 6c733a9ab7953b74306b6ce762828603dd9075c8 lib/CatalystX/Usul/Model/Config.pm
+SHA1 dc57842de6cd891b7531cd6732f9c97ea6bed068 lib/CatalystX/Usul/Model/Config/Buttons.pm
+SHA1 eb21df686f462a38fb6c0dc826709fe47d643fda lib/CatalystX/Usul/Model/Config/Credentials.pm
+SHA1 33b807ccc667c807e926a465131a12753c042a8f lib/CatalystX/Usul/Model/Config/Fields.pm
+SHA1 1fc080cf533c1f01d2fffd9ad3d214de69b1e6ae lib/CatalystX/Usul/Model/Config/Globals.pm
+SHA1 1f7f44d8733e7b8d2950edcbe9ddbd9683bf86b3 lib/CatalystX/Usul/Model/Config/Keys.pm
+SHA1 a7ff0c06dccf314262859cdbca14dcabde1f9dd2 lib/CatalystX/Usul/Model/Config/Levels.pm
+SHA1 f904edee9172974733138654da4f04cdb3c95edb lib/CatalystX/Usul/Model/Config/Messages.pm
+SHA1 cc791656a00b8d91eb5ee96a9fb412890460761c lib/CatalystX/Usul/Model/Config/Rooms.pm
+SHA1 4b84b5da77e466d4403b776970af0414c2a94488 lib/CatalystX/Usul/Model/FileSystem.pm
+SHA1 1840fb6fcbd3e7b60722d0fa1ef08fd2a58cdb1b lib/CatalystX/Usul/Model/Help.pm
+SHA1 492b3d3e528612d95b164c605d308cae6403ba1f lib/CatalystX/Usul/Model/Identity.pm
+SHA1 84f86db9af4b5132308e07b0544beaaeeee08d35 lib/CatalystX/Usul/Model/Imager.pm
+SHA1 c530f0e823f511b3b880dfda5be52a95145c950d lib/CatalystX/Usul/Model/MailAliases.pm
+SHA1 c9860ad27f758beef41bb754c18984ddc25206fe lib/CatalystX/Usul/Model/Navigation.pm
+SHA1 5fd1e14c0e5451b56d40777c941b06f6d6b82c33 lib/CatalystX/Usul/Model/Process.pm
+SHA1 a064e25706a9adebb7512928f49b62dc1b49cd21 lib/CatalystX/Usul/Model/Roles.pm
+SHA1 cbdf028eab93c0166f1ce9018b94fa11c278e493 lib/CatalystX/Usul/Model/Schema.pm
+SHA1 17fad8e7bb9b64eac620b4b5c79c2e8472d0a3ab lib/CatalystX/Usul/Model/Session.pm
+SHA1 e8c496612e1583e0662fcb199bc7efa8ec9f845b lib/CatalystX/Usul/Model/TapeBackup.pm
+SHA1 bc4f464e8132caf937b9702bfff0241c88e48e60 lib/CatalystX/Usul/Model/Templates.pm
+SHA1 52e76b6148f45681fbbfe91e39cf3879ac5282ae lib/CatalystX/Usul/Model/UserProfiles.pm
+SHA1 91e1aba6c9c136470148ece58dd393d49c20fb2a lib/CatalystX/Usul/Model/Users.pm
+SHA1 193ca6a6b429a15ca340e9380717fca4e5b9cfe7 lib/CatalystX/Usul/Plugin/Controller/Cookies.pm
+SHA1 26c25e51e2aa8f6f4a8411061a667161e3bc8209 lib/CatalystX/Usul/Plugin/Controller/ModelHelper.pm
+SHA1 acb3c81074cf6bf0e29bc89e483472ef37cf5383 lib/CatalystX/Usul/Plugin/Controller/PersistentState.pm
+SHA1 3d07957694401680fe7b63830cc880e8a48afdd5 lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
+SHA1 1d6153ba5190a97242934b3a3cbadd80d846977a lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
+SHA1 b2c7c03a22d0f2e03601ef72e34e1382773a5cfc lib/CatalystX/Usul/Programs.pm
+SHA1 ffdc96c76aec6941b9502c162ceae49a28d33c57 lib/CatalystX/Usul/ProjectDocs.pm
+SHA1 1f1f99d5ecf092ffd9d8baaaba3a916d40a7588a lib/CatalystX/Usul/Roles.pm
+SHA1 911772e56cd554ba8835fd2d2c70f488e8f6300a lib/CatalystX/Usul/Roles/DBIC.pm
+SHA1 b798f4f3148260e282bdbc73434364462011af36 lib/CatalystX/Usul/Roles/Simple.pm
+SHA1 097f7ebb4c716eb5e08f8d2ddd9b7be6795bb60c lib/CatalystX/Usul/Roles/Unix.pm
+SHA1 f5e0d5f4b4464854e4a448bbebbde4835c3916a4 lib/CatalystX/Usul/Schema.pm
+SHA1 4966fda54c970fd9637bba551de4da22a78142a2 lib/CatalystX/Usul/Shells.pm
+SHA1 16b0f61ee3fa4d1f7e378841e8afd06768d4e0f6 lib/CatalystX/Usul/Table.pm
+SHA1 7746393677dbb0310072801b6a31327c56ddf816 lib/CatalystX/Usul/TapeBackup.pm
+SHA1 ff6cac8a29e19dcde4b8e049805506d1859159cf lib/CatalystX/Usul/Time.pm
+SHA1 530ac72c4a985f32d62ef7f4da97b08a4e328a1a lib/CatalystX/Usul/TraitFor/Engine/DumpInfo.pm
+SHA1 c074625db898b32c378dbe984a13851871d8314a lib/CatalystX/Usul/TraitFor/ListSessions.pm
+SHA1 034bed65aed752556f3a602d2deed1847db9d24f lib/CatalystX/Usul/TraitFor/LogRequest.pm
+SHA1 fae8bb364c841b225fa33a6fe35dd0c211be1480 lib/CatalystX/Usul/UserProfiles.pm
+SHA1 b13a6db945446da0c5e1ef428f4088327c3536ac lib/CatalystX/Usul/Users.pm
+SHA1 1af50534956864bd2c2de66bd63f8b270c285493 lib/CatalystX/Usul/Users/DBIC.pm
+SHA1 964d9240d562eb32699751bdbce4afd86e0485e2 lib/CatalystX/Usul/Users/Simple.pm
+SHA1 73c974f102dacad49fe294b47d71b6c438a332df lib/CatalystX/Usul/Users/Unix.pm
+SHA1 32576b026be9c8514cabf8129d9727d423a8e9d3 lib/CatalystX/Usul/Users/UnixAdmin.pm
+SHA1 3dd5ef3e8633a1b9eddc55705ce679bef51b9743 lib/CatalystX/Usul/View.pm
+SHA1 581571af0f14d95f9200473d547bcb6b1df1b7f5 lib/CatalystX/Usul/View/HTML.pm
+SHA1 83024abb3f320c4018580ca051c85641375eadea lib/CatalystX/Usul/View/JSON.pm
+SHA1 cb98fc7bf52155852c1e1b2ce9dfbcfb06c37f12 lib/CatalystX/Usul/View/Serializer.pm
+SHA1 80dd9ad84f88b85de4a7a812b3561407e470bf0b lib/CatalystX/Usul/View/XML.pm
 SHA1 2bfb16fb00c279d5c53c54f8ac497dbee52b1f81 t/01always_pass.t
-SHA1 07be7442f7b2782be5599c7c871b0b5f9383e0af t/02pod.t
-SHA1 3cda6c936debf3ca0bd20df32454c47165792d67 t/03podcoverage.t
-SHA1 208067661d5e7360631412c8c2e6211390ef9563 t/04critic.t
-SHA1 78d920056fb95b2ddab643d28c159649381e6ab3 t/05kwalitee.t
-SHA1 bc119b44e75dcb7febba1c0c7b98dacf0894b43b t/06yaml.t
-SHA1 f1bf79d85915940203d6d47cf529495dc5b7c3c1 t/10base.t
-SHA1 52001e68edb82cbd87671dc3e112f81dc10125fc t/11utils.t
-SHA1 902b43ee2a0149ee406de39af7e10815881c4d1d t/12schema.t
-SHA1 9094aa483e28466e8382dec80aa12d9b7e0eef47 t/14config.t
-SHA1 a9444894f3e148247ac36cb28de2c8ade2fc6efc t/20uri_for.t
+SHA1 e777a33e30766c30fcd197d9fb3114a9c89849a1 t/02pod.t
+SHA1 b15b600f9c7f273d41c8039e3fb135256cb9fc6c t/03podcoverage.t
+SHA1 ee819a2178a4d18ac7ba80637959f97536904ac2 t/04critic.t
+SHA1 eab1158623dcccc717984d6f6570dd2d247314e7 t/05kwalitee.t
+SHA1 d4e147dbfc56ebd0a6a395ff1f4ead7a3a20c132 t/06yaml.t
+SHA1 f4f318a2820378ffb28b7daa6819173733f0b193 t/10functions.t
+SHA1 8143debeac5c9c921d1431f55edec8506756399a t/11ipc.t
+SHA1 eed57df100497566a087b4cf56bdb42f679136bf t/12schema.t
+SHA1 75224690a1ec2c520ea3c7177c52bf2b7bbf39df t/14config.t
+SHA1 56bc424dca02315acc78e42383b0cfa55eb1ab2e t/16exception.t
+SHA1 0de1bbd9a5de1a87894cb003d14aba8c13fb0622 t/18programs.t
+SHA1 b9533226dc9da06ed5eaa084e371232ec426c220 t/20controller.t
+SHA1 3225798c9208725375a8226e3842b7d647f44a16 t/21l10n.t
+SHA1 da1b2d6a8967c89238ae06303ed635a828303367 t/22file.t
+SHA1 be77cb42c32b470731b04acc1e87d809554b3cf8 t/23time.t
 SHA1 654d5f6b713fe670a2b282fda729941f81774c22 t/critic.rc
-SHA1 d317416e8276fffabaec206539a8f008f522e22e t/default.xml
-SHA1 40ca183f6acc526aa43e0954c6d3b8973bf0ae9e t/default_en.xml
-SHA1 e0d6ed47583fc30c28edf515bbc4f82c0f45fd55 t/test.xml
+SHA1 ad94b4796743063883c9315e575f043b5df98023 t/default.xml
+SHA1 e6cd52b6db20787939885b6da97987db7a55ad81 t/default_en.xml
+SHA1 5a54fa32d066ebfc34ad8f3a5b266a19ce37f302 t/lib/MyApp.pm
+SHA1 b86a882769b62b05ec6f55deb0d15b35a21d12c0 t/lib/MyApp/Controller/Root.pm
+SHA1 ea337409fe2dbceb2eec10bd3d279a9222ad45d8 t/locale/de/LC_MESSAGES/default.mo
+SHA1 e0b4528eb08ddca6f68d39495eabb3818d314d0c t/locale/de/LC_MESSAGES/default.po
+SHA1 9a0c4ec392bd326ab3c350592fb77f8384a7b924 t/test.xml
 -----BEGIN PGP SIGNATURE-----
-Version: GnuPG v1.4.6 (GNU/Linux)
+Version: GnuPG v1.4.10 (GNU/Linux)
 
-iQEcBAEBAgAGBQJKSj5KAAoJEK492j4Im1BpWoMIAIqleNTa3QrBmc7ujkOBfpjg
-yFv8H/3bT/HSfYTxXC9HkeO0vbEa7ez4e65DegmO78yrwHFZ1ZmV91r0sRaBVQdk
-tGzvRwjMEOEL2asGHHmbXu2MxTg+Lloy0YCJiLmxEgmXmLVsP7P1qOzzWCOP7r78
-0J3KSKDw6QBoDqdAlDJA9LV1nqyyl9JD7RGTto3fZrNdKSRSijTNW7eXmLXuvFO5
-9co7UDeCkZykFPfKMLLm6MW5gCd8E+Y6NWvSIXt45VaiHmPB5h4TN8cgmyZ7CBIR
-WY+83U7spiaBtOqsYD8lBnne2L3G3Jq5elqrI2+uZxMSL6rWA8s+6tyWUNkyiJE=
-=zxj2
+iQEcBAEBAgAGBQJPcvylAAoJEK492j4Im1BpHbMH/i+wQs2dheGufn65BCKdrK04
+LZWacVHqoEjsdGpD3uWso0NbP6qZd1DHHSXP4Ive0Qg/2tUXQ84AlA/J/8tHaL7S
+/e8uFNfBEL7UttkuUlP5OqzgMZZPF7R6pbCZNPu+HGJPymEQEMjPhYCy6+x09vFN
+AguLhg5cFzQQJnse1Cavkld+xuDzD8+YMvehERuF9+8Vym4j74CvJE1FmoFrLVQ4
+8FCalgZXssv/2JkwxvNFr6CULnBBlUVDNCNAJn1fHFsa7DMnE1SE//uym1RKO29M
+yzIRf53gvsyUHtC7V1HJc7kBZoAnFmQGEILibsPt1wx96r7zIdKENdHPbOqRMfM=
+=9oLu
 -----END PGP SIGNATURE-----

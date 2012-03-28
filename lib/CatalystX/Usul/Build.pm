@@ -1,95 +1,267 @@
-# @(#)$Id: Build.pm 624 2009-06-30 16:32:23Z pjf $
+# @(#)$Id: Build.pm 1092 2011-12-16 20:38:17Z pjf $
 
 package CatalystX::Usul::Build;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 624 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1092 $ =~ /\d+/gmx );
 use parent qw(Module::Build);
+use lib;
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(class2appdir say);
 use CatalystX::Usul::Programs;
-use CatalystX::Usul::Schema;
-use Class::C3;
+use CatalystX::Usul::Time;
 use Config;
-use CPAN        ();
-use English     qw(-no_match_vars);
-use File::Copy  qw(copy move);
-use File::Find  qw(find);
-use File::Path  qw(make_path);
-use SVN::Class  ();
-use XML::Simple ();
+use TryCatch;
+use File::Spec;
+use MRO::Compat;
+use Pod::Select;
+use Perl::Version;
+use Module::CoreList;
+use Module::Metadata;
+use Pod::Eventual::Simple;
+use English         qw(-no_match_vars);
+use File::Copy      qw(copy);
+use File::Find      qw(find);
+use IO::Interactive qw(is_interactive);
+use Scalar::Util    qw(blessed);
 
 if ($ENV{AUTOMATED_TESTING}) {
    # Some CPAN testers set these. Breaks dependencies
-   $ENV{PERL_TEST_CRITIC} = 0; $ENV{PERL_TEST_POD} = 0;
-   $ENV{TEST_CRITIC     } = 0; $ENV{TEST_POD     } = 0;
+   $ENV{PERL_TEST_CRITIC} = FALSE; $ENV{PERL_TEST_POD} = FALSE;
+   $ENV{TEST_CRITIC     } = FALSE; $ENV{TEST_POD     } = FALSE;
 }
 
-my $ACTIONS  = [ qw(create_dirs create_files copy_files link_files
-                    create_schema create_ugrps set_owner
-                    set_permissions make_default restart_apache) ];
-my $ARRAYS   = [ qw(copy_files create_dirs
-                    create_files credentials link_files run_cmds) ];
-my $ATTRS    = [ qw(style new_prefix ver phase create_ugrps
-                    apache_user setuid_root create_schema credentials
-                    run_cmd make_default restart_apache built ask) ];
-my $CFG_FILE = q(build.xml);
-my $PHASE    = 2;
-my $NUL      = q();
+my %CONFIG =
+   ( actions       => [ qw(create_dirs create_files copy_files link_files
+                           edit_files) ],
+     arrays        => [ qw(actions arrays attrs copy_files create_dirs
+                           create_files credentials link_files
+                           post_install_cmds) ],
+     attrs         => [ qw(path_prefix ver phase
+                           install post_install built) ],
+     changes_file  => q(Changes),
+     change_token  => q({{ $NEXT }}),
+     cpan_authors  => q(http://search.cpan.org/CPAN/authors/id),
+     cpan_dists    => q(http://search.cpan.org/dist),
+     config_attrs  => { storage_attributes => { root_name => q(config) } },
+     config_file   => [ qw(var etc build.xml) ],
+     create_ugrps  => TRUE,
+     edit_files    => TRUE,
+     install       => TRUE,
+     line_format   => q(%-9s %s),
+     local_lib     => q(local),
+     manifest_file => q(MANIFEST),
+     paragraph     => { cl => TRUE, fill => TRUE, nl => TRUE },
+     path_prefix   => [ NUL, qw(opt) ],
+     phase         => 1,
+     pwidth        => 50,
+     time_format   => q(%Y-%m-%d %T %Z), );
 
 # Around these M::B actions
 
-sub ACTION_build {
-   my $self     = shift;
-   my $cli      = $self->cli;
-   my $cfg_path = $cli->catfile( $self->base_dir, $CFG_FILE );
-   my $cfg      = $self->_get_config( $cfg_path );
-   my $ask      = $cfg->{ask} = exists $cli->args->{a} || $cfg->{ask};
+sub ACTION_distmeta {
+   my $self = shift;
 
-   return $self->next::method() if ($cfg->{built});
+   try {
+      # Optionally create a README.pod file
+      $self->notes->{create_readme_pod} and podselect( {
+         -output => q(README.pod) }, $self->dist_version_from );
 
-   chmod oct q(0640), $cfg_path; $cli->pwidth( $cfg->{pwidth} );
-
-   # Update the config by looping through the questions
-   for my $attr (@{ $self->config_attributes }) {
-      my $method = q(get_).$attr;
-
-      $cfg->{ $attr } = $self->$method( $cfg );
+      $self->_update_changelog( $self->_get_config, $self->_dist_version );
+      $self->next::method();
    }
+   catch ($e) { $self->cli->fatal( $e ) }
 
-   # Save the updated config for the install action to use
-   $self->_set_config( $cfg_path, $cfg );
-
-   $cli->anykey() if ($ask);
-
-   return $self->next::method();
+   return;
 }
 
 sub ACTION_install {
-   my $self     = shift;
-   my $cli      = $self->cli;
-   my $cfg_path = $cli->catfile( $self->base_dir, $CFG_FILE );
-   my $cfg      = $self->_get_config( $cfg_path );
-   my $base     = $cfg->{base} = $self->_set_base( $cfg );
-
-   $cli->info( "Base path $base" );
-   $self->next::method();
-
-   # Call each of the defined actions
-   $self->$_( $cfg ) for (grep { $cfg->{ $_ } } @{ $self->actions });
-
-   return $cfg;
-}
-
-# New M::B action
-
-sub ACTION_installdeps {
-   # Install all the dependent modules
    my $self = shift;
 
-   for my $depend (grep { $_ ne q(perl) } keys %{ $self->requires }) {
-      CPAN::Shell->install( $depend );
+   try {
+      my $cfg = $self->_ask_questions( $self->_get_config );
+
+      $self->_set_install_paths( $cfg );
+      $cfg->{install} and $self->next::method();
+
+      # Call each of the defined installation actions
+      $self->$_( $cfg ) for (grep { $cfg->{ $_ } } @{ $self->actions });
+
+      $self->_log_info( 'Installation complete' );
+      $self->_post_install( $cfg );
    }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+# New M::B actions
+
+sub ACTION_change_version {
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(manifest) );
+      $self->depends_on( q(release)  );
+      $self->_change_version( $self->_get_config );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_install_local_cpanm {
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(install_local_lib) );
+      $self->_install_local_cpanm( $self->_get_local_config );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_install_local_deps {
+   my $self = shift;
+
+   try {
+      my $cfg = $self->_get_local_config;
+
+      $ENV{DEVEL_COVER_NO_COVERAGE} = TRUE;     # Devel::Cover
+      $ENV{SITEPREFIX} = $cfg->{perlbrew_root}; # XML::DTD
+
+      $self->depends_on( q(install_local_cpanm) );
+      $self->_install_local_deps( $cfg );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_install_local_lib {
+   my $self = shift;
+
+   try {
+      my $cfg = $self->_get_local_config;
+
+      $self->_install_local_lib( $cfg );
+      $self->_import_local_env ( $cfg );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_install_local_perl {
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(install_local_perlbrew) );
+      $self->_install_local_perl( $self->_get_local_config );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_install_local_perlbrew {
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(install_local_lib) );
+      $self->_install_local_perlbrew( $self->_get_local_config );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_local_archive {
+   my $self = shift;
+
+   try {
+      my $dir = $self->_get_config->{local_lib};
+
+      $self->make_tarball( $dir, $self->_get_archive_names( $dir )->[ 0 ] );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_prereq_diff {
+   my $self = shift;
+
+   try        { $self->_prereq_diff( $self->_get_config ) }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_release {
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(distmeta) );
+      $self->_commit_release( 'release '.$self->_dist_version ) }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_restore_local_archive {
+   my $self = shift;
+
+   try {
+      my $dir = $self->_get_config->{local_lib};
+
+      $self->_extract_tarball( $self->_get_archive_names( $dir ) );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_standalone {
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(install_local_deps) );
+      $self->depends_on( q(manifest) );
+      $self->depends_on( q(dist) );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_uninstall {
+   my $self = shift;
+
+   try {
+      my $cfg = $self->_get_config;
+
+      $self->_set_install_paths( $cfg );
+      $self->_uninstall( $cfg );
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
+
+   return;
+}
+
+sub ACTION_upload {
+   # Upload the distribution to CPAN
+   my $self = shift;
+
+   try {
+      $self->depends_on( q(release) );
+      $self->depends_on( q(dist) );
+      $self->_cpan_upload;
+   }
+   catch ($e) { $self->cli->fatal( $e ) }
 
    return;
 }
@@ -100,8 +272,8 @@ sub actions {
    # Accessor/mutator for the list of defined actions
    my ($self, $actions) = @_;
 
-   $self->{_actions} = $actions if     (defined $actions);
-   $self->{_actions} = $ACTIONS unless (defined $self->{_actions});
+   defined $actions and $self->{_actions} = $actions;
+   defined $self->{_actions} or $self->{_actions} = $CONFIG{actions};
 
    return $self->{_actions};
 }
@@ -110,64 +282,60 @@ sub cli {
    # Self initialising accessor for the command line interface object
    my $self = shift;
 
-   unless ($self->{_command_line_interface}) {
-      $self->{_command_line_interface} = CatalystX::Usul::Programs->new
-         ( { appclass => $self->module_name, arglist => q(a ask>a), n => 1 } );
-   }
-
-   return $self->{_command_line_interface};
+   return $self->{cli} ||= CatalystX::Usul::Programs->new
+      ( { appclass => $self->module_name, n => TRUE } );
 }
 
 sub config_attributes {
    # Accessor/mutator for the list of defined config attributes
    my ($self, $attrs) = @_;
 
-   $self->{_attributes} = $attrs if     (defined $attrs);
-   $self->{_attributes} = $ATTRS unless (defined $self->{_attributes});
+   defined $attrs and $self->{_attributes} = $attrs;
+   defined $self->{_attributes} or $self->{_attributes} = $CONFIG{attrs};
 
    return $self->{_attributes};
 }
 
-sub post_install {
-   my ($self, $cfg) = @_; my $cli = $self->cli;
+sub dispatch {
+   # Now we can have M::B plugins
+   my $self = shift; $self->_setup_plugins; return $self->next::method( @_ );
+}
 
-   my $gid  = $cfg->{gid}; my $uid = $cfg->{uid};
+sub dist_description {
+   # More meta data. Requires patching M::B::PodParser
+   return shift->_pod_parse( q(description) );
+}
 
-   my $bind = $self->install_destination( q(bin) );
+sub make_tarball {
+   # I want my tarballs in the parent of the project directory
+   my ($self, $dir, $archive) = @_; $archive ||= $dir;
 
-   $cli->info( 'The following commands may take a *long* time to complete' );
+   return $self->next::method( $dir, $self->_archive_file( $archive ) );
+}
 
-   for my $cmd (@{ $cfg->{run_cmds} || [] }) {
-      my $prog = (split q( ), $cmd)[0];
+sub patch_file {
+   # Will apply a patch to a file only once
+   my ($self, $path, $patch) = @_; my $cli = $self->cli;
 
-      $cmd = $cli->catdir( $bind, $cmd ) if (!$cli->io( $prog )->is_absolute);
-      $cmd =~ s{ \[% \s+ uid \s+ %\] }{$uid}gmx;
-      $cmd =~ s{ \[% \s+ gid \s+ %\] }{$gid}gmx;
+   (not $path->is_file or -f $path.q(.orig)) and return;
 
-      if ($cfg->{run_cmd}) {
-         $cli->info( "Running $cmd" );
-         $cli->info( $cli->run_cmd( $cmd )->out );
-      }
-      else {
-         # Don't run custom commands, print them out instead
-         $cli->info( "Would run $cmd" );
-      }
-   }
+   $self->_log_info( "Patching ${path}" ); $path->copy( $path.q(.orig) );
 
+   my $cmd = [ qw(patch -p0), $path->pathname, $patch->pathname ];
+
+   $self->_log_info( $cli->run_cmd( $cmd, { err => q(out) } )->out );
    return;
 }
 
 sub process_files {
    # Find and copy files and directories from source tree to destination tree
-   my ($self, $src, $dest) = @_;
-
-   return unless ($src); $dest ||= q(blib);
+   my ($self, $src, $dest) = @_; $src or return; $dest ||= q(blib);
 
    if    (-f $src) { $self->_copy_file( $src, $dest ) }
-   elsif (-d $src) {
+   elsif (-d _) {
       my $prefix = $self->base_dir;
 
-      find( { no_chdir => 1, wanted => sub {
+      find( { no_chdir => TRUE, wanted => sub {
          (my $path = $File::Find::name) =~ s{ \A $prefix }{}mx;
          return $self->_copy_file( $path, $dest );
       }, }, $src );
@@ -176,255 +344,101 @@ sub process_files {
    return;
 }
 
-sub replace {
-   # Edit a file and replace one string with another
-   my ($self, $this, $that, $path) = @_; my $cli = $self->cli;
+sub process_local_files {
+   # Will copy the local lib into the blib
+   my $self = shift; return $self->process_files( q(local) );
+}
 
-   $cli->fatal( "Not found $path" ) unless (-s $path);
+sub public_repository {
+   # Accessor for the public VCS repository information
+   my $class = shift; my $repo = $class->repository or return;
 
-   my $wtr = $cli->io( $path )->atomic;
-
-   for ($cli->io( $path )->getlines) {
-      s{ $this }{$that}gmx; $wtr->print( $_ );
-   }
-
-   $wtr->close;
-   return;
+   return $repo !~ m{ \A file: }mx ? $repo : undef;
 }
 
 sub repository {
-   # Accessor for the SVN repository information
-   my $class = shift; my $file = SVN::Class->svn_file( q(.svn) );
-
-   return unless ($file); my $info = $file->info;
-
-   return $info && $info->root !~ m{ \A file: }mx ? $info->root : undef;
+   # Accessor for the VCS repository
+   my $vcs = shift->_vcs or return; return $vcs->repository;
 }
 
 sub skip_pattern {
    # Accessor/mutator for the regular expression of paths not to process
    my ($self, $re) = @_;
 
-   $self->{_skip_pattern} = $re if (defined $re);
+   defined $re and $self->{_skip_pattern} = $re;
 
    return $self->{_skip_pattern};
 }
 
 # Questions
 
-sub get_apache_user {
-   my ($self, $cfg) = @_; my $user = $cfg->{apache_user} || q(www-data);
+sub q_built {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   if ($cfg->{ask} and $cfg->{create_ugrps}) {
-      my $cli = $self->cli; my $text;
+   my $prefix = $cfg->{path_prefix} or $cli->throw( 'No path_prefix' );
 
-      $text  = 'Which user does the Apache web server run as? This user ';
-      $text .= 'will be added to the application group so that it can ';
-      $text .= 'access the application\'s files';
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $user  = $cli->get_line( 'Web server user', $user, 1, 0 );
-   }
-
-   return $user;
+   $cfg->{base} = $cli->catdir( $prefix, class2appdir $self->module_name,
+                                q(v).$cfg->{ver}.q(p).$cfg->{phase} );
+   return TRUE;
 }
 
-sub get_ask {
-   my ($self, $cfg) = @_;
-
-   return 0 unless ($cfg->{ask});
-
-   return $self->cli->yorn( 'Ask questions in future', 0, 1, 0 );
-}
-
-sub get_built {
-   return 1;
-}
-
-sub get_create_schema {
-   my ($self, $cfg) = @_; my $create = $cfg->{create_schema} || 0;
-
-   if ($cfg->{ask}) {
-      my $cli = $self->cli; my $text;
-
-      $text   = 'Schema creation requires a database, id and password';
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $create = $cli->yorn( 'Create database schema', $create, 1, 0 );
-   }
-
-   return $create;
-}
-
-sub get_create_ugrps {
-   my ($self, $cfg) = @_; my $create = $cfg->{create_ugrps} || 0;
-
-   if ($cfg->{ask}) {
-      my $cli = $self->cli; my $text;
-
-      $text   = 'Use groupadd, useradd, and usermod to create the user ';
-      $text  .= $cfg->{owner}.' and the groups '.$cfg->{group};
-      $text  .= ' and '.$cfg->{admin_role};
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $create = $cli->yorn( 'Create groups and user', $create, 1, 0 );
-   }
-
-   return $create;
-}
-
-sub get_credentials {
-   my ($self, $cfg) = @_; my $credentials = $cfg->{credentials} || {};
-
-   if ($cfg->{ask} && $cfg->{create_schema}) {
-      my $cli     = $self->cli;
-      my $dir     = $cli->catdir ( $self->base_dir, qw(var etc) );
-      my $name    = $self->notes ( q(dbname) );
-      my $path    = $cli->catfile( $dir, $name.q(.xml) );
-      my ($dbcfg) = $self->_get_connect_info( $path );
-      my $prompts = { name     => 'Enter db name',
-                      driver   => 'Enter DBD driver',
-                      host     => 'Enter db host',
-                      port     => 'Enter db port',
-                      user     => 'Enter db user',
-                      password => 'Enter db password' };
-      my $defs    = { name     => $name,
-                      driver   => q(_field),
-                      host     => q(localhost),
-                      port     => q(_field),
-                      user     => q(_field),
-                      password => $NUL };
-      my $value;
-
-      for my $fld (qw(name driver host port user password)) {
-         $value = $defs->{ $fld } eq q(_field) ?
-                  $dbcfg->{credentials}->{ $name }->{ $fld } : $defs->{ $fld };
-         $value = $cli->get_line( $prompts->{ $fld }, $value, 1, 0, 0,
-                                   $fld eq q(password) ? 1 : 0 );
-
-         if ($fld eq q(password)) {
-            my $args = { seed => $cfg->{secret} || $cfg->{prefix} };
-
-            $path    = $cli->catfile( $dir, $cfg->{prefix}.q(.txt) );
-            $args->{data} = $cli->io( $path )->all if (-f $path);
-            $value   = CatalystX::Usul::Schema->encrypt( $args, $value );
-            $value   = q(encrypt=).$value if ($value);
-         }
-
-         $credentials->{ $name }->{ $fld } = $value;
-      }
-   }
-
-   return $credentials;
-}
-
-sub get_make_default {
-   my ($self, $cfg) = @_; my $make_default = $cfg->{make_default} || 0;
-
-   if ($cfg->{ask}) {
-      my $text = 'Make this the default version';
-
-      $make_default = $self->cli->yorn( $text, $make_default, 1, 0 );
-   }
-
-   return $make_default;
-}
-
-sub get_new_prefix {
-   my ($self, $cfg) = @_; my $style = $cfg->{style};
-
-   my $prefix = $self->notes( q(prefix) ) || q(/opt);
-
-   if ($cfg->{ask} and $style eq q(normal)) {
-      my $cli = $self->cli; my $text;
-
-      $text   = 'Application name is automatically appended to the prefix';
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $prefix = $cli->get_line( 'Enter install path prefix', $prefix, 1, 0 );
-   }
-
-   return $prefix;
-}
-
-sub get_phase {
+sub q_install {
    my ($self, $cfg) = @_; my $cli = $self->cli; my $text;
 
-   my $phase = $cfg->{phase} || $PHASE;
+   my $install = $cfg->{install} || TRUE;
 
-   if ($cfg->{ask}) {
-      $text  = 'Phase number determines at run time the purpose of the ';
-      $text .= 'application instance, e.g. live(1), test(2), development(3)';
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $phase = $cli->get_line( 'Enter phase number', $phase, 1, 0 );
-   }
+   $text  = 'Running Module::Build install may require superuser privilege ';
+   $text .= 'to create directories. Depends on the path prefix';
 
-   unless ($phase =~ m{ \A \d+ \z }mx) {
-      $cli->fatal( "Bad phase value (not an integer) $phase" );
-   }
+   $cli->output( $text, $cfg->{paragraph} );
+
+   return $cli->yorn( 'Run Module::Build install', $install, TRUE, 0 );
+}
+
+sub q_path_prefix {
+   my ($self, $cfg) = @_; my $cli = $self->cli; my $text;
+
+   my $prefix = $cli->catdir( @{ $cfg->{path_prefix} || [] } ) || NUL;
+
+   $text  = 'Where in the filesystem should the application install to. ';
+   $text .= 'Application name is automatically appended to the prefix';
+
+   $cli->output( $text, $cfg->{paragraph} );
+
+   return $cli->get_line( 'Enter install path prefix', $prefix, TRUE, 0 );
+}
+
+sub q_phase {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   my $phase = $cfg->{phase} || PHASE; my $text;
+
+   $text  = 'Phase number determines at run time the purpose of the ';
+   $text .= 'application instance, e.g. live(1), test(2), development(3)';
+   $cli->output( $text, $cfg->{paragraph} );
+   $phase = $cli->get_line( 'Enter phase number', $phase, TRUE, 0 );
+   $phase =~ m{ \A \d+ \z }mx
+      or $cli->throw( "Phase value $phase bad (not an integer)" );
 
    return $phase;
 }
 
-sub get_restart_apache {
-   my ($self, $cfg) = @_; my $restart = $cfg->{restart_apache} || 0;
+sub q_post_install {
+   my ($self, $cfg) = @_; my $cli = $self->cli; my $text;
 
-   if ($cfg->{ask}) {
-      $restart = $self->cli->yorn( 'Restart web server', $restart, 1, 0 );
-   }
+   my $run = defined $cfg->{post_install} ? $cfg->{post_install} : TRUE;
 
-   return $restart;
+   $text  = 'Execute post installation commands. These may take ';
+   $text .= 'several minutes to complete';
+   $cli->output( $text, $cfg->{paragraph} );
+
+   return $cli->yorn( 'Post install commands', $run, TRUE, 0 );
 }
 
-sub get_run_cmd {
-   my ($self, $cfg) = @_; my $run_cmd = $cfg->{run_cmd} || 0;
+sub q_ver {
+   my $self = shift; (my $ver = $self->dist_version) =~ s{ \A v }{}mx;
 
-   if ($cfg->{ask}) {
-      my $cli = $self->cli; my $text;
-
-      $text    = 'Execute post installation commands. These may take ';
-      $text   .= 'several minutes to complete';
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $run_cmd = $cli->yorn( 'Post install commands', $run_cmd, 1, 0 );
-   }
-
-   return $run_cmd;
-}
-
-sub get_setuid_root {
-   my ($self, $cfg) = @_; my $setuid = $cfg->{setuid_root} || 0;
-
-   if ($cfg->{ask}) {
-      my $cli = $self->cli; my $text;
-
-      $text   = 'Enable wrapper which allows limited access to some root ';
-      $text  .= 'only functions like password checking and user management. ';
-      $text  .= 'Not necessary unless the Unix authentication store is used';
-      $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-      $setuid = $cli->yorn( 'Enable suid root', $setuid, 1, 0 );
-   }
-
-   return $setuid;
-}
-
-sub get_style {
-   my ($self, $cfg) = @_; my $style = $cfg->{style} || q(normal);
-
-   return $style unless ($cfg->{ask});
-
-   my $cli = $self->cli; my $text;
-
-   $text  = 'The application has two modes if installation. In normal ';
-   $text .= 'mode it installs all components to a specifed path. In ';
-   $text .= 'perl mode modules are install to the site lib, ';
-   $text .= 'executables to the site bin and the rest to a subdirectory ';
-   $text .= 'of /var. Installation defaults to normal mode since it is ';
-   $text .= 'easier to maintain';
-   $cli->output( $text, { cl => 1, fill => 1, nl => 1 } );
-
-   return $cli->get_line( 'Enter the install mode', $style, 1, 0 );
-}
-
-sub get_ver {
-   my $self = shift;
-
-   my ($major, $minor) = split m{ \. }mx, $self->dist_version;
+   my ($major, $minor) = split m{ \. }mx, $ver;
 
    return $major.q(.).$minor;
 }
@@ -432,18 +446,16 @@ sub get_ver {
 # Actions
 
 sub copy_files {
-   # Copy some files
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
+   # Copy some files without overwriting
+   my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   for my $ref (@{ $cfg->{copy_files} }) {
-      my $from = $self->_abs_path( $base, $ref->{from} );
-      my $path = $self->_abs_path( $base, $ref->{to  } );
+   for my $pair (@{ $cfg->{copy_files} }) {
+      my $from = $cli->abs_path( $self->base_dir, $pair->{from} );
+      my $to   = $cli->abs_path( $self->_get_dest_base( $cfg ), $pair->{to} );
 
-      if (-f $from && ! -f $path) {
-         $cli->info( "Copying $from to $path" );
-         copy( $from, $path );
-         chmod oct q(0644), $path;
-      }
+      ($from->is_file and not -e $to->pathname) or next;
+      $self->_log_info( "Copying ${from} to ${to}" );
+      $from->copy( $to )->chmod( 0640 );
    }
 
    return;
@@ -451,15 +463,13 @@ sub copy_files {
 
 sub create_dirs {
    # Create some directories that don't ship with the distro
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
+   my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   for my $dir (map { $self->_abs_path( $base, $_ ) }
-                @{ $cfg->{create_dirs} }) {
-      if (-d $dir) { $cli->info( "Exists $dir" ) }
-      else {
-         $cli->info( "Creating $dir" );
-         make_path( $dir, { mode => oct q(02750) } );
-      }
+   my $base = $self->_get_dest_base( $cfg );
+
+   for my $io (map { $cli->abs_path( $base, $_ ) } @{ $cfg->{create_dirs} }) {
+      if ($io->is_dir) { $self->_log_info( "Directory ${io} exists" ) }
+      else { $self->_log_info( "Creating ${io}" ); $io->mkpath( oct q(02750) ) }
    }
 
    return;
@@ -467,164 +477,49 @@ sub create_dirs {
 
 sub create_files {
    # Create some empty log files
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
-
-   for my $path (map { $self->_abs_path( $base, $_ ) }
-                 @{ $cfg->{create_files} }) {
-      if (! -f $path) {
-         $cli->info( "Creating $path" ); $cli->io( $path )->touch;
-      }
-   }
-
-   return;
-}
-
-sub create_schema {
-   # Create databases and edit credentials
    my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   # Edit the XML config file that contains the database connection info
-   $self->_edit_credentials( $cfg, $self->notes( q(dbname) ) );
+   my $base = $self->_get_dest_base( $cfg );
 
-   my $bind = $self->install_destination( q(bin) );
-   my $cmd  = $cli->catfile( $bind, $cfg->{prefix}.q(_schema) );
+   for my $io (map { $cli->abs_path( $base, $_ ) } @{ $cfg->{create_files} }){
+      unless ($io->is_file) { $self->_log_info( "Creating ${io}" ); $io->touch }
+   }
 
-   # Create the database if we can. Will do nothing if we can't
-   $cli->info( $cli->run_cmd( $cmd.q( -n -c create_database) )->out );
-
-   # Call DBIx::Class::deploy to create the
-   # schema and populate it with static data
-   $cli->info( 'Deploying schema and populating database' );
-   $cli->info( $cli->run_cmd( $cmd.q( -n -c deploy_and_populate) )->out );
    return;
 }
 
-sub create_ugrps {
-   # Create the two groups used by this application
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
+sub edit_files {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   my $cmd = q(/usr/sbin/groupadd); my $text;
+   # Fix hard coded path in suid program
+   my $io   = $cli->io( [ $self->install_destination( q(bin) ),
+                          $cli->prefix.q(_admin) ] );
+   my $that = qr( \A use \s+ lib \s+ .* \z )msx;
+   my $this = 'use lib q('.$cli->catdir( $cfg->{base}, q(lib) ).");\n";
 
-   if (-x $cmd) {
-      # Create the application group
-      for my $grp ($cfg->{group}, $cfg->{admin_role}) {
-         unless (getgrnam $grp ) {
-            $cli->info( "Creating group $grp" );
-            $cli->run_cmd( $cmd.q( ).$grp );
-         }
-      }
-   }
+   $io->is_file and $io->substitute( $that, $this )->chmod( 0555 );
 
-   $cmd = q(/usr/sbin/usermod);
+   # Pointer to the application directory in /etc/default/<app dirname>
+   $io   = $cli->io( [ NUL, qw(etc default),
+                       class2appdir $self->module_name ] );
+   $that = qr( \A APPLDIR= .* \z )msx;
+   $this = q(APPLDIR=).$cfg->{base}."\n";
 
-   if (-x $cmd and $cfg->{apache_user}) {
-      # Add the Apache user to the application group
-      $cmd .= ' -a -G'.$cfg->{group}.q( ).$cfg->{apache_user};
-      $cli->run_cmd( $cmd );
-   }
-
-   $cmd = q(/usr/sbin/useradd);
-
-   if (-x $cmd and not getpwnam $cfg->{owner}) {
-      # Create the user to own the files and support the application
-      $cli->info( 'Creating user '.$cfg->{owner} );
-      ($text = ucfirst $self->module_name) =~ s{ :: }{ }gmx;
-      $cmd .= ' -c "'.$text.' Support" -d ';
-      $cmd .= $cli->dirname( $base ).' -g '.$cfg->{group}.' -G ';
-      $cmd .= $cfg->{admin_role}.' -s ';
-      $cmd .= $cfg->{shell}.q( ).$cfg->{owner};
-      $cli->run_cmd( $cmd );
-   }
-
+   $io->is_file and $io->substitute( $that, $this )->chmod( 0644 );
    return;
 }
 
 sub link_files {
    # Link some files
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
+   my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   for my $ref (@{ $cfg->{link_files} }) {
-      my $from = $self->_abs_path( $base, $ref->{from} ) || $NUL;
-      my $path = $self->_abs_path( $base, $ref->{to  } ) || $NUL;
+   my $base = $self->_get_dest_base( $cfg ); my $msg;
 
-      if ($from and $path) {
-         if (-e $from) {
-            unlink $path if (-l $path);
+   for my $link (@{ $cfg->{link_files} }) {
+      try        { $msg = $self->symlink( $base, $link->{from}, $link->{to} ) }
+      catch ($e) { $msg = NUL.$e }
 
-            if (! -e $path) {
-               $cli->info( "Symlinking $from to $path" );
-               symlink $from, $path;
-            }
-            else { $cli->info( "Already exists $path" ) }
-         }
-         else { $cli->info( "Does not exist $from" ) }
-      }
-      else { $cli->info( "Link from $from or to $path undefined" ) }
-   }
-
-   return;
-}
-
-sub make_default {
-   # Create the default version symlink
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
-
-   chdir $cli->dirname( $base );
-   unlink q(default) if (-e q(default));
-   symlink $cli->basename( $base ), q(default);
-   return;
-}
-
-sub restart_apache {
-   # Bump start the web server
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
-
-   if ($cfg->{apachectl} && -x $cfg->{apachectl}) {
-      $cli->info( 'Running '.$cfg->{apachectl}.' restart' );
-      $cli->run_cmd( $cfg->{apachectl}.' restart' );
-   }
-
-   return;
-}
-
-sub set_owner {
-   # Now we have created everything and have an owner and group
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
-
-   my $gid = $cfg->{gid} = getgrnam( $cfg->{group} ) || 0;
-   my $uid = $cfg->{uid} = getpwnam( $cfg->{owner} ) || 0;
-   my $text;
-
-   $text  = 'Setting owner '.$cfg->{owner}."($uid) and group ";
-   $text .= $cfg->{group}."($gid)";
-   $cli->info( $text );
-
-   # Set ownership
-   chown $uid, $gid, $cli->dirname( $base );
-   find( sub { chown $uid, $gid, $_ }, $base );
-   chown $uid, $gid, $base;
-   return;
-}
-
-sub set_permissions {
-   # Set permissions
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base = $cfg->{base};
-
-   my $pref = $cfg->{prefix};
-
-   chmod oct q(02750), $cli->dirname( $base );
-
-   find( sub { if    (-d $_)                { chmod oct q(02750), $_ }
-               elsif ($_ =~ m{ $pref _ }mx) { chmod oct q(0750),  $_ }
-               else                         { chmod oct q(0640),  $_ } },
-         $base );
-
-   if ($cfg->{create_dirs}) {
-      # Make the shared directories group writable
-      for my $dir (map { $self->_abs_path( $base, $_ ) }
-                   @{ $cfg->{create_dirs} }) {
-         chmod oct q(02770), $dir if (-d $dir);
-      }
+      $self->_log_info( $msg );
    }
 
    return;
@@ -632,152 +527,822 @@ sub set_permissions {
 
 # Private methods
 
-sub _abs_path {
-   my ($self, $base, $path) = @_; my $cli = $self->cli;
+sub _archive_dir {
+   return File::Spec->updir;
+}
 
-   unless ($cli->io( $path )->is_absolute) {
-      $path = $cli->catfile( $base, $path );
+sub _archive_file {
+   return $_[ 0 ]->cli->catfile( $_[ 0 ]->_archive_dir, $_[ 1 ] );
+}
+
+sub _ask_questions {
+   my ($self, $cfg) = @_; $cfg->{built} and return $cfg;
+
+   my $cli = $self->cli; $cli->pwidth( $cfg->{pwidth} );
+
+   # Update the config by looping through the questions
+   for my $attr (@{ $self->config_attributes }) {
+      my $method = q(q_).$attr; $cfg->{ $attr } = $self->$method( $cfg );
    }
 
-   return $path;
+   $cli->anykey;
+
+   # Save the updated config for the post install commands to use
+   my $args = { data => $cfg, path => $self->_get_config_path( $cfg ) };
+
+   $self->cli->file_dataclass_schema( $cfg->{config_attrs} )->dump( $args );
+
+   return $cfg;
+}
+
+sub _change_version {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   my $comp = $cli->get_line( 'Enter major/minor 0 or 1',  1, TRUE, 0 );
+   my $bump = $cli->get_line( 'Enter increment/decrement', 0, TRUE, 0 )
+           or return;
+   my $ver  = $self->_dist_version or return;
+   my $from = __tag_from_version( $ver );
+
+   $ver->component( $comp, $ver->component( $comp ) + $bump );
+   $comp == 0 and $ver->component( 1, 0 );
+   $self->_update_version( $from, __tag_from_version( $ver ) );
+   $self->_create_tag_release( $from );
+   $self->_update_changelog( $cfg, $ver = $self->_dist_version );
+   $self->_commit_release( 'first '.__tag_from_version( $ver ) );
+   $self->_rebuild_build;
+   return;
+}
+
+sub _commit_release {
+   my ($self, $msg) = @_; my $cli = $self->cli;
+
+   my $vcs = $self->_vcs or return;
+
+   $vcs->commit( ucfirst $msg ) and say "Committed ${msg}";
+   $vcs->error and say @{ $vcs->error };
+   return;
+}
+
+sub _consolidate {
+   my ($self, $used) = @_; my (%dists, %result);
+
+   $self->cli->ensure_class_loaded( q(CPAN) );
+
+   for my $used_key (keys %{ $used }) {
+      my ($curr_dist, $module, $prev_dist); my $try_module = $used_key;
+
+      while ($curr_dist = __dist_from_module( $try_module )
+             and (not $prev_dist
+                  or  $curr_dist->base_id eq $prev_dist->base_id)) {
+         $module = $try_module;
+         $prev_dist or $prev_dist = $curr_dist;
+         $try_module =~ m{ :: }mx or last;
+         $try_module =~ s{ :: [^:]+ \z }{}mx;
+      }
+
+      unless ($module) {
+         $result{ $used_key } = $used->{ $used_key }; next;
+      }
+
+      exists $dists{ $module } and next;
+      $dists{ $module } = $self->_version_from_module( $module );
+   }
+
+   $result{ $_ } = $dists{ $_ } for (keys %dists);
+
+   return \%result;
 }
 
 sub _copy_file {
-   my ($self, $src, $dest) = @_;
+   my ($self, $src, $dest) = @_; my $cli = $self->cli;
 
-   my $cli = $self->cli; my $pattern = $self->skip_pattern;
+   my $pattern = $self->skip_pattern;
 
-   return unless ($src && -f $src && (!$pattern || $src !~ $pattern));
+   ($src and -f $src and (not $pattern or $src !~ $pattern)) or return;
 
    # Rebase the directory path
    my $dir = $cli->catdir( $dest, $cli->dirname( $src ) );
 
    # Ensure target directory exists
-   make_path( $dir, { mode => oct q(02750) }  ) unless (-d $dir);
+   -d $dir or $cli->io( $dir )->mkpath( oct q(02750) );
 
    copy( $src, $dir );
    return;
 }
 
-sub _edit_credentials {
-   my ($self, $cfg, $dbname) = @_;
+sub _cpan_upload {
+   my $self = shift; my $cli  = $self->cli; my $args = $self->_read_pauserc;
 
-   my $cli = $self->cli; my $base = $cfg->{base};
+   $args->{subdir} = lc $self->dist_name;
+   exists $args->{dry_run} or $args->{dry_run}
+      = $cli->yorn( 'Really upload to CPAN', FALSE, TRUE, 0 );
+   $cli->ensure_class_loaded( q(CPAN::Uploader) );
+   CPAN::Uploader->upload_file( $self->dist_dir.q(.tar.gz), $args );
+   return;
+}
 
-   if ($cfg->{credentials} && $cfg->{credentials}->{ $dbname }) {
-      my $path          = $cli->catfile( $base, qw(var etc), $dbname.q(.xml) );
-      my ($dbcfg, $dtd) = $self->_get_connect_info( $path );
+sub _create_tag_release {
+   my ($self, $tag) = @_; my $cli = $self->cli; my $vcs = $self->_vcs or return;
 
-      for my $fld (qw(driver host port user password)) {
-         my $value = $cfg->{credentials}->{ $dbname }->{ $fld };
+   say "Creating tagged release v${tag}";
 
-         $value  ||= $dbcfg->{credentials}->{ $dbname }->{ $fld };
-         $dbcfg->{credentials}->{ $dbname }->{ $fld } = $value;
+   $vcs->tag( $tag ); $vcs->error and say @{ $vcs->error };
+   return;
+}
+
+sub _dependencies {
+   my ($self, $paths) = @_; my $used = {};
+
+   for my $path (@{ $paths }) {
+      my $lines = __read_non_pod_lines( $path );
+
+      for my $line (split m{ \n }mx, $lines) {
+         my $modules = __parse_depends_line( $line ); $modules->[ 0 ] or next;
+
+         for (@{ $modules }) {
+            __looks_like_version( $_ ) and $used->{perl} = $_ and next;
+
+            not exists $used->{ $_ }
+               and $used->{ $_ } = $self->_version_from_module( $_ );
+         }
       }
+   }
 
-      eval {
-         my $wtr = $cli->io( $path );
-         my $xs  = XML::Simple->new( NoAttr => 1, RootName => q(config) );
+   return $used;
+}
 
-         $wtr->println( $dtd ) if ($dtd);
-         $wtr->append ( $xs->xml_out( $dbcfg ) );
-      };
+sub _dist_version {
+   my $self = shift;
+   my $info = Module::Metadata->new_from_file( $self->dist_version_from );
 
-      $cli->fatal( $EVAL_ERROR ) if ($EVAL_ERROR);
+   return Perl::Version->new( $info->version );
+}
+
+sub _draw_line {
+    my ($self, $count) = @_; return say q(-) x ($count || 60);
+}
+
+sub _extract_tarball {
+   my ($self, $archives) = @_; my $cli = $self->cli;
+
+   for my $file (map { $self->_archive_file( $_.q(.tar.gz) ) } @{ $archives }) {
+      unless (-f $file) { $cli->info( "Archive ${file} not found\n" ) }
+      else {
+         $cli->run_cmd( [ qw(tar -xzf), $file ] );
+         $cli->info   ( "Extracted ${file}\n"   );
+         return;
+      }
    }
 
    return;
 }
 
-sub _get_arrays_from_dtd {
-   my ($self, $dtd) = @_; my $arrays = [];
+sub _filter_dependents {
+   my ($self, $cfg, $used) = @_;
 
-   for my $line (split m{ \n }mx, $dtd) {
-      if ($line =~ m{ \A <!ELEMENT \s+ (\w+) \s+ \(
-                         \s* ARRAY \s* \) \*? \s* > \z }imsx) {
-         push @{ $arrays }, $1;
-      }
-   }
+   my $perl_version = $used->{perl} || $cfg->{min_perl_ver};
+   my $core_modules = $Module::CoreList::version{ $perl_version };
+   my $provides     = $self->cli->get_meta->provides;
 
-   return $arrays;
+   return $self->_consolidate( { map   { $_ => $used->{ $_ }              }
+                                 grep  { not exists $core_modules->{ $_ } }
+                                 grep  { not exists $provides->{ $_ }     }
+                                 keys %{ $used } } );
+}
+
+sub _filter_build_requires_paths {
+   return [ grep { m{ \.t \z }mx } @{ $_[ 1 ] } ];
+}
+
+sub _filter_configure_requires_paths {
+   return [ grep { $_ eq q(Build.PL) } @{ $_[ 1 ] } ];
+}
+
+sub _filter_requires_paths {
+   return [ grep { not m{ \.t \z }mx and $_ ne q(Build.PL) } @{ $_[ 1 ] } ];
+}
+
+sub _get_archive_names {
+   my ($self, $original_dir) = @_;
+
+   my $name     = $self->dist_name;
+   my $arch     = $Config{myarchname};
+   my @archives = ( join q(-), $name, $original_dir,
+                    $self->args->{ARGV}->[ 0 ] || $self->_dist_version, $arch );
+   my $pattern  = "${name} - ${original_dir} - (.+) - ${arch}";
+   my $latest   = ( map  { $_->[ 1 ] }               # Returning filename
+                    sort { $a->[ 0 ] <=> $b->[ 0 ] } # By version object
+                    map  { __to_version_and_filename( $pattern, $_ ) }
+                    $self->cli->io    ( $self->_archive_dir      )
+                              ->filter( sub { m{ $pattern }msx } )
+                              ->all_files )[ -1 ];
+
+   $latest and push @archives, $latest;
+   return \@archives;
 }
 
 sub _get_config {
-   my ($self, $path) = @_; my $cli = $self->cli;
+   my ($self, $passed_cfg) = @_; $passed_cfg ||= {};
 
-   $cli->fatal( "Not found $path" ) unless (-f $path);
+   exists $self->{_config_cache} and return $self->{_config_cache};
 
-   my $cfg = eval {
-      XML::Simple->new( ForceArray => $ARRAYS )->xml_in( $path );
-   };
+   my $cfg  = { %CONFIG, %{ $passed_cfg }, %{ $self->notes } };
+   my $path = $self->_get_config_path( $cfg );
 
-   $cli->fatal( $EVAL_ERROR ) if ($EVAL_ERROR);
+   if (-f $path) {
+      my $attrs = { storage_attributes => { force_array => $cfg->{arrays} } };
 
-   return $cfg;
-}
-
-sub _get_connect_info {
-   my ($self, $path) = @_;
-
-   my $cli    = $self->cli;
-   my $text   = $cli->io( $path )->all;
-   my $dtd    = join "\n", grep {  m{ <! .+ > }mx } split m{ \n }mx, $text;
-      $text   = join "\n", grep { !m{ <! .+ > }mx } split m{ \n }mx, $text;
-   my $arrays = $self->_get_arrays_from_dtd( $dtd );
-   my $info   = eval {
-      XML::Simple->new( ForceArray => $arrays )->xml_in( $text );
-   };
-
-   $cli->fatal( $EVAL_ERROR ) if ($EVAL_ERROR);
-
-   return ($info, $dtd);
-}
-
-sub _set_base {
-   my ($self, $cfg) = @_; my $cli = $self->cli; my $base;
-
-   if ($cfg->{style} and $cfg->{style} eq q(perl)) {
-      $base = $cli->catdir( $NUL, q(var),
-                            $cli->class2appdir( $self->module_name ),
-                            q(v).$cfg->{ver}.q(p).$cfg->{phase} );
-      $self->install_path( var => $base );
+      $cfg = $self->cli->file_dataclass_schema( $attrs )->load( $path );
    }
-   else {
-      unless (-d $cfg->{new_prefix}) {
-         make_path( $cfg->{new_prefix}, { mode => oct q(02750) } );
+
+   return $self->{_config_cache} = $cfg;
+}
+
+sub _get_config_path {
+   my ($self, $cfg) = @_;
+
+   return $self->cli->catfile( $self->base_dir, $self->blib,
+                               @{ $cfg->{config_file} } );
+}
+
+sub _get_dest_base {
+   my ($self, $cfg) = @_;
+
+   return $self->destdir ? $self->cli->catdir( $self->destdir, $cfg->{base} )
+                         : $cfg->{base};
+}
+
+sub _get_local_config {
+   my $self = shift; my $cli = $self->cli;
+
+   $self->{_local_config_cache} and return $self->{_local_config_cache};
+
+  (my $perl_ver = $PERL_VERSION) =~ s{ \A v }{perl-}mx;
+
+   my $argv = $self->args->{ARGV}; my $cfg = $self->_get_config;
+
+   $cfg->{perl_ver     } = $argv->[ 0 ] || $perl_ver;
+   $cfg->{appldir      } = $argv->[ 1 ] || $cli->config->{appldir};
+   $cfg->{perlbrew_root} = $cli->catdir ( $cfg->{appldir}, $cfg->{local_lib} );
+   $cfg->{local_etc    } = $cli->catdir ( $cfg->{perlbrew_root}, q(etc) );
+   $cfg->{local_libperl} = $cli->catdir ( $cfg->{perlbrew_root}, qw(lib perl5));
+   $cfg->{perlbrew_bin } = $cli->catdir ( $cfg->{perlbrew_root}, q(bin) );
+   $cfg->{perlbrew_cmnd} = $cli->catfile( $cfg->{perlbrew_bin }, q(perlbrew) );
+   $cfg->{local_lib_uri} = join SEP, $cfg->{cpan_authors}, $cfg->{ll_author},
+                                     $cfg->{ll_ver_dir}.q(.tar.gz);
+
+   return $self->{_local_config_cache} ||= $cfg;
+}
+
+sub _import_local_env {
+   my ($self, $cfg) = @_;
+
+   lib->import( $cfg->{local_libperl} );
+
+   require local::lib; local::lib->import( $cfg->{perlbrew_root} );
+
+   return;
+}
+
+sub _install_local_cpanm {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   my $cmd  = q(curl -s -L http://cpanmin.us | perl - App::cpanminus -L );
+   my $path = $cli->catfile( $cfg->{perlbrew_bin}, q(cpanm) );
+
+   -f $path and return;
+
+   $self->_log_info( 'Installing local copy of App::cpanminus...' );
+   $cli->run_cmd( $cmd.$cfg->{perlbrew_root} );
+   not -f $path and $cli->throw( "Failed to install App::cpanminus to $path" );
+   return;
+}
+
+sub _install_local_deps {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   my $local_lib = $cfg->{perlbrew_root} or $cli->throw( 'Local lib not set' );
+
+   $self->_log_info( "Installing dependencies to ${local_lib}..." );
+
+   my $cmd = [ qw(cpanm -L), $local_lib, qw(--installdeps .) ];
+
+   $cli->run_cmd( $cmd, { err => q(stderr), out => q(stdout) } );
+
+   my $ref; $ref = $self->can( q(hook_local_deps) ) and $self->$ref( $cfg );
+
+   return;
+}
+
+sub _install_local_lib {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   my $dir = $cfg->{ll_ver_dir}; -d $cfg->{local_lib} and return;
+
+   chdir $cfg->{appldir};
+   $self->_log_info( 'Installing local::lib to '.$cfg->{perlbrew_root} );
+   $cli->run_cmd( q(curl -s -L ).$cfg->{local_lib_uri}.q( | tar -xzf -) );
+
+   (-d $dir and chdir $dir) or $cli->throw( "Directory ${dir} cannot access" );
+
+   my $cmd = q(perl Makefile.PL --bootstrap=).$cfg->{perlbrew_root};
+
+   $cli->run_cmd( $cmd.q( --no-manpages) );
+   $cli->run_cmd( q(make test) );
+   $cli->run_cmd( q(make install) );
+
+   chdir $cfg->{appldir}; $cli->io( $cfg->{ll_ver_dir} )->rmtree;
+   return;
+}
+
+sub _install_local_perl {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   unless (__perlbrew_mirror_is_set( $cli, $cfg )) {
+      my $cmd = "echo 'm\n".$cfg->{perl_mirror}."' | perlbrew mirror";
+
+      $self->_log_info( 'Setting perlbrew mirror' );
+      __run_perlbrew( $cli, $cfg, $cmd );
+   }
+
+   unless (__perl_version_is_installed( $cli, $cfg )) {
+      $self->_log_info( 'Installing '.$cfg->{perl_ver}.'...' );
+      __run_perlbrew( $cli, $cfg, q(perlbrew install ).$cfg->{perl_ver} );
+   }
+
+   __run_perlbrew( $cli, $cfg, q(perlbrew switch ).$cfg->{perl_ver} );
+   return;
+}
+
+sub _install_local_perlbrew {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
+
+   -f $cfg->{perlbrew_cmnd} and return;
+
+   $self->_log_info( 'Installing local perlbrew...' );
+   $cli->run_cmd ( q(cpanm -L ).$cfg->{perlbrew_root}.q( App::perlbrew) );
+   __run_perlbrew( $cli, $cfg, q(perlbrew init) );
+   $cli->io      ( [ $cfg->{local_etc}, q(kshrc) ] )
+       ->print   ( __local_kshrc_content( $cfg ) );
+
+   my $ref; $ref = $self->can( q(hook_local_perlbrew) ) and $self->$ref( $cfg );
+
+   return;
+}
+
+sub _log_info {
+   return shift->log_info( map { chomp; "${_}\n" } @{ [ @_ ] } );
+}
+
+sub _post_install {
+   my ($self, $cfg) = @_;
+
+   $cfg->{post_install} and $self->_run_bin_cmd( $cfg, q(post_install) )
+      and $self->_log_info( 'Post install complete' );
+
+   return;
+}
+
+sub _prereq_diff {
+   my ($self, $cfg) = @_;
+
+   my $field   = $self->args->{ARGV}->[ 0 ] || q(requires);
+   my $filter  = q(_filter_).$field.q(_paths);
+   my $prereqs = $self->prereq_data->{ $field };
+   my $depends = $self->_dependencies( $self->$filter( $self->_source_paths ) );
+   my $used    = $self->_filter_dependents( $cfg, $depends );
+
+   $self->_say_diffs( __compare_prereqs_with_used( $field, $prereqs, $used ) );
+   return;
+}
+
+sub _read_pauserc {
+   my $self    = shift;
+   my $cli     = $self->cli;
+   my $pauserc = $cli->catfile( $ENV{HOME} || File::Spec->curdir, q(.pause) );
+   my $args    = {};
+
+   for ($cli->io( $pauserc )->chomp->getlines) {
+      next unless ($_ and $_ !~ m{ \A \s* \# }mx);
+      my ($k, $v) = m{ \A \s* (\w+) \s+ (.+) \z }mx;
+      exists $args->{ $k } and $cli->throw( "Multiple enties for ${k}" );
+      $args->{ $k } = $v;
+   }
+
+   return $args;
+}
+
+sub _rebuild_build {
+   my $self = shift; my $cmd = [ $EXECUTABLE_NAME, q(Build.PL) ];
+
+   $self->cli->run_cmd( $cmd, { err => q(out) } );
+   return;
+}
+
+sub _run_bin_cmd {
+   my ($self, $cfg, $key) = @_; my $cli = $self->cli; my $cmd;
+
+   $cfg and ref $cfg eq HASH and $key and $cmd = $cfg->{ $key.q(_cmd) }
+         or $cli->throw( "Command ${key} not found" );
+
+   my ($prog, @args) = split SPC, $cmd;
+   my $bind = $self->install_destination( q(bin) );
+   my $path = $cli->abs_path( $bind, $prog );
+
+   -f $path or $cli->throw( "Path ${path} not found" );
+
+   $cmd = join SPC, $path, @args;
+   $self->_log_info( "Running ${cmd}" );
+   $cli->run_cmd( $cmd, { err => q(stderr), out => q(stdout) } );
+
+   my $ref; $ref = $self->can( q(hook_).$key ) and $self->$ref( $cfg );
+
+   return TRUE;
+}
+
+sub _say_diffs {
+   my ($self, $diffs) = @_; my $cli = $self->cli; $self->_draw_line;
+
+   for my $table (sort keys %{ $diffs }) {
+      say $table; $self->_draw_line;
+
+      for (sort keys %{ $diffs->{ $table } }) {
+         say "'$_' => '".$diffs->{ $table }->{ $_ }."',";
       }
 
-      $cli->fatal( 'Does not exist/cannot create '.$cfg->{new_prefix} )
-         unless (-d $cfg->{new_prefix});
-
-      $base = $cli->catdir( $cfg->{new_prefix},
-                            $cli->class2appdir( $self->module_name ),
-                            q(v).$cfg->{ver}.q(p).$cfg->{phase} );
-      $self->install_base( $base );
-      $self->install_path( bin => $cli->catdir( $base, 'bin' ) );
-      $self->install_path( lib => $cli->catdir( $base, 'lib' ) );
-      $self->install_path( var => $cli->catdir( $base, 'var' ) );
+      $self->_draw_line;
    }
 
-   return $base;
+   return;
 }
 
-sub _set_config {
-   my ($self, $path, $cfg) = @_; my $cli = $self->cli;
+sub _set_install_paths {
+   my ($self, $cfg) = @_; my $cli = $self->cli;
 
-   $cli->fatal( 'No config path'   ) unless (defined $path);
-   $cli->fatal( 'No config to set' ) unless (defined $cfg);
+   $cfg->{base} or $cli->throw( 'Config base path not set' );
 
-   eval {
-      my $xs = XML::Simple->new
-         ( NoAttr => 1, OutputFile => $path, RootName => q(config) );
+   $self->_log_info( 'Base path '.$cfg->{base} );
+   $self->install_base( $cfg->{base} );
+   $self->install_path( bin   => $cli->catdir( $cfg->{base}, q(bin)   ) );
+   $self->install_path( lib   => $cli->catdir( $cfg->{base}, q(lib)   ) );
+   $self->install_path( var   => $cli->catdir( $cfg->{base}, q(var)   ) );
+   $self->install_path( local => $cli->catdir( $cfg->{base}, q(local) ) );
+   return;
+}
 
-      $xs->xml_out( $cfg );
-   };
+sub _setup_plugins {
+   # Load CX::U::Plugin::Build::* plugins. Can haz plugins for M::B!
+   my $self = shift; my $cli = $self->cli;
 
-   $cli->fatal( $EVAL_ERROR ) if ($EVAL_ERROR);
+   exists $self->{_plugins} and return $self->{_plugins};
 
-   return $cfg;
+   my $config = { child_class  => blessed $self,
+                  search_paths => [ q(::Plugin::Build) ],
+                  %{ $cli->config->{ setup_plugins } || {} } };
+
+   return $self->{_plugins} = $cli->setup_plugins( $config );
+}
+
+sub _source_paths {
+   my $self = shift; my $cli = $self->cli;
+
+   return [ grep { m{ (?: \.pm | \.t | \.pl ) \z }imx
+                   || $cli->io( $_ )->getline
+                         =~ m{ \A \#! (?: .* ) perl (?: \s | \z ) }mx }
+            map  { s{ \s+ }{ }gmx; (split SPC, $_)[ 0 ] }
+            $cli->io( $CONFIG{manifest_file} )->chomp->getlines ];
+}
+
+sub _uninstall {
+   my ($self, $cfg) = @_;
+
+   $self->_run_bin_cmd( $cfg, q(uninstall) )
+      and $self->_log_info( 'Uninstall complete' );
+
+   return;
+}
+
+sub _update_changelog {
+   my ($self, $cfg, $ver) = @_;
+
+   my $cli  = $self->cli;
+   my $io   = $cli->io( $cfg->{changes_file} );
+   my $tok  = $cfg->{change_token};
+   my $time = time2str( $cfg->{time_format} || NUL );
+   my $line = sprintf $cfg->{line_format}, $ver->normal, $time;
+   my $tag  = q(v).__tag_from_version( $ver );
+   my $text = $io->all;
+
+   if (   $text =~ m{ ^   \Q$tag\E }mx)    {
+          $text =~ s{ ^ ( \Q$tag\E .* ) $ }{$line}mx   }
+   else { $text =~ s{   ( \Q$tok\E    )   }{$1\n\n$line}mx }
+
+   say 'Updating '.$cfg->{changes_file};
+   $io->close->print( $text );
+   return;
+}
+
+sub _update_version {
+   my ($self, $from, $to) = @_;
+
+   my $cli   = $self->cli;
+   my $prog  = $EXECUTABLE_NAME;
+   my $cmd   = "'s{ \Q${from}\E \\.%d    }{${to}.%d}gmx;";
+      $cmd  .= " s{ \Q${from}\E \\.\$Rev }{${to}.\$Rev}gmx'";
+      $cmd   = [ q(xargs), q(-i), $prog, q(-pi), q(-e), $cmd, q({}) ];
+   my $paths = [ map { "$_\n" } @{ $self->_source_paths } ];
+
+   $cli->popen( $cmd, { err => q(out), in => $paths } );
+   return;
+}
+
+sub _vcs {
+   my $self = shift; my $class = __PACKAGE__.q(::VCS); my $vcs;
+
+   my $dir  = ref $self ? $self->cli->config->{appldir} : File::Spec->curdir;
+
+   ref $self and $vcs = $self->{_vcs} and return $vcs;
+
+   $vcs = $class->new( $dir ); ref $self and $self->{_vcs} = $vcs;
+
+   return $vcs;
+}
+
+sub _version_from_module {
+   my ($self, $module) = @_; my $version;
+
+   eval "no warnings; require ${module}; \$version = ${module}->VERSION;";
+
+   return $self->cli->catch || ! $version ? undef : $version;
+}
+
+# Private subroutines
+
+sub __compare_prereqs_with_used {
+   my ($field, $prereqs, $used) = @_;
+
+   my $result     = {};
+   my $add_key    = "Would add these to the ${field} in Build.PL";
+   my $remove_key = "Would remove these from the ${field} in Build.PL";
+   my $update_key = "Would update these in the ${field} in Build.PL";
+
+   for (grep { defined $used->{ $_ } } keys %{ $used }) {
+      if (exists $prereqs->{ $_ }) {
+         my $oldver = version->new( $prereqs->{ $_ } );
+         my $newver = version->new( $used->{ $_ }    );
+
+         if ($newver != $oldver) {
+            $result->{ $update_key }->{ $_ }
+               = $prereqs->{ $_ }.q( => ).$used->{ $_ };
+         }
+      }
+      else { $result->{ $add_key }->{ $_ } = $used->{ $_ } }
+   }
+
+   for (keys %{ $prereqs }) {
+      exists $used->{ $_ }
+         or $result->{ $remove_key }->{ $_ } = $prereqs->{ $_ };
+   }
+
+   return $result;
+}
+
+sub __dist_from_module {
+   my $module = CPAN::Shell->expand( q(Module), $_[ 0 ] );
+
+   return $module ? $module->distribution : undef;
+}
+
+sub __local_kshrc_content {
+   my $cfg = shift; my $content;
+
+   $content  = '#!/usr/bin/env ksh'."\n";
+   $content .= q(export LOCAL_LIB=).$cfg->{local_libperl}."\n";
+   $content .= q(export PERLBREW_ROOT=).$cfg->{perlbrew_root}."\n";
+   $content .= q(export PERLBREW_PERL=).$cfg->{perl_ver}."\n";
+   $content .= q(export PERLBREW_BIN=).$cfg->{perlbrew_bin}."\n";
+   $content .= q(export PERLBREW_CMND=).$cfg->{perlbrew_cmnd}."\n";
+   $content .= <<'RC';
+
+perlbrew_set_path() {
+   alias -d perl 1>/dev/null
+   path_without_perlbrew=$(perl -e \
+      'print join ":", grep   { index $_, $ENV{PERLBREW_ROOT} }
+                       split m{ : }mx, $ENV{PATH};')
+   export PATH=${PERLBREW_BIN}:${path_without_perlbrew}
+}
+
+perlbrew() {
+   local rc ; export SHELL ; short_option=""
+
+   if [ $(echo ${1} | cut -c1) = '-' ]; then
+      short_option=${1} ; shift
+   fi
+
+   case "${1}" in
+   (use)
+      if [ -z "${2}" ]; then
+         print "Using ${PERLBREW_PERL} version"
+      elif [ -x ${PERLBREW_ROOT}/perls/${2}/bin/perl -o ${2} = system ]; then
+         unset PERLBREW_PERL
+         eval $(${PERLBREW_CMND} ${short_option} env ${2})
+         perlbrew_set_path
+      else
+         print "${2} is not installed" >&2 ; rc=1
+      fi
+      ;;
+
+   (switch)
+      ${PERLBREW_CMND} ${short_option} ${*} ; rc=${?}
+      test -n "$2" && perlbrew_set_path
+      ;;
+
+   (off)
+      unset PERLBREW_PERL
+      ${PERLBREW_CMND} ${short_option} off
+      perlbrew_set_path
+      ;;
+
+   (*)
+      ${PERLBREW_CMND} ${short_option} ${*} ; rc=${?}
+      ;;
+   esac
+   alias -t -r
+   return ${rc:-0}
+}
+
+eval $(perl -I${LOCAL_LIB} -Mlocal::lib=${PERLBREW_ROOT})
+
+perlbrew_set_path
+
+RC
+
+   return $content;
+}
+
+sub __looks_like_version {
+    my $ver = shift;
+
+    return defined $ver && $ver =~ m{ \A v? \d+ (?: \.[\d_]+ )? \z }mx;
+}
+
+sub __parse_depends_line {
+   my $line = shift; my $modules = [];
+
+   for my $stmt (grep   { length }
+                 map    { s{ \A \s+ }{}mx; s{ \s+ \z }{}mx; $_ }
+                 split m{ ; }mx, $line) {
+      if ($stmt =~ m{ \A (?: use | require ) \s+ }mx) {
+         my (undef, $module, $rest) = split m{ \s+ }mx, $stmt, 3;
+
+         # Skip common pragma and things that don't look like module names
+         $module =~ m{ \A (?: lib | strict | warnings ) \z }mx and next;
+         $module =~ m{ [^\.:\w] }mx and next;
+
+         push @{ $modules }, $module eq q(base) || $module eq q(parent)
+                          ? ($module, __parse_list( $rest )) : $module;
+      }
+      elsif ($stmt =~ m{ \A (?: with | extends ) \s+ (.+) }mx) {
+         push @{ $modules }, __parse_list( $1 );
+      }
+   }
+
+   return $modules;
+}
+
+sub __parse_list {
+   my $string = shift;
+
+   $string =~ s{ \A q w* [\(/] \s* }{}mx;
+   $string =~ s{ \s* [\)/] \z }{}mx;
+   $string =~ s{ [\'\"] }{}gmx;
+   $string =~ s{ , }{ }gmx;
+
+   return grep { length && !m{ [^\.:\w] }mx } split m{ \s+ }mx, $string;
+}
+
+sub __perl_version_is_installed {
+   my ($cli, $cfg) = @_; my $perl_ver = $cfg->{perl_ver};
+
+   my $installed = __run_perlbrew( $cli, $cfg, q(perlbrew list) )->out;
+
+   return (grep { m{ $perl_ver }mx } split "\n", $installed)[0] ? TRUE : FALSE;
+}
+
+sub __perlbrew_mirror_is_set {
+   my ($cli, $cfg) = @_;
+
+   return -f $cli->catfile( $cfg->{perlbrew_root}, q(Conf.pm) );
+}
+
+sub __read_non_pod_lines {
+   my $path = shift; my $p = Pod::Eventual::Simple->read_file( $path );
+
+   return join "\n", map  { $_->{content} }
+                     grep { $_->{type} eq q(nonpod) } @{ $p };
+}
+
+sub __run_perlbrew {
+   my ($cli, $cfg, $cmd) = @_;
+
+   my $path_sep = $Config::Config{path_sep};
+   my $path     = join     $path_sep,
+                  grep   { index $_, $cfg->{perlbrew_root} }
+                  split m{ $path_sep }mx, $ENV{PATH};
+
+   $ENV{PATH         } = $cfg->{perlbrew_bin }.$path_sep.$path;
+   $ENV{PERLBREW_ROOT} = $cfg->{perlbrew_root};
+   $ENV{PERLBREW_PERL} = $cfg->{perl_ver     };
+
+   return $cli->run_cmd( $cmd );
+}
+
+sub __tag_from_version {
+   my $ver = shift; return $ver->component( 0 ).q(.).$ver->component( 1 );
+}
+
+sub __to_version_and_filename {
+   my ($pattern, $io) = @_;
+
+  (my $file  = $io->filename) =~ s{ [.]tar[.]gz \z }{}msx;
+   my ($ver) = $file =~ m{ $pattern }msx;
+
+   return [ qv( $ver ), $file ];
+}
+
+# Response classes
+
+package # Hide from indexer
+   CatalystX::Usul::Build::VCS;
+
+use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
+
+use CatalystX::Usul::Constants;
+use IPC::Cmd qw(can_run);
+
+__PACKAGE__->mk_accessors( qw(type vcs) );
+
+sub new {
+   my ($self, $project_dir) = @_;
+
+   my $new = bless {}, ref $self || $self;
+
+   if (-d $new->catfile( $project_dir, q(.git) )) {
+      can_run( q(git) ) or return; # Be nice to CPAN testing
+
+      require Git::Class::Worktree;
+
+      $new->vcs( Git::Class::Worktree->new( path => $project_dir ) );
+      $new->type( q(git) );
+      return;
+   }
+
+   if (-d $new->catfile( $project_dir, q(.svn) )) {
+      can_run( q(svn) ) or return; # Be nice to CPAN testing
+
+      require SVN::Class;
+
+      $new->vcs( SVN::Class::svn_dir( $project_dir ) );
+      $new->type( q(svn) );
+   }
+
+   return $new;
+}
+
+sub commit {
+   my ($self, $msg) = @_; $self->vcs or return;
+
+   $self->type eq q(git)
+      and return $self->vcs->commit( { all => TRUE, message => $msg } );
+
+   return $self->vcs->commit( $msg );
+}
+
+sub error {
+   my $self = shift; return $self->vcs ? $self->vcs->error : 'No VCS';
+}
+
+sub repository {
+   my $self = shift; $self->vcs or return;
+
+   my $info = $self->vcs->info or return;
+
+   return $info->root;
+}
+
+sub tag {
+   my ($self, $tag) = @_; my $vtag = q(v).$tag;
+
+   $self->vcs or return;
+   $self->type eq q(git) and return $self->vcs->tag( { tag => $vtag } );
+
+   my $repo = $self->repository or return;
+   my $from = $repo.SEP.q(trunk);
+   my $to   = $repo.SEP.q(tags).SEP.$vtag;
+   my $msg  = "Tagging $vtag";
+
+   return $self->vcs->svn_run( q(copy), [ q(-m), $msg ], "$from $to" );
 }
 
 1;
@@ -788,21 +1353,21 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Build - M::B utility methods
+CatalystX::Usul::Build - M::B subclass
 
 =head1 Version
 
-0.3.$Revision: 624 $
+This document describes CatalystX::Usul::Build version 0.4.$Revision: 1092 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::Build;
-   use Class::C3;
+   use MRO::Compat;
 
    my $builder = q(CatalystX::Usul::Build);
    my $class   = $builder->subclass( class => 'Bob', code  => <<'EOB' );
 
-   sub ACTION_install {
+   sub ACTION_instal { # Spelling mistake intentional
       my $self = shift;
 
       $self->next::method();
@@ -815,38 +1380,118 @@ CatalystX::Usul::Build - M::B utility methods
 
 =head1 Description
 
-Subclasses L<Module::Build>. Ask questions during the build phase and stores
-the answers for use during the install phase. The answers to the questions
-determine where the application will be installed and which additional
-actions will take place. Should be generic enough for any web application
+Subclasses L<Module::Build>. Ask questions during the install
+phase. The answers to the questions determine where the application
+will be installed and which additional actions will take place. Should
+be generic enough for any web application
 
-=head1 Subroutines/Methods
+=head1 ACTIONS
 
 =head2 ACTION_build
 
-When called by it's subclass this method prompts the user for
-information about how this installation is to be performed. User
-responses are saved to the F<build.xml> file. The L</config_attributes>
-method returns the list of questions to ask
+Prompts the user for information about how this installation is to be
+performed. User responses are saved to the F<build.xml> file. The
+L</config_attributes> method returns the list of questions to ask
+
+=head2 ACTION_change_version
+
+=head2 _change_version
+
+Changes the C<$VERSION> strings in all of the projects files
+
+=head2 ACTION_distmeta
+
+=head2 distmeta
+
+Updates license file and changelog
 
 =head2 ACTION_install
 
-When called from it's subclass this method performs the sequence of
-actions required to install the application. Configuration options are
-read from the file F<build.xml>. The L</actions> method returns the
-list of steps required to install the application
+=head2 install
 
-=head2 ACTION_installdeps
+Optionally calls the C<ACTION_install> method in L<Module::Build>
 
-Iterates over the I<requires> attributes calling L<CPAN> each time to
-install the dependent module
+Next it performs the additional sequence of actions required to install the
+application. The L</actions> method returns the list of additional steps
+required
+
+=head2 ACTION_install_local_cpanm
+
+Install a copy of L<App::cpanminus> to the local lib
+
+=head2 ACTION_install_local_deps
+
+Install the applications dependencies to the local lib
+
+=head2 ACTION_install_local_lib
+
+Bootstrap a copy of L<local::lib> into the project directory
+
+=head2 ACTION_install_local_perl
+
+Install a version of Perl using L<perlbrew> to the local lib
+
+=head2 ACTION_install_local_perlbrew
+
+Install a copy of L<perlbrew> to the local lib
+
+=head2 ACTION_local_archive
+
+=head2 _local_archive
+
+Create a tarball (in the parent of the project directory, the one with
+F<Build.PL> in it). Contains the local lib built by the
+L</_install_local_deps> action
+
+=head2 ACTION_prereq_diff
+
+=head2 _prereq_diff
+
+Generates a report of dependencies used by the module. It is presented
+as three lists; a list of modules that you might want to add to the
+target list in C<Build.PL>, a list of modules you might want to
+remove from C<Build.PL>, and a list modules whose versions should be
+updated in C<Build.PL>. The target list defaults to I<requires> and
+can be changed to I<build_requires> or I<configure_requires> on the
+command line
+
+=head2 ACTION_release
+
+=head2 release
+
+Commits the current working copy as the next release
+
+=head2 ACTION_restore_local_archive
+
+=head2 _restore_local_archive
+
+Unpack the tarball created by L</_local_archive>
+
+=head2 ACTION_standalone
+
+Create a local lib directory, populate it with dependencies and then include
+it in the application distribution
+
+=head2 ACTION_uninstall
+
+Removes the HTTP server deployment links. Deletes the database. Deletes
+the owner id and the two groups that were created when the application
+was installed. Does not delete the application files and directories
+
+=head2 ACTION_upload
+
+=head2 upload
+
+Upload distribution to CPAN
+
+=head1 Subroutines/Methods
 
 =head2 actions
 
    $current_list_of_actions = $builder->actions( $new_list_of_actions );
 
-This accessor/mutator method defaults to the list defined in the C<$ACTIONS>
-package variable
+This accessor/mutator method defaults to the list defined in the
+C<$CONFIG{actions}> package variable
 
 =head2 cli
 
@@ -859,14 +1504,34 @@ interface object
 
    $current_list_of_attrs = $builder->config_attributes( $new_list_of_attrs );
 
-This accessor/mutator method defaults to the list defined in the C<$ATTRS>
-package variable
+This accessor/mutator method defaults to the list defined in the
+C<$CONFIG{attrs}> package variable
 
-=head2 post_install
+=head2 dispatch
 
-   $builder->post_install( $config );
+   $builder->dispatch( @_ );
 
-Executes the custom post installation commands
+Intercept the call to parent method and call L</_setup_plugins> first
+
+=head2 dist_description
+
+   $builder->dist_description;
+
+Returns the description section from the POD in the main application class
+
+=head2 make_tarball
+
+   $builder->make_tarball( $dir, $archive );
+
+Prepends C<updir> to the file name and calls
+L<make_tarball|Module::Build::Base/make_tarball>. The C<$archive>
+defaults to C<$dir>
+
+=head2 patch_file
+
+   $builder->patch_file( $path, $patch );
+
+Apply a patch to the specified file
 
 =head2 process_files
 
@@ -879,15 +1544,20 @@ source to destination, creating the destination directories as
 required. Source can be a single file or a directory. The destination
 is optional and defaults to B<blib>
 
-=head2 replace
+=head2 process_local_files
 
-   $builder->replace( $this, $that, $path );
+   $builder->process_local_files();
 
-Substitutes C<$this> string for C<$that> string in the file F<$path>
+Causes the local lib to be copied to blib during the build process
+
+=head2 public_repository
+
+Return the URI of the VCS repository for this project. Return undef
+if we are not using svn or the repository is a local file path
 
 =head2 repository
 
-Return the URI of the SVN repository for this project
+Returns the URI of the VCS repository for this project
 
 =head2 skip_pattern
 
@@ -901,88 +1571,36 @@ that match this pattern. Set to false to not have a skip list
 All question methods are passed C<$config> and return the new value
 for one of it's attributes
 
-=head2 get_apache_user
-
-Prompts for the userid of the web server process owner. This user will
-be added to the group that owns the application files and directories.
-This will allow the web server processes to read and write these files
-
-=head2 get_ask
-
-Ask if questions should be asked in future runs of the build process
-
-=head2 get_built
+=head2 q_built
 
 Always returns true. This dummy question is used to trigger the suppression
 of any further questions once the build phase is complete
 
-=head2 get_create_schema
+=head2 q_install
 
-Should a database schema be created? If yes then the database connection
-information must be entered. The database must be available at install
-time
+Should we execute the Module::Build install method. Answer no if the
+distribution tarball was unpacked into the directory where the
+application is going to be executed from, e.g. one's home directory
+for non-root installations
 
-=head2 get_create_ugrps
+=head2 q_path_prefix
 
-Create the application user and group that owns the files and directories
-in the application
+Prompt for the installation prefix. The application name and version
+directory are automatically appended. All of the application will be
+installed to this path. The default is F</opt>
 
-=head2 get_credentials
-
-Get the database connection information
-
-=head2 get_make_default
-
-When installed should this installation become the default for this
-host? Causes the symbolic link (that hides the version directory from
-the C<PATH> environment variable) to be deleted and recreated pointing
-to this installation
-
-=head2 get_new_prefix
-
-If the installation style is B<normal>, then prompt for the installation
-prefix. This default to F</opt>. The application name and version
-directory are automatically appended
-
-=head2 get_phase
+=head2 q_phase
 
 The phase number represents the reason for the installation. It is
 encoded into the name of the application home directory. At runtime
 the application will load some configuration data that is dependent
 upon this value
 
-=head2 get_restart_apache
+=head2 q_post_install
 
-When the application is mostly installed, should the web server be
-restarted?
+Prompt for permission to execute the post installation commands
 
-=head2 get_run_cmd
-
-Run the post installation commands? These may take a long time to complete
-
-=head2 get_setuid_root
-
-Enable the C<setuid> root wrapper?
-
-=head2 get_style
-
-Which installation layout? Either B<perl> or B<normal>
-
-=over 3
-
-=item B<normal>
-
-Modules, programs, and the F<var> directory tree are installed to a
-user selectable path. Defaults to F<< /opt/<appname> >>
-
-=item B<perl>
-
-Will install modules and programs in their usual L<Config> locations. The
-F<var> directory tree will be install to F<< /var/<appname> >>
-
-=back
-
-=head2 get_ver
+=head2 q_ver
 
 Dummy question returns the version part of the installation directory
 
@@ -1005,41 +1623,31 @@ C<< $config->{create_dirs} >> if they do not exist
 Create the files specified in the list
 C<< $config->{create_files} >> if they do not exist
 
-=head2 create_schema
+=head2 edit_files
 
-Creates a database then deploys and populates the schema
-
-=head2 create_ugrps
-
-Creates the user and group to own the application files
+Edit the path that points to the application install directory in
+F</etc/default/{app-name}>. Edit the same path in the F<{prefix}_admin>
+program which runs setuid root. Hence taint mode is on and it cannot aquire
+the path
 
 =head2 link_files
 
 Creates some symbolic links
 
-=head2 make_default
-
-Makes this installation the default for this server
-
-=head2 restart_apache
-
-Restarts the web server
-
-=head2 set_owner
-
-Set the ownership of the installed files and directories
-
-=head2 set_permissions
-
-Set the permissions on the installed files and directories
-
 =head1 Private Methods
 
-=head2 _abs_path
+=head2 _ask_questions
 
-   $absolute_path = $builder->_abs_path( $base, $path );
+   $config = $builder->_ask_questions( $config );
 
-Prepends F<$base> to F<$path> unless F<$path> is an absolute path
+Called from the L</ACTION_install> method. Writes the C<$config> hash
+to file for later use by the post install commands
+
+=head2 _commit_release
+
+   $builder->_commit_release( 'Release message for VCS log' );
+
+Commits the release to the VCS
 
 =head2 _copy_file
 
@@ -1048,53 +1656,49 @@ Prepends F<$base> to F<$path> unless F<$path> is an absolute path
 Called by L</process_files>. Copies the C<$source> file to the
 C<$destination> directory
 
-=head2 _edit_credentials
+=head2 _cpan_upload
 
-   $builder->_edit_credentials( $config, $dbname );
+   $builder->_cpan_upload;
 
-Writes the database login information stored in the C<$config> to the
-application config file in the F<var/etc> directory. Called from
-L</create_schema>
-
-=head2 _get_arrays_from_dtd
-
-   $list_of_arrays = $builder->_get_arrays_from_dtd( $dtd );
-
-Parses the C<$dtd> data and returns the list of element names which are
-interpolated into arrays. Called from L</_get_connect_info>
+Called by L</ACTION_upload>. Uses L<CPAN::Uploader> (which it loads on
+demand) to do the lifting. Reads from the users F<.pause> in their
+C<$ENV{HOME}> directory
 
 =head2 _get_config
 
-   $config = $builder->_get_config( $path );
+   $config = $builder->_get_config( $config_hash_ref );
 
-Reads the configuration information from F<$path> using L<XML::Simple>.
-The package variable C<$ARRAYS> is passed to L<XML::Simple> as the
-I<ForceArray> attribute. Called by L</ACTION_build> and L<ACTION_install>
+Will merge the L<Module::Build> C<notes> hash with the passed config
+hash ref and the C<%CONFIG> hash in. Caches the result
 
-=head2 _get_connect_info
+=head2 _log_info
 
-   ($info, $dtd) = $builder->_get_connect_info( $path );
+   $builder->_log_info( @list_of_messages );
 
-Reads database connection information from F<$path> using L<XML::Simple>.
-The I<ForceArray> attribute passed to L<XML::Simple> is obtained by parsing
-the DTD elements in the file. Called by the L</get_credentials> question
-and L<_edit_credentials>
+Add newlines to the messages before calling parent method
 
-=head2 _set_base
+=head2 _set_base_path
 
-   $base = $builder->_set_base( $config );
+   $base = $builder->_set_base_path( $config );
 
-Uses the C<< $config->{style} >> attribute to set the L<Module::Build>
-I<install_base> attribute to the base directory for this installation.
-Returns that path. Also sets; F<bin>, F<lib>, and F<var> directory paths
-as appropriate. Called from L<ACTION_install>
+Sets the L<Module::Build> I<install_base> attribute to the base
+directory for this installation.  Returns that path. Also sets;
+F<bin>, F<lib>, and F<var> directory paths as appropriate. Called from
+the L</ACTION_install> method
 
-=head2 _set_config
+=head2 _setup_plugins
 
-   $config = $builder->_set_config( $path, $config );
+   $builder->_setup_plugins
 
-Writes the C<$config> hash to the F<$path> file for later use by
-the install action. Called from L<ACTION_build>
+Loads any plugins it finds in the C<CX::U::Plugin::Build> namespace.
+The C<$builder->config> I<setup_plugins> attribute is passed to
+L<setup_plugins|CatalystX::Usul/setup_plugins>
+
+=head2 _update_changelog
+
+   $builder->_update_changelog( $config, $version );
+
+Update the version number and date/time stamp in the F<Changes> file
 
 =head1 Diagnostics
 
@@ -1102,7 +1706,7 @@ None
 
 =head1 Configuration and Environment
 
-Edits and stores config information in the file F<build.xml>
+Stores config information in the file F<var/etc/cli.xml>
 
 =head1 Dependencies
 
@@ -1110,13 +1714,9 @@ Edits and stores config information in the file F<build.xml>
 
 =item L<CatalystX::Usul::Programs>
 
-=item L<CatalystX::Usul::Schema>
-
 =item L<Module::Build>
 
 =item L<SVN::Class>
-
-=item L<XML::Simple>
 
 =back
 
@@ -1136,7 +1736,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2011 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

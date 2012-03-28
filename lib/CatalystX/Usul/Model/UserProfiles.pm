@@ -1,202 +1,159 @@
-# @(#)$Id: UserProfiles.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: UserProfiles.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Model::UserProfiles;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Model);
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(is_member throw);
+use CatalystX::Usul::UserProfiles;
 use CatalystX::Usul::Shells;
-use Class::C3;
+use MRO::Compat;
+use Scalar::Util qw(weaken);
+use TryCatch;
 
-__PACKAGE__->config
-   ( create_msg_key    => q(createdProfile),
-     delete_msg_key    => q(deletedProfile),
-     file              => q(identity),
-     keys_attr         => q(profile),
-     schema_attributes => {
-        attributes     => [ qw(baseid desc homedir increment passwd pattern
-                               permissions printer prefix project
-                               roles server shell) ],
-        defaults       => {},
-        element        => q(userProfiles),
-        label_attr     => q(desc),
-        lang_dep       => undef, },
-     update_msg_key    => q(updatedProfile), );
+__PACKAGE__->config( domain_class      => q(CatalystX::Usul::UserProfiles),
+                     role_class        => q(RolesUnix),
+                     shells_attributes => {},
+                     shells_class      => q(CatalystX::Usul::Shells),
+                     source_name       => q(profile) );
 
-__PACKAGE__->mk_accessors( qw(file roles shells shells_attributes) );
+__PACKAGE__->mk_accessors( qw(role_class role_model shells_attributes
+                              shells_class shells_domain source_name) );
 
-sub new {
-   my ($self, $app, $config) = @_;
+sub build_per_context_instance {
+   my ($self, $c, @rest) = @_;
 
-   my $new   = $self->next::method( $app, $config );
-   my $attrs = $new->shells_attributes || {};
+   my $new   = $self->next::method( $c, @rest );
+   my $attrs = { %{ $new->domain_attributes || {} }, ioc_obj => $new };
 
-   $new->shells( CatalystX::Usul::Shells->new( $app, $attrs ) );
+   $attrs->{path} ||= $c->config->{profiles_path};
+   $new->domain_model( $new->domain_class->new( $attrs ) );
+   $new->role_model  ( $c->model( $new->role_class ) );
+   weaken( $new->{role_model} );
+   $attrs = { %{ $new->shells_attributes || {} } };
+   $new->shells_domain( $self->shells_class->new( $c, $attrs ) );
 
    return $new;
 }
 
 sub create_or_update {
-   my $self = shift; my $s = $self->context->stash;
+   my $self    = shift;
+   my $name    = $self->query_value( q(name) ) or throw 'Profile not specified';
+   my @fields  = @{ $self->domain_model->source->attributes };
+   my $fields  = $self->query_value_by_fields( @fields );
+   my $newtag  = $self->context->stash->{newtag};
+   my $method  = $self->query_value( $self->source_name ) eq $newtag
+               ? q(create) : q(update);
+   my $msg     = $method eq q(create)
+               ? 'Profile [_1] created' : 'Profile [_1] updated';
 
-   my ($msg, $name); my $fields = {};
-
-   unless ($name = $self->query_value( q(name) )) {
-      $self->throw( 'No profile name specified');
-   }
-
-   for (@{ $self->domain_model->result_source->schema->attributes }) {
-      $fields->{ $_ } = $self->query_value( $_ );
-   }
-
-   $fields = $self->check_form( $fields );
-   $self->lang( undef );
-
-   if ($self->query_value( q(profile) ) eq $s->{newtag}) { # Insert new
-      return $self->create( { file => $self->file,
-                              name => $name, fields => $fields } );
-   }
-
-   # Update existing
-   return $self->update( { file => $self->file,
-                           name => $name, fields => $fields } );
+   $fields->{name} = $name;
+   $self->domain_model->$method( $self->check_form( $fields ) );
+   $self->add_result_msg( $msg, [ $name ] );
+   return $name;
 }
 
 sub delete {
-   my $self = shift; my $name;
+   my $self = shift;
+   my $name = $self->query_value( $self->source_name )
+      or throw 'Profile not specified';
 
-   unless ($name = $self->query_value( q(profile) )) {
-      $self->throw( 'No profile name specified' );
-   }
-
-   $self->lang( undef );
-
-   return $self->next::method( { file => $self->file, name => $name } );
+   $self->domain_model->delete( $name );
+   $self->add_result_msg( 'Profile [_1] deleted', [ $name ] );
+   return;
 }
 
 sub find {
-   my ($self, $name) = @_;
-
-   return unless ($name);
-
-   $self->lang( undef );
-
-   return $self->next::method( $self->file, $name );
+   my ($self, $name) = @_; return $self->domain_model->find( $name );
 }
 
-sub get_list {
-   my ($self, $name) = @_;
-
-   $self->lang( undef );
-
-   return $self->next::method( $self->file, $name );
+sub list {
+   my ($self, $name) = @_; return $self->domain_model->list( $name );
 }
 
 sub user_profiles_form {
-   my ($self, $profile) = @_;
-   my ($def_shell, $e, $profile_list, $profile_obj);
+   my ($self, $profile) = @_; my $s = $self->context->stash; $profile ||= NUL;
+
+   my ($def_shell, $profile_list, $profile_obj);
    my ($profiles, $roles, $shells, $shells_obj);
 
-   $self->lang( undef ); $profile ||= q();
-
    # Retrieve data from model
-   eval {
-      $profile_list = $self->get_list( $profile );
-      $profile_obj  = $profile_list->element;
-      $profiles     = $profile_list->list;
-      @{ $roles }   = grep { !$self->is_member( $_, @{ $profiles } ) }
-                              $self->roles->get_roles( q(all) );
-      $shells_obj   = $self->shells->retrieve;
+   try {
+      $profile_list = $self->list( $profile );
+      $profile_obj  = $profile_list->result;
+      $profiles     = [ NUL, $s->{newtag}, @{ $profile_list->list } ];
+      $roles        = [ NUL, grep { not is_member $_, $profiles }
+                             $self->role_model->get_roles( q(all) ) ];
+      $shells_obj   = $self->shells_domain->retrieve;
       $def_shell    = $shells_obj->default;
       $shells       = $shells_obj->shells;
-   };
+   }
+   catch ($e) { return $self->add_error( $e ) }
 
-   return $self->add_error( $e ) if ($e = $self->catch);
-
-   my $s         = $self->context->stash; $s->{pwidth} -= 10;
-   my $name      = $self->query_value( q(name) ) || q();
    my $form      = $s->{form}->{name};
+   my $moniker   = $self->source_name;
+   my $name      = $self->query_value( q(name) ) || NUL;
    my $first_fld = $profile eq $s->{newtag} && !$name ? $form.'.name'
-                 : $name                              ? $form.'.desc'
-                                                      : $form.'.profile';
-   my $nitems    = 0;
-   my $step      = 1;
-
-   unshift @{ $profiles }, q(), $s->{newtag};
-   unshift @{ $roles    }, q();
+                 :                              $name ? $form.'.desc'
+                 :                                      $form.'.'.$moniker;
 
    # Add fields to form
    $self->clear_form( { firstfld => $first_fld } );
-   $self->add_field(  { default  => $profile,
-                        id       => $form.'.profile',
+   $self->add_field ( { default  => $profile,
+                        id       => $form.'.'.$moniker,
                         labels   => $profile_list->labels,
-                        stepno   => 0,
-                        values   => $profiles } ); $nitems++;
+                        values   => $profiles } );
 
    if ($profile) {
       if ($profile eq $s->{newtag}) {
-         $self->add_field(  { default => $name,
-                              id      => $form.'.name',
-                              stepno  => 0,
-                              values  => $roles } );
+         $self->add_field( { default => $name,
+                             id      => $form.'.name',
+                             values  => $roles } );
       }
       else {
-         $s->{profile} = $profile;
+         $self->add_field ( { id => $form.'.group_name' } );
          $self->add_hidden( 'name', $profile );
-         $self->add_field(  { id => $form.'.group_name', stepno => 0 } );
+         $s->{profile} = $profile;
       }
 
-      $nitems++;
    }
 
-   $self->group_fields( { id => $form.'.select', nitems => $nitems } );
-   $nitems = 0;
+   $self->group_fields( { id      => $form.'.select' } );
 
-   return if (!$profile || (!$name && $profile eq $s->{newtag}));
+   (not $profile or (not $name and $profile eq $s->{newtag})) and return;
 
-   $self->add_field(    { default => $profile_obj->desc,
-                          ajaxid  => $form.'.desc',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->passwd,
-                          id      => $form.'.passwd',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->baseid,
-                          id      => $form.'.baseid',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->increment,
-                          id      => $form.'.increment',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->homedir,
-                          id      => $form.'.homedir',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->permissions,
-                          id      => $form.'.permissions',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->shell || $def_shell,
+   $self->add_field   ( { default => $profile_obj->desc,
+                          ajaxid  => $form.'.desc' } );
+   $self->add_field   ( { default => $profile_obj->passwd,
+                          id      => $form.'.passwd' } );
+   $self->add_field   ( { default => $profile_obj->baseid,
+                          id      => $form.'.baseid' } );
+   $self->add_field   ( { default => $profile_obj->increment,
+                          id      => $form.'.increment' } );
+   $self->add_field   ( { default => $profile_obj->homedir,
+                          id      => $form.'.homedir' } );
+   $self->add_field   ( { default => $profile_obj->permissions,
+                          id      => $form.'.permissions' } );
+   $self->add_field   ( { default => $profile_obj->shell || $def_shell,
                           id      => $form.'.shell',
-                          stepno  => $step++,
-                          values  => $shells } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->roles,
-                          id      => $form.'.roles',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->printer,
-                          id      => $form.'.printer',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->server,
-                          id      => $form.'.server',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->prefix,
-                          id      => $form.'.prefix',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->pattern,
-                          id      => $form.'.pattern',
-                          stepno  => $step++ } ); $nitems++;
-   $self->add_field(    { default => $profile_obj->project,
-                          id      => $form.'.project',
-                          stepno  => $step++ } ); $nitems++;
-   $self->group_fields( { id      => $form.'.edit', nitems => $nitems } );
+                          values  => $shells } );
+   $self->add_field   ( { default => $profile_obj->roles,
+                          id      => $form.'.roles' } );
+   $self->add_field   ( { default => $profile_obj->printer,
+                          id      => $form.'.printer' } );
+   $self->add_field   ( { default => $profile_obj->server,
+                          id      => $form.'.server' } );
+   $self->add_field   ( { default => $profile_obj->prefix,
+                          id      => $form.'.prefix' } );
+   $self->add_field   ( { default => $profile_obj->pattern,
+                          id      => $form.'.pattern' } );
+   $self->add_field   ( { default => $profile_obj->project,
+                          id      => $form.'.project' } );
+   $self->group_fields( { id      => $form.'.edit' } );
 
    # Add buttons to form
    if ($profile eq $s->{newtag}) { $self->add_buttons( qw(Insert) ) }
@@ -217,7 +174,7 @@ CatalystX::Usul::Model::UserProfiles - CRUD methods for user account profiles
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -236,9 +193,10 @@ methods. Data is stored in the F<identity.xml> file in the I<ctrldir>
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 build_per_context_instance
 
-Creates an instance of L<CatalystX::Usul::Shells>
+Creates an instance if the domain model, caches copies of the role model
+and the shells model
 
 =head2 create_or_update
 
@@ -260,16 +218,16 @@ is written to C<$stash>
 
    $config_element_obj = $profile_obj->find( $wanted );
 
-Returns a L<CatalystX::Usul::File::Element> object for the wanted
+Returns a L<File::DataClass::Result> object for the wanted
 profile
 
-=head2 get_list
+=head2 list
 
-   $config_list_obj = $profile_obj->get_list( $wanted );
+   $config_list_obj = $profile_obj->list( $wanted );
 
-Returns a L<CatalystX::Usul::File::List> object whose I<list>
+Returns a L<File::DataClass::List> object whose I<list>
 attribute is an array ref of account profile names. If a profile name
-is given it also returns a L<CatalystX::Usul::File::Element> object
+is given it also returns a L<File::DataClass::Result> object
 for that profile
 
 =head2 user_profiles_form

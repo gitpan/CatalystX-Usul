@@ -1,40 +1,42 @@
-# @(#)$Id: Schema.pm 583 2009-06-12 14:17:22Z pjf $
+# @(#)$Id: Schema.pm 994 2011-06-17 21:41:16Z pjf $
 
 package CatalystX::Usul::Model::Schema;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 583 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 994 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Model::DBIC::Schema
               CatalystX::Usul::Model
               CatalystX::Usul::Schema);
 
-use Class::C3;
+use MRO::Compat;
+use Scalar::Util qw(blessed);
 
-sub build_per_context_instance {
-   my ($self, $c, @rest) = @_;
+__PACKAGE__->config( conf_extn => q(.xml) );
 
-   my $new   = $self->next::method( $c, @rest );
-   my $model = $c->model( q(Base) );
+sub COMPONENT {
+   my ($class, $app, $config) = @_;
 
-   $new->{ $_ } = $model->{ $_ } for (keys %{ $model });
+   my $comp = $class->next::method( $app, $config );
+   my $usul = CatalystX::Usul::Model->COMPONENT( $app, $config );
 
-   return $new;
+   for (grep { not defined $comp->{ $_ } } keys %{ $usul }) {
+      $comp->{ $_ } = $usul->{ $_ }; # Attribute mixin
+   }
+
+   return $comp;
 }
 
-sub connect_info {
-   my ($self, $app, $db) = @_; my ($args, $dir, $info, $path);
+sub ACCEPT_CONTEXT {
+   # Prevents the ACCEPT_CONTEXT in C::M::DBIC::Schema from being called
+   my ($self, $c, @rest) = @_;
 
-   if ($db and $dir = $app->config->{ctrldir}) {
-      $path = $self->catfile( $dir, $app->config->{prefix}.q(.txt) );
-      $args = { seed => $app->config->{secret} || $app->config->{prefix} };
-      $args->{data} = $self->io( $path )->all if (-f $path);
-      $info = $self->next::method( $self->catfile( $dir, $db.q(.xml) ),
-                                   $db, $args );
-   }
-   else { $app->log->error( "${self}: No database or directory\n" ) }
+   blessed $c or return $self->build_per_context_instance( $c, @rest );
 
-   return $info;
+   my $s   = $c->stash;
+   my $key = q(__InstancePerContext_).(blessed $self ? refaddr $self : $self);
+
+   return $s->{ $key } ||= $self->build_per_context_instance( $c, @rest );
 }
 
 1;
@@ -49,28 +51,25 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-0.3.$Revision: 583 $
+0.4.$Revision: 994 $
 
 =head1 Synopsis
 
    package YourApp::Model::YourModel;
 
-   use base qw(CatalystX::Usul::Model::Schema);
+   use parent qw(CatalystX::Usul::Model::Schema);
 
-   __PACKAGE__->config
-      ( connect_info => [],
-        database     => q(library),
-        schema_class => q(YourApp::Schema::YourSchema) );
+   __PACKAGE__->config( database     => q(library),
+                        schema_class => q(YourApp::Schema::YourSchema) );
 
-   sub new {
-      my ($class, $app, @rest) = @_;
+   sub COMPONENT {
+      my ($class, $app, $config) = @_;
 
-      my $database = $rest[0]->{database} || $class->config->{database};
+      $config->{database    } ||= $class->config->{database};
+      $config->{connect_info} ||=
+         $class->get_connect_info( $app->config, $config->{database} );
 
-      $class->config( connect_info
-                         => $class->connect_info( $app, $database ) );
-
-      return $class->next::method( $app, @rest );
+      return $class->next::method( $app, $config );
    }
 
 =head1 Description
@@ -79,15 +78,16 @@ Aggregates the methods from the three classes it inherits from
 
 =head1 Subroutines/Methods
 
-=head2 build_per_context_instance
+=head2 ACCEPT_CONTEXT
+
+Copy of the one in L<CatalsytX::Usul::Model> which is much more useful
+than the pointless one we are overridding in
+L<Catalyst::Model::DBIC::Schema>
+
+=head2 COMPONENT
 
 Adds the attributes from L<CatalystX::Usul::Model> to the ones from
 L<Catalyst::Model::DBIC::Schema>
-
-=head2 connect_info
-
-Calls parent method to obtain dsn, user and password information from
-configuration file before instantiating the database classes
 
 =head1 Diagnostics
 

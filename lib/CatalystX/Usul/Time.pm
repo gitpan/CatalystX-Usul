@@ -1,18 +1,30 @@
-# @(#)$Id: Time.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Time.pm 985 2011-06-11 13:34:05Z pjf $
 
 package CatalystX::Usul::Time;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 985 $ =~ /\d+/gmx );
 
+use Date::Format  ();
 use DateTime::Format::Epoch;
 use Time::HiRes qw(usleep);
 use Time::Local;
 use Time::Zone;
 
-sub nap {
-   my ($self, $period) = @_;
+my @functions;
+
+BEGIN {
+   @functions = ( qw(nap str2date_time str2time time2str) );
+}
+
+use Sub::Exporter -setup => {
+   exports => [ @functions ],
+   groups  => { default => [ qw(str2time time2str) ], },
+};
+
+sub nap ($) {
+   my $period = shift;
 
    $period = $period && $period =~ m{ \A [\d._]+ \z }msx && $period > 0
            ? $period : 1;
@@ -20,30 +32,24 @@ sub nap {
    return usleep( 1_000_000 * $period );
 }
 
-sub stamp {
-   my ($self, $time) = @_; $time = defined $time ? $time : time;
+sub str2date_time ($;$) {
+   my ($dstr, $zone) = @_;
+   my $dt            = DateTime->new( year => 1970, month => 1, day => 1, );
+   my $formatter     = DateTime::Format::Epoch->new
+      ( epoch             => $dt,
+        unit              => q(seconds),
+        type              => q(int),
+        skip_leap_seconds => 1,
+        start_at          => 0,
+        local_epoch       => undef, );
 
-   return $self->time2str( '%Y-%m-%d %H:%M', $time );
+   return $formatter->parse_datetime( str2time( $dstr, $zone ) );
 }
 
-sub str2date_time {
-   my ($self, $dstr, $zone) = @_;
-   my $dt = DateTime->new( year => 1970, month => 1, day => 1, );
-   my $formatter
-      = DateTime::Format::Epoch->new( epoch             => $dt,
-                                      unit              => q(seconds),
-                                      type              => q(int),
-                                      skip_leap_seconds => 1,
-                                      start_at          => 0,
-                                      local_epoch       => undef, );
-
-   return $formatter->parse_datetime( $self->str2time( $dstr, $zone ) );
-}
-
-sub str2time {
+sub str2time ($;$) {
    # This subroutine: Copyright (c) 1995 Graham Barr. All rights reserved.
    # British version dd/mm/ccyy
-   my ($self, $dtstr, $zone) = @_;
+   my ($dtstr, $zone) = @_;
    my ($year, $month, $day, $hh, $mm, $ss, $dst, $frac, $m, $h, $result);
    my %day =
       ( sunday    => 0, monday => 1, tuesday  => 2, tues => 2,
@@ -238,10 +244,11 @@ sub str2time {
    return $result + $frac;
 }
 
-sub time2str {
-   my ($self, $format, $time) = @_;
+sub time2str (;$$) {
+   my ($format, $time) = @_;
 
-   require Date::Format;
+   defined $format or $format = '%Y-%m-%d %H:%M:%S';
+   defined $time   or $time   = time;
 
    return Date::Format::Generic->time2str( $format, $time );
 }
@@ -258,44 +265,34 @@ CatalystX::Usul::Time - Class methods for date and time manipulation
 
 =head1 Version
 
-$Revision: 576 $
+$Revision: 985 $
 
 =head1 Synopsis
 
-   use parent qw(CatalystX::Usul::Time);
+   use CatalystX::Usul::Time qw(time2str);
 
 =head1 Description
 
-This module implements a few simple time related methods
-
-Inherited by the base class the methods in this module are available to both
-controllers and models
+This module implements a few simple time related subroutines
 
 =head1 Subroutines/Methods
 
 =head2 nap
 
-   $self->nap( $period );
+   nap( $period );
 
 Sleep for a given number of seconds. The sleep time can be a fraction
 of a second
 
-=head2 stamp
-
-   $iso_string = $self->stamp( $time );
-
-Return a date time stamp in ISO format (%Y-%m-%d %H:%M). Defaults to
-current time if non supplied
-
 =head2 str2date_time
 
-   $date_time = $self->str2date_time( $dstr, $zone );
+   $date_time = str2date_time( $dstr, $zone );
 
 Parse a date time string and return a DateTime object. Timezone optional
 
 =head2 str2time
 
-   $time = $self->str2date_time( $dstr, $zone );
+   $time = str2time( $dstr, $zone );
 
 Parse a date time string and return the number of seconds elapsed
 since the epoch. This subroutine is copyright (c) 1995 Graham
@@ -304,10 +301,11 @@ ninth day in November. Timezone optional
 
 =head2 time2str
 
-   $time_string = $self->time2str( $format, $time );
+   $time_string = time2str( $format, $time );
 
 Returns a formatted string representation of the given time (supplied
-in seconds elapsed since the epoch)
+in seconds elapsed since the epoch). Defaults to ISO format (%Y-%m-%d
+%H:%M:%S) and current time if non supplied
 
 =head1 Diagnostics
 
@@ -347,7 +345,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2010 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

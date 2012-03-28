@@ -1,40 +1,39 @@
-# @(#)$Id: Locks.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Locks.pm 1062 2011-10-23 01:23:45Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Locks;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1062 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
+
+use CatalystX::Usul::Functions qw(throw);
 
 __PACKAGE__->config( namespace => q(admin) );
 
 sub lock_table : Chained(common) Args(0) HasActions {
    my ($self, $c) = @_;
 
-   my $model = $c->model( q(Base) );
+   my $model = $c->model( $self->model_base_class );
    my $data  = $self->lock->get_table;
 
    $model->add_field( { data => $data, select => q(left), type => q(table) } );
-   $model->group_fields( { id => q(lock_table.select), nitems => 1 } );
-   $model->add_buttons( qw(Delete) ) if ($data->{count} > 0);
+   $model->group_fields( { id => q(lock_table.select) } );
+   $data->{count} > 0 and $model->add_buttons( qw(Delete) );
    return;
 }
 
 sub lock_table_delete : ActionFor(lock_table.delete) {
    my ($self, $c) = @_; my ($key, $nrows, $r_no, $text);
 
-   my $s = $c->stash; my $model = $c->model( q(Base) );
+   my $s = $c->stash; my $model = $c->model( $self->model_base_class );
 
-   unless ($nrows = $model->query_value( q(table_nrows) )) {
-      $self->throw( 'Lock table empty' );
-   }
+   $nrows = $model->query_value( q(_table_nrows) ) or throw 'Lock table empty';
 
    for $r_no (0 .. $nrows) {
       if ($key = $model->query_value( q(table_select).$r_no )) {
-         if ($self->lock->reset( k => $key )) {
-            $self->log_info( 'User '.$s->{user}.' deleted lock '.$key );
-         }
+         $self->lock->reset( k => $key )
+            and $self->log_info( 'User '.$s->{user}.' deleted lock '.$key );
       }
    }
 
@@ -53,7 +52,7 @@ CatalystX::Usul::Controller::Admin::Locks - Manipulate the lock table
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1062 $
 
 =head1 Synopsis
 

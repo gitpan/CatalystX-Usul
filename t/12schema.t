@@ -1,28 +1,31 @@
-# @(#)$Id: 12schema.t 582 2009-06-12 11:04:32Z pjf $
+# @(#)$Id: 12schema.t 1085 2011-11-29 22:26:06Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 582 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1085 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
 
+use Module::Build;
 use Test::More;
 
 BEGIN {
-   if ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
-       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx) {
-      plan skip_all => q(CPAN Testing stopped);
-   }
+   my $current = eval { Module::Build->current };
+
+   $current and $current->notes->{stop_tests}
+            and plan skip_all => $current->notes->{stop_tests};
 
    plan tests => 3;
 }
 
+use Class::Null;
+
 use_ok q(CatalystX::Usul::Schema);
 
-my $ref = CatalystX::Usul::Schema->new();
+my $ref = q(CatalystX::Usul::Schema);
 
-ok( $ref->connect_info( q(t/test.xml), q(library), q(munchies) )->[0] eq q(dbi:mysql:database=library;host=localhost;port=3306), q(connect_info) );
+ok( $ref->get_connect_info( { ctlfile => q(t/test.xml), prefix => q(munchies), tempdir => q(t), }, q(library), )->[0] eq q(dbi:mysql:database=library;host=localhost;port=3306), q(connect_info) );
 
 my $encrypted = $ref->encrypt( q(munchies), q(test) );
 

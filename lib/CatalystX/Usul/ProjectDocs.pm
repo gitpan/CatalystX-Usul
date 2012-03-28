@@ -1,78 +1,68 @@
-# @(#)$Id: ProjectDocs.pm 616 2009-06-30 11:06:46Z pjf $
+# @(#)$Id: ProjectDocs.pm 980 2011-05-30 01:30:43Z pjf $
 
 package CatalystX::Usul::ProjectDocs;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 616 $ =~ /\d+/gmx );
-use parent qw(Pod::ProjectDocs);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 980 $ =~ /\d+/gmx );
 
+use English qw(-no_match_vars);
+use Class::Null;
 use Text::Tabs;
 
-my %SCHEME =
-   ( Variable_Scalar   => [ '<font color="#CC6600">', '</font>' ],
-     Variable_Array    => [ '<font color="#FFCC00">', '</font>' ],
-     Variable_Hash     => [ '<font color="#990099">', '</font>' ],
-     Variable_Typeglob => [ '<font color="#000000">', '</font>' ],
-     Subroutine        => [ '<font color="#339933">', '</font>' ],
-     Quote             => [ '<font color="#000000">', '</font>' ],
-     String            => [ '<font color="#3399FF">', '</font>' ],
-     Comment_Normal    => [ '<font color="#ff0000"><i>', '</i></font>' ],
-     Comment_POD       => [ '<font color="#ff9999">', '</font>' ],
-     Bareword          => [ '<font color="#000000">', '</font>' ],
-     Package           => [ '<font color="#000000">', '</font>' ],
-     Number            => [ '<font color="#003333">', '</font>' ],
-     Operator          => [ '<font color="#999999">', '</font>' ],
-     Symbol            => [ '<font color="#000000">', '</font>' ],
-     Keyword           => [ '<font color="#0000ff"><b>', '</b></font>' ],
-     Builtin_Operator  => [ '<font color="#000000">', '</font>' ],
-     Builtin_Function  => [ '<font color="#000000">', '</font>' ],
-     Character         => [ '<font color="#3399FF"><b>', '</b></font>' ],
-     Directive         => [ '<font color="#000000"><i><b>',
-                           '</b></i></font>' ],
-     Label             => [ '<font color="#000000">', '</font>' ],
-     Line              => [ '<font color="#000000">', '</font>' ], );
+eval {
+   require Pod::ProjectDocs;
+   require Syntax::Highlight::Perl;
 
-BEGIN {
+   my $shp    = Syntax::Highlight::Perl->new;
+   my %scheme =
+      ( Variable_Scalar   => [ '<font color="#CC6600">', '</font>' ],
+        Variable_Array    => [ '<font color="#FFCC00">', '</font>' ],
+        Variable_Hash     => [ '<font color="#990099">', '</font>' ],
+        Variable_Typeglob => [ '<font color="#000000">', '</font>' ],
+        Subroutine        => [ '<font color="#339933">', '</font>' ],
+        Quote             => [ '<font color="#000000">', '</font>' ],
+        String            => [ '<font color="#3399FF">', '</font>' ],
+        Comment_Normal    => [ '<font color="#ff0000"><i>', '</i></font>' ],
+        Comment_POD       => [ '<font color="#ff9999">', '</font>' ],
+        Bareword          => [ '<font color="#000000">', '</font>' ],
+        Package           => [ '<font color="#000000">', '</font>' ],
+        Number            => [ '<font color="#003333">', '</font>' ],
+        Operator          => [ '<font color="#999999">', '</font>' ],
+        Symbol            => [ '<font color="#000000">', '</font>' ],
+        Keyword           => [ '<font color="#0000ff"><b>', '</b></font>' ],
+        Builtin_Operator  => [ '<font color="#000000">', '</font>' ],
+        Builtin_Function  => [ '<font color="#000000">', '</font>' ],
+        Character         => [ '<font color="#3399FF"><b>', '</b></font>' ],
+        Directive         => [ '<font color="#000000"><i><b>',
+                               '</b></i></font>' ],
+        Label             => [ '<font color="#000000">', '</font>' ],
+        Line              => [ '<font color="#000000">', '</font>' ], );
+
+   $shp->set_format( \%scheme );
+   $shp->define_substitution( q(<) => q(&lt;),
+                              q(>) => q(&gt;),
+                              q(&) => q(&amp;) );
+
    no warnings q(redefine); ## no critic
 
-   our $HIGHLIGHTER;
+   *Pod::ProjectDocs::Parser::PerlPod::highlighten = sub {
+      my ($self, $type, $text) = @_; $tabstop = 3; # Text::Tabs
 
-   eval {
-      require Syntax::Highlight::Perl;
-      $HIGHLIGHTER = Syntax::Highlight::Perl->new;
+      return $shp->format_string( expand( $text ) );
    };
+};
 
-   if ($HIGHLIGHTER) {
-      *Pod::ProjectDocs::Parser::highlighten = sub {
-         my ($self, $type, $text) = @_;
+my $docs_class = $EVAL_ERROR ? q(Class::Null) : q(Pod::ProjectDocs);
 
-         $HIGHLIGHTER->set_format( \%SCHEME );
-         $HIGHLIGHTER->define_substitution( q(<) => q(&lt;),
-                                            q(>) => q(&gt;),
-                                            q(&) => q(&amp;) );
-         $tabstop = 3; # Text::Tabs
+sub new {
+   my ($class, @args) = @_;
 
-         return $HIGHLIGHTER->format_string( expand( $text ) );
-      }
-   }
-   else {
-      eval {
-         require Syntax::Highlight::Universal;
-         $HIGHLIGHTER = Syntax::Highlight::Universal->new;
-      };
+   return bless { _docs => $docs_class->new( @args ) }, $class;
+}
 
-      if ($HIGHLIGHTER) {
-         *Pod::ProjectDocs::Parser::highlighten = sub {
-            my ($self, $type, $text) = @_;
-
-            return $HIGHLIGHTER->highlight( $type, $text );
-         };
-      }
-      else {
-         *Pod::ProjectDocs::Parser::highlighten = sub { return $_[2] };
-      }
-   }
+sub gen {
+   return shift->{_docs}->gen;
 }
 
 1;
@@ -87,7 +77,7 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 
 =head1 Version
 
-0.3.$Revision: 616 $
+0.4.$Revision: 980 $
 
 =head1 Synopsis
 
@@ -104,11 +94,19 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 =head1 Description
 
 Inherits from L<Pod::ProjectDocs> but replaces
-L<Syntax::Highlight::Universal> with L<Syntax::Highlight::Perl>
+L<Syntax::Highlight::Universal> with L<Syntax::Highlight::Perl> if
+it is available
 
 =head1 Subroutines/Methods
 
-None
+=head2 new
+
+Constructor creates and stores either an instance of L<Pod::ProjectDocs> or
+L<Class::Null> depending on whether L<Pod::ProjectDocs> is installed
+
+=head2 gen
+
+Proxy for L<gen|Pod::ProjectDocs/gen>
 
 =head1 Diagnostics
 
@@ -123,6 +121,8 @@ None
 =over 3
 
 =item L<Pod::ProjectDocs>
+
+=item L<Syntax::Highlight::Perl>
 
 =item L<Text::Tabs>
 
@@ -144,7 +144,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2010 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,70 +1,109 @@
-# @(#)$Id: InflateSymbols.pm 612 2009-06-29 13:39:56Z pjf $
+# @(#)$Id: InflateSymbols.pm 1072 2011-10-29 18:51:11Z pjf $
 
 package CatalystX::Usul::InflateSymbols;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 612 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Base);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1072 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(class2appdir home2appl untaint_path);
 use Config;
-use Cwd qw(abs_path);
-use File::Spec;
 
-__PACKAGE__->mk_accessors( qw(_application) );
+require Cwd;
+
+my @METHODS = qw(appldir binsdir phase);
+
+__PACKAGE__->mk_accessors( qw(_config) );
 
 sub new {
    my ($self, $app) = @_;
 
-   return bless { _application => $app }, ref $self || $self;
+   my $conf = ref $app ? $app->{config} : $app->config;
+
+   return bless { _config => $conf }, ref $self || $self;
 }
 
 sub appldir {
-   my $self = shift; my $conf = $self->_application->config; my $dir;
+   my $self = shift; my $conf = $self->_config; my $dir;
 
-   if (!$conf->{appldir} || $conf->{appldir} =~ m{ __APPLDIR__ }mx) {
+   if (not $conf->{appldir} or $conf->{appldir} =~ m{ __APPLDIR__ }msx) {
       $dir = $self->dirname( $Config{sitelibexp} );
-
-      if ($conf->{home} =~ m{ \A $dir }mx) {
-         $dir = $self->catdir( File::Spec->rootdir,
-                               'var', $conf->{prefix}, 'default' );
-      }
-      else { $dir = $self->home2appl( $conf->{home} ) }
-
-      $conf->{appldir} = abs_path( $dir );
+      $dir = $conf->{home} =~ m{ \A $dir }msx
+           ? $self->catdir( NUL, qw(var www), class2appdir $conf->{name},
+                            q(default) )
+           : home2appl $conf->{home};
+      $conf->{appldir} = Cwd::abs_path( $dir );
    }
 
    return $conf->{appldir};
 }
 
 sub binsdir {
-   my $self = shift; my $conf = $self->_application->config; my $dir;
+   my $self = shift; my $conf = $self->_config; my $dir;
 
-   if (!$conf->{binsdir} || $conf->{binsdir} =~ m{ __BINSDIR__ }mx) {
+   if (not $conf->{binsdir} or $conf->{binsdir} =~ m{ __BINSDIR__ }msx) {
       $dir = $self->dirname( $Config{sitelibexp} );
-
-      if ($conf->{home} =~ m{ \A $dir }mx) { $dir = $Config{scriptdir} }
-      else { $dir = $self->catdir( $self->home2appl( $conf->{home} ), 'bin' ) }
-
-      $conf->{binsdir} = abs_path( $dir );
+      $dir = $conf->{home} =~ m{ \A $dir }msx
+           ? $Config{scriptdir}
+           : $self->catdir( home2appl $conf->{home}, q(bin) );
+      $conf->{binsdir} = Cwd::abs_path( $dir );
    }
 
    return $conf->{binsdir};
 }
 
-sub libsdir {
-   my $self = shift; my $conf = $self->_application->config; my $dir;
+sub inflate_symbols {
+   my ($self, $symbols) = @_; my $conf = $self->_config; $symbols or return;
 
-   if (!$conf->{libsdir} || $conf->{libsdir} =~ m{ __LIBSDIR__ }mx) {
-      $dir = $self->dirname( $Config{sitelibexp} );
+   for my $k (keys %{ $symbols }) {
+      my $v = defined $conf->{ $k } ? $conf->{ $k }
+            : ref $symbols->{ $k }  ? $self->_expand( $symbols->{ $k } )
+                                    : $symbols->{ $k };
 
-      if ($conf->{home} =~ m{ \A $dir }mx) { $dir = $Config{sitelibexp} }
-      else { $dir = $self->catdir( $self->home2appl( $conf->{home} ), 'lib' ) }
+   TRY: {
+      $v =~ m{ __appldir\( (.*) \)__ }msx
+         and $v = $self->catdir( $conf->{appldir}, $1 ) and last TRY;
 
-      $conf->{libsdir} = abs_path( $dir );
+      $v =~ m{ __binsdir\( (.*) \)__ }msx
+         and $v = $self->catdir( $conf->{binsdir}, $1 ) and last TRY;
+
+      $v =~ m{ __path_to\( (.*) \)__ }msx
+         and $v = $self->catdir( $conf->{home}, $1 );
+      } # TRY
+
+      $v and $v = untaint_path( $v ) and -e $v and $v = Cwd::abs_path( $v );
+
+      $conf->{ $k } = $v;
    }
 
-   return $conf->{libsdir};
+   return;
+}
+
+sub phase {
+   my $self = shift; my $conf = $self->_config; my $dir;
+
+   if (not $conf->{phase} or $conf->{phase} =~ m{ __PHASE__ }msx) {
+      my $dir     = $self->basename( $self->appldir );
+      my ($phase) = $dir =~ m{ \A v \d+ [.] \d+ p (\d+) \z }msx;
+
+      $conf->{phase} = defined $phase ? $phase : PHASE;
+   }
+
+   return $conf->{phase};
+}
+
+sub visit_all {
+   my $self = shift; $self->$_() for (@METHODS); return;
+}
+
+# Private methods
+
+sub _expand {
+   my ($self, $args) = @_;
+
+   return '__appldir('.$self->catdir( @{ $args } ).')__';
 }
 
 1;
@@ -79,7 +118,7 @@ CatalystX::Usul::InflateSymbols - Return paths to installation directories
 
 =head1 Version
 
-0.3.$Revision: 612 $
+0.4.$Revision: 1072 $
 
 =head1 Synopsis
 
@@ -120,9 +159,18 @@ Return absolute path to the directory which defines the phase number
 
 Return absolute path to the directory containing the programs
 
-=head2 libsdir
+=head2 inflate_symbols
 
-Return absolute path to the directory containing the modules
+Takes a hash ref of config key and values. Inflates and untaints (as
+file paths) the values
+
+=head2 phase
+
+Return the phase number derived from the L</appldir>
+
+=head2 visit_all
+
+Calls each of the other object methods thereby inflating each value
 
 =head1 Diagnostics
 
@@ -136,7 +184,7 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Base>
+=item L<CatalystX::Usul>
 
 =back
 

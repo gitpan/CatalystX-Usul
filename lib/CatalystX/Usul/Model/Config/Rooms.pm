@@ -1,50 +1,47 @@
-# @(#)$Id: Rooms.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Rooms.pm 891 2010-09-30 01:47:24Z pjf $
 
 package CatalystX::Usul::Model::Config::Rooms;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 891 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-use Class::C3;
+use MRO::Compat;
 
 __PACKAGE__->config
-   ( create_msg_key    => 'Action [_1]/[_2] created',
-     delete_msg_key    => 'Action [_1]/[_2] deleted',
-     keys_attr         => q(room),
-     schema_attributes => {
-        attributes     => [ qw(acl keywords quick_link state text tip) ],
-        defaults       => { acl => [ q(any) ], state => 0, text => q() },
-        element        => q(rooms),
-        lang_dep       => { qw(keywords 1 text 1 tip 1) } },
-     update_msg_key    => 'Action [_1]/[_2] updated', );
+   ( create_msg_key => 'Action [_1] / [_2] created',
+     delete_msg_key => 'Action [_1] / [_2] deleted',
+     keys_attr      => q(action),
+     update_msg_key => 'Action [_1] / [_2] updated', );
 
-__PACKAGE__->mk_accessors( qw(rooms) );
+sub create_or_update {
+   my ($self, $ns, $name) = @_;
+
+   return $self->next::method( $ns, { name => $name } );
+}
 
 sub delete {
-   my ($self, $args) = @_; my $s = $self->context->stash;
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash;
 
-   $self->next::method( $args );
-   delete $s->{levels}->{ $args->{file} }->{ $args->{name} };
+   $self->next::method( $ns, $name );
+   delete $s->{levels}->{ $ns }->{ $name };
    return;
 }
 
 sub set_state {
-   my ($self, $args) = @_;
+   my ($self, $ns, $name) = @_;
 
-   my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
    my $state  = $self->query_value( q(state) ) || 0;
 
-   $args->{fields} = { state => $state };
-   $self->update( $args );
+   $self->update( $ns, { name => $name, state => $state } );
    $self->clear_result;
 
-   my $user     = $self->context->stash->{user};
-   my $msg      = 'Action [_1]/[_2] state set to [_3] by [_4]';
-   my @msg_args = ( $args->{file}, $args->{name}, $states{ $state }, $user );
+   my $user   = $self->context->stash->{user};
+   my $msg    = 'Action [_1] / [_2] state set to [_3] by [_4]';
+   my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
 
-   $self->add_result_msg( $msg, @msg_args );
+   $self->add_result_msg( $msg, $ns, $name, $states{ $state }, $user );
    return;
 }
 
@@ -56,11 +53,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Config::Rooms - Class definition for the room configuration element
+CatalystX::Usul::Model::Config::Rooms - Class definition for the action configuration element
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 891 $
 
 =head1 Synopsis
 
@@ -68,7 +65,7 @@ CatalystX::Usul::Model::Config::Rooms - Class definition for the room configurat
 
 =head1 Description
 
-Defines the attributes for the <rooms> configuration element
+Defines the attributes for the <action> configuration element
 
 Defines three language independent attributes: I<acl>, I<name> and  I<state>
 
@@ -76,19 +73,18 @@ Defines two language dependent attributes: I<text> and  I<tip>
 
 =head1 Subroutines/Methods
 
+=head2 create_or_update
+
+Creates or updates the specified I<action> element
+
 =head2 delete
 
-Deletes the specified I<rooms> element from the configuration
-
-=head2 get_list
-
-Returns an object that contains a list of the defined rooms and the fields
-of the specified room
+Deletes the specified I<action> element from the configuration
 
 =head2 set_state
 
 Toggles the I<state> attribute which has the effect of opening (false) or
-closing (true) the room to the application
+closing (true) the action to the application
 
 =head1 Diagnostics
 

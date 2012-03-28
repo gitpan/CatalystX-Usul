@@ -1,28 +1,29 @@
-# @(#)$Id: FileSystem.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: FileSystem.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Model::FileSystem;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
 use CatalystX::Usul::FileSystem;
-use Class::C3;
-
-__PACKAGE__->mk_accessors( qw(domain_model) );
+use MRO::Compat;
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $s = $c->stash; my $args;
+   my ($self, $c, @rest) = @_; my $s = $c->stash;
 
-   my $new = $self->next::method( $c, @rest );
+   my $new   = $self->next::method( $c, @rest );
+   my $attrs = { %{ $new->domain_attributes || {} } };
 
-   $args->{debug  } = $s->{debug};
-   $args->{lang   } = $s->{lang};
-   $args->{fs_type} = $s->{os}->{fs_type}->{value};
-   $args->{fuser  } = $s->{os}->{fuser  }->{value};
+   $attrs->{debug  } ||= $s->{debug};
+   $attrs->{lang   } ||= $s->{lang};
+   $attrs->{fs_type} ||= $s->{os}->{fs_type}->{value};
+   $attrs->{fuser  } ||= $s->{os}->{fuser  }->{value};
+   $attrs->{logsdir} ||= $c->config->{logsdir};
 
-   $new->domain_model( CatalystX::Usul::FileSystem->new( $c, $args ) );
+   $new->domain_model( CatalystX::Usul::FileSystem->new( $c, $attrs ) );
+
    return $new;
 }
 
@@ -35,15 +36,14 @@ sub list_subdirectory {
 }
 
 sub view_file {
-   my ($self, $subtype, $id) = @_;
-
-   return unless ($id);
+   my ($self, $subtype, $id) = @_; $id or return;
 
    my $path = $subtype eq q(source) ? $self->find_source( $id ) : $id;
 
    $self->add_field(  { path    => $path,
                         subtype => $subtype, type => q(file) } );
-   $self->add_append( { text    => $self->loc( 'Viewing [_1]', $path ),
+   $self->add_append( { class   => q(heading),
+                        text    => $self->loc( 'Viewing [_1]', $path ),
                         type    => q(label) } );
    return;
 }
@@ -60,7 +60,7 @@ CatalystX::Usul::Model::FileSystem - File system related methods
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 

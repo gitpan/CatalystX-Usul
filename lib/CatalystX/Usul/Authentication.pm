@@ -1,13 +1,13 @@
-# @(#)$Id: Authentication.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Authentication.pm 730 2009-10-28 02:13:42Z pjf $
 
 package CatalystX::Usul::Authentication;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(Class::Accessor::Fast);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 730 $ =~ /\d+/gmx );
+use parent qw(Class::Accessor::Grouped);
 
-__PACKAGE__->mk_accessors( qw(config) );
+__PACKAGE__->mk_group_accessors( q(simple), qw(config) );
 
 sub new {
    my ($self, $config, $app, $realm) = @_;
@@ -52,7 +52,7 @@ CatalystX::Usul::Authentication - Use a Catalyst model as an authentication stor
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 730 $
 
 =head1 Synopsis
 
@@ -152,7 +152,7 @@ None
 
 =over 3
 
-=item L<Class::Accessor::Fast>
+=item L<Class::Accessor::Grouped>
 
 =back
 

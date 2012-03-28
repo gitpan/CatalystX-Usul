@@ -1,75 +1,74 @@
-# @(#)$Id: Session.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Session.pm 959 2011-04-23 13:27:40Z pjf $
 
 package CatalystX::Usul::Model::Session;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 959 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Model CatalystX::Usul::IPC);
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(squeeze);
 use CatalystX::Usul::Table;
+use CatalystX::Usul::Time;
+use TryCatch;
 
 sub list_sessions {
-   my $self = shift; my $c = $self->context; my $s = $c->stash; my $e;
+   my $self = shift; my $c = $self->context; my $s = $c->stash; my @sessions;
 
-   my @sessions = eval { $c->list_sessions };
-
-   return $self->add_error( $e ) if ($e = $self->catch);
+   try        { @sessions = $c->list_sessions }
+   catch ($e) { return $self->add_error( $e ) }
 
    my $expires = $s->{max_sess_time} || 7_200; my $now = time; my @values = ();
 
    for my $session (@sessions) {
       my ($sid) = $session->{key} =~ m{ \A session: (.*) \z }mx; my $value;
 
-      next unless ($sid and $value = $session->{value});
+      ($sid and $value = $session->{value}) or next;
 
       my $last_updated = $value->{__updated} || 0;
 
-      if (exists $value->{__user} && $now < $last_updated + $expires) {
+      if (exists $value->{__user} and $now < $last_updated + $expires) {
          my $user_obj = eval { $value->{__user} };
 
          push @values,
             { address  => $value->{__address},
-              created  => $self->stamp( $value->{__created} || 0 ),
+              created  => time2str( undef, $value->{__created} || 0 ),
+              id       => $sid,
               realm    => $value->{__user_realm},
-              sid      => $sid,
-              updated  => $self->stamp( $last_updated ),
+              updated  => time2str( undef, $last_updated ),
               username => $user_obj ? $user_obj->username : q(unknown) };
       }
    }
 
-   my $nitems = 0;
+   $self->clear_form;
 
    if (my $count = scalar @values) {
       my $data    = CatalystX::Usul::Table->new
          ( count  => $count,
-           flds   => [ qw(username realm sid address created updated) ],
-           labels => { address => 'Address', created  => 'Created',
-                       realm   => 'Realm',   sid      => 'Session Id',
-                       updated => 'Updated', username => 'User' },
+           flds   => [ qw(username realm id address created updated) ],
+           labels => { address => 'Address',    created  => 'Created',
+                       id      => 'Session Id', realm    => 'Realm',
+                       updated => 'Updated',    username => 'User' },
            values => [ sort { $a->{username} cmp $b->{username} } @values ] );
 
       $self->add_field( { data   => $data,
                           select => q(left), type => q(table) } );
-      $nitems++;
       $self->add_buttons( qw(Delete) );
    }
 
-   $self->group_fields( { nitems => $nitems,
-                          text   => $self->loc( 'Catalyst Sessions' ) } );
+   $self->group_fields( { text => $self->loc( 'Catalyst Sessions' ) } );
    return;
 }
 
 sub list_TTY_sessions {
-   my $self = shift; my $s = $self->context->stash; my $e;
+   my $self = shift; my $s = $self->context->stash; my $data;
 
-   my $data = eval { $self->_list_TTY_sessions( $s->{identity_model}->users )};
+   try        { $data = $self->_list_TTY_sessions( $s->{user_model} ) }
+   catch ($e) { return $self->add_error( $e ) }
 
-   $self->add_error( $e ) if ($e = $self->catch);
-
-   $self->add_field(    { data   => $data, type => q(table) } );
-   $self->group_fields( { id     => $s->{form}->{name}.q(.heading),
-                          nitems => 1 } );
+   $self->add_field   ( { data => $data, type => q(table)        } );
+   $self->group_fields( { id   => $s->{form}->{name}.q(.heading) } );
    return;
 }
 
@@ -91,22 +90,23 @@ sub _list_TTY_sessions {
                     loginTime => 'Login Time', office => 'Office',
                     extn      => 'Extn',       phone  => 'Home Phone',
                     id        => 'PID',        whence => 'Whence' } );
-   my $res = $self->run_cmd( 'who -u' );
+   my $res = $self->run_cmd( [ qw(who -u) ] );
 
    for my $line (split m{ \n }mx, $res->out) {
-      my @tmp            = split q( ), $line;
-      my $user           = $user_model->find_user( $tmp[0] );
-      my $flds           = {};
+      my @tmp  = split SPC, squeeze $line;
+      my $user = $user_model->find_user( $tmp[ 0 ] );
+      my $flds = {};
+
       $flds->{extn     } = $user->work_phone;
-      $flds->{idle     } = $tmp[4] && $tmp[4] ne q(?) ? $tmp[4] : 'working';
-      $flds->{login    } = $tmp[0];
-      $flds->{loginTime} = $tmp[2].q( ).$tmp[3];
-      $flds->{name     } = $user->first_name.q( ).$user->last_name;
+      $flds->{idle     } = $tmp[ 4 ] && $tmp[ 4 ] ne q(?) ? $tmp[4] : 'working';
+      $flds->{login    } = $tmp[ 0 ];
+      $flds->{loginTime} = $tmp[ 2 ].SPC.$tmp[ 3 ];
+      $flds->{name     } = $user->first_name.SPC.$user->last_name;
       $flds->{office   } = $user->location;
       $flds->{phone    } = $user->home_phone;
-      $flds->{id       } = $tmp[5];
-      $flds->{tty      } = $tmp[1];
-      $flds->{whence   } = $tmp[6];
+      $flds->{id       } = $tmp[ 5 ];
+      $flds->{tty      } = $tmp[ 1 ];
+      $flds->{whence   } = $tmp[ 6 ];
 
       push @{ $table->values }, $flds;
    }
@@ -126,7 +126,7 @@ CatalystX::Usul::Model::Session - Current session information
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 959 $
 
 =head1 Synopsis
 

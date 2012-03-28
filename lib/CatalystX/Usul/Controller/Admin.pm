@@ -1,86 +1,90 @@
-# @(#)$Id: Admin.pm 584 2009-06-12 15:25:11Z pjf $
+# @(#)$Id: Admin.pm 1095 2012-01-11 16:27:56Z pjf $
 
 package CatalystX::Usul::Controller::Admin;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1095 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-use Class::C3;
-
-my $SEP = q(/);
+use CatalystX::Usul::Constants;
+use MRO::Compat;
 
 __PACKAGE__->config( security_logfile => q(admin.log), );
 
 __PACKAGE__->mk_accessors( qw(security_logfile) );
 
-sub base : Chained(lang) CaptureArgs(0) {
-   # PathPart set in global configuration
+sub build_subcontrollers {
+   return shift->build_subcomponents( __PACKAGE__ );
 }
 
 sub begin : Private {
    return shift->next::method( @_ );
 }
 
-sub build_subcontrollers {
-   return shift->build_subcomponents( __PACKAGE__ );
+sub base : Chained(/) CaptureArgs(0) {
+   # PathPart set in global configuration
+   my ($self, $c) = @_;
+
+   $self->can( q(persist_state) )
+      and $self->init_uri_attrs( $c, $self->model_base_class );
+   return;
 }
 
-sub check_field : Chained(base) Args(0) HasActions {
+sub check_field : Chained(base) Args(0) HasActions NoToken {
    return shift->next::method( @_ );
 }
 
 sub common : Chained(base) PathPart('') CaptureArgs(0) {
-   my ($self, $c) = @_;
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   $self->next::method( $c ); $self->load_keys( $c );
-   $self->add_sidebar_panel( $c, { name => q(default)  } );
-   $self->add_sidebar_panel( $c, { name => q(overview) } );
+   my $nav   = $s->{nav_model}; $nav->add_header; $nav->add_footer;
+   my $model = $c->model( $self->model_base_class );
+
+   $model->add_sidebar_panel( { name => q(default)  } );
+   $model->add_sidebar_panel( { name => q(overview) } );
    return;
 }
 
-sub lang : Chained(/) PathPart('') CaptureArgs(1) {
-   # Capture the language selection from the requested url
+sub footer : Chained(base) Args(0) NoToken {
+   my ($self, $c) = @_; return $c->model( $self->help_class )->add_footer;
 }
 
-sub logfile_menu : Chained(common) CaptureArgs(0) {
+sub logfile_menu : Chained(common) PathPart(logfiles) CaptureArgs(0) {
+   my ($self, $c) = @_;
+
+   $c->stash( fs_model => $c->model( $self->fs_class ) );
+   return;
 }
 
-sub overview : Chained(base) Args(0) {
-   return shift->next::method( @_ );
+sub overview : Chained(base) Args(0) NoToken {
+   # Respond to the ajax call for some info about the side bar accordion
+   my ($self, $c) = @_; return $c->model( $self->help_class )->overview;
 }
 
 sub reception : Chained(common) Args(0) {
-   my ($self, $c) = @_;
-
-   $c->model( q(Base) )->simple_page( q(reception) );
-   return;
 }
 
-sub redirect_to_default : Chained(base) PathPart('') Args {
-   my ($self, $c) = @_;
-
-   return $self->redirect_to_path( $c, $SEP.q(reception) );
+sub redirect_to_default : Chained(base) PathPart('') Args(0) {
+   my ($self, $c) = @_; return $self->redirect_to_path( $c, SEP.q(reception) );
 }
 
 sub version {
    return $VERSION;
 }
 
-sub view_security_log : Chained(logfile_menu) Args(0) {
+sub view_security_log : Chained(logfile_menu) PathPart(security_log) Args(0) {
    my ($self, $c) = @_;
+
    my $path = $self->catfile( $c->config->{logsdir}, $self->security_logfile );
 
-   $c->model( q(FileSystem) )->view_file( q(logfile), $path );
-   return;
+   return $c->stash->{fs_model}->view_file( q(logfile), $path );
 }
 
 sub view_logfile : Chained(logfile_menu) PathPart('') Args(0) {
    my ($self, $c) = @_; my $path = $c->config->{logfile};
 
-   $c->model( q(FileSystem) )->view_file( q(logfile), $path );
-   return;
+   return $c->stash->{fs_model}->view_file( q(logfile), $path );
 }
 
 1;
@@ -95,7 +99,7 @@ CatalystX::Usul::Controller::Admin - Administration controller methods
 
 =head1 Version
 
-$Revision: 584 $
+$Revision: 1095 $
 
 =head1 Synopsis
 
@@ -136,10 +140,10 @@ Forward Ajax requests for this controller to the generic base class method
 A midpoint in the URI. A number of other actions are chained off this
 one. It sets up the navigation menu and form keys
 
-=head2 lang
+=head2 footer
 
-Capture the required language. The actual work is done in the
-L</begin> method
+Adds some debug information to the footer div. Called via the async form
+widget
 
 =head2 logfile_menu
 
@@ -149,6 +153,8 @@ Midpoint off which the log file viewing endpoints are chained
 
 Endpoint for the Ajax call that populates one of the panels on the
 accordion widget
+
+Generates some blurb for the Overview panel of the sidebar accordion widget
 
 =head2 reception
 

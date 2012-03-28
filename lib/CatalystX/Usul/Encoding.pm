@@ -1,64 +1,42 @@
-# @(#)$Id: Encoding.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Encoding.pm 1062 2011-10-23 01:23:45Z pjf $
 
 package CatalystX::Usul::Encoding;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1062 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(is_arrayref is_hashref);
 use Encode;
 use Encode::Guess;
 
 our $ENCODINGS = [ qw(ascii iso-8859-1 UTF-8 guess) ];
-our $LEVELS    = [ qw(alert debug error fatal info warn) ];
 
 sub mk_encoding_methods {
    my ($self, @fields) = @_; my $class = ref $self || $self;
 
    no strict q(refs); ## no critic
 
-   for my $enc (grep { !m{ guess }mx } @{ $ENCODINGS }) {
+   for my $enc (grep { not m{ guess }mx } @{ $ENCODINGS }) {
       my $accessor = __PACKAGE__.q(::)._method_name( $enc );
 
-      unless (defined &{ "$accessor" }) {
-         *{ "$accessor" } = sub {
-            my ($self, $field, $caller, @rest) = @_;
+      defined &{ "$accessor" } and next;
 
-            return $self->_decode_data( $enc, $caller->$field( @rest ) );
-         };
-      }
+      *{ "$accessor" } = sub {
+         my ($self, $field, $caller, @rest) = @_;
+
+         return $self->_decode_data( $enc, $caller->$field( @rest ) );
+      };
    }
 
-   foreach my $field (@fields) {
-      foreach my $method (map { _method_name( $_ ) } @{ $ENCODINGS }) {
+   for my $field (@fields) {
+      for my $method (map { _method_name( $_ ) } @{ $ENCODINGS }) {
          my $accessor = $class.q(::).$field.$method;
 
-         unless (defined &{ "$accessor" }) {
-            *{ "$accessor" }
-               = sub { return __PACKAGE__->$method( $field, @_ ) };
-         }
-      }
-   }
+         defined &{ "$accessor" } and next;
 
-   return;
-}
-
-sub mk_log_methods {
-   my $self = shift; my $class = ref $self || $self;
-
-   no strict q(refs); ## no critic
-
-   for my $level (@{ $LEVELS }) {
-      my $accessor = $class.q(::log_).$level;
-
-      unless (defined &{ "$accessor" }) {
-         *{ "$accessor" } = sub {
-            my ($self, $text) = @_;
-            return unless ($text);
-            $text = encode( $self->encoding, $text ) if ($self->encoding);
-            $self->log->$level( $text."\n" );
-            return;
-         };
+         *{ "$accessor" } = sub { return __PACKAGE__->$method( $field, @_ ) };
       }
    }
 
@@ -71,9 +49,9 @@ sub _decode_data {
    my ($self, $enc_name, $data) = @_; my $enc;
 
    return                       unless (defined $data                    );
-   return $data                 if     (ref $data eq q(HASH)             );
+   return $data                 if     (is_hashref $data                 );
    return $data                 unless ($enc = find_encoding( $enc_name ));
-   return $enc->decode( $data ) unless (ref $data eq q(ARRAY)            );
+   return $enc->decode( $data ) unless (is_arrayref $data                );
 
    return [ map { $enc->decode( $_ ) } @{ $data } ];
 }
@@ -81,10 +59,10 @@ sub _decode_data {
 sub _guess_encoding {
    my ($self, $field, $caller, @rest) = @_; my $data;
 
-   return unless (defined ($data = $caller->$field( @rest )) );
+   defined ($data = $caller->$field( @rest )) or return;
 
-   my $all = ref $data eq q(ARRAY) ? join q( ), @{ $data } : $data;
-   my $enc = guess_encoding( $all, grep { !m{ guess }mx } @{ $ENCODINGS } );
+   my $all = (is_arrayref $data) ? join SPC, @{ $data } : $data;
+   my $enc = guess_encoding( $all, grep { not m{ guess }mx } @{ $ENCODINGS } );
 
    return $enc && ref $enc ? $self->_decode_data( $enc->name, $data ) : $data;
 }
@@ -105,11 +83,11 @@ CatalystX::Usul::Encoding - Create additional methods for different encodings
 
 =head1 Version
 
-$Revision: 576 $
+$Revision: 1062 $
 
 =head1 Synopsis
 
-   use base qw(CatalystX::Usul::Encoding);
+   use parent qw(CatalystX::Usul::Encoding);
 
    __PACKAGE__->mk_encoding_methods( qw(get_req_array get_req_value) );
 
@@ -118,13 +96,13 @@ $Revision: 576 $
 
       $value = defined $value ? $value : [];
 
-      return ref $value eq q(ARRAY) ? $value : [ $value ];
+      return (is_arrayref $value) ? $value : [ $value ];
    }
 
    sub get_req_value {
       my ($self, $req, $field) = @_; my $value = $req->params->{ $field };
 
-      return $value && ref $value eq q(ARRAY) ? $value->[0] : $value;
+      return (is_arrayref $value) ? $value->[ 0 ] : $value;
    }
 
    # The standard calls are
@@ -141,18 +119,9 @@ $Revision: 576 $
    $value = $self->get_req_value_utf_8_encoding(      $c->req, $field );
    $value = $self->get_req_value_guess_encoding(      $c->req, $field );
 
-   __PACKAGE__->mk_log_methods();
-
-   # Can now call the following
-   $self->log_debug( $text );
-   $self->log_info(  $text );
-   $self->log_warn(  $text );
-   $self->log_error( $text );
-   $self->log_fatal( $text );
-
 =head1 Description
 
-For each input method defined in your class C<mk_encoding_methods>
+For each input method defined in your class L</mk_encoding_methods>
 defines additional methods; C<my_input_method_utf_8_encoding> and
 C<my_input_method_guess_encoding> for example
 
@@ -165,13 +134,6 @@ a set of new methods are defined in the calling package. The method
 set is defined by the list of values in the C<$ENCODINGS> package
 variable. Each of these newly defined methods calls C<_decode_data>
 with a different encoding name
-
-=head2 mk_log_methods
-
-Creates a set of methods defined by the C<$LEVELS> package
-variable. The method expects C<< $self->log >> and C<< $self->encoding >>
-to be set.  It encodes the output string prior calling the log
-method at the given level
 
 =head2 _decode_data
 
@@ -222,7 +184,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2011 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

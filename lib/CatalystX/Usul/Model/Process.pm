@@ -1,67 +1,70 @@
-# @(#)$Id: Process.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Process.pm 1062 2011-10-23 01:23:45Z pjf $
 
 package CatalystX::Usul::Model::Process;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1062 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Model CatalystX::Usul::IPC);
 
-use CatalystX::Usul::Process;
-
-my $NUL = q();
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(throw);
+use TryCatch;
 
 __PACKAGE__->config( fs_class   => q(FileSystem),
                      user_class => q(IdentityUnix) );
 
-__PACKAGE__->mk_accessors( qw(fs_class fs_model processes user_class
-                              user_model) );
+__PACKAGE__->mk_accessors( qw(fs_class fs_model user_class user_model) );
 
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_;
 
    my $new = $self->next::method( $c, @rest );
 
-   $new->processes ( CatalystX::Usul::Process->new( $c, {} ) );
-   $new->fs_model  ( $c->model( $self->fs_class )            );
-   $new->user_model( $c->model( $self->user_class )->users   );
+   $new->fs_model  ( $c->model( $self->fs_class )          );
+   $new->user_model( $c->model( $self->user_class )->users );
 
    return $new;
 }
 
 sub proc_table_form {
-   my ($self, $ptype, $user, $fsystem, $signals) = @_;
+   my ($self, $ptype) = @_; $ptype ||= 1;
 
-   my ($data, $e, $fss, $res, $text, $users);
-
-   my $pattern = $self->query_value( q(pattern) );
-   my $form    = $self->context->stash->{form}->{name};
+   my $s       = $self->context->stash;
+   my $form    = $s->{form}->{name};
+   my $user    = $s->{process_params}->{user   };
+   my $fsystem = $s->{process_params}->{fsystem};
+   my $signals = $s->{process_params}->{signals};
+   my $pattern = $self->query_value( q(pattern) ) || NUL;
+   my ($data, $fss, $res, $text, $users);
 
    # Retrieve data from model
-   eval {
-      my $ref = { pattern => [ $NUL, $NUL, $pattern, $NUL ] };
-
-      $data = $self->processes->get_table( $ptype, $user, $fsystem, $ref );
+   try {
+      $data = $self->process_table
+         ( { fsystem => $fsystem,
+             pattern => [ NUL, NUL, $pattern, NUL ]->[ $ptype ],
+             type    => $ptype,
+             user    => $user } );
 
       if ($ptype == 1) {
-         $res   = $self->user_model->retrieve( q([^\?]+), $NUL );
-         $users = $res->user_list; unshift @{ $users }, $NUL, q(All);
+         $res   = $self->user_model->retrieve( q([^\?]+), NUL );
+         $users = [ NUL, q(All), @{ $res->user_list } ];
       }
 
       if ($ptype == 3) {
          $res = $self->fs_model->get_file_systems( $fsystem );
-         $fss = $res->file_systems; unshift @{ $fss }, $NUL;
+         $fss = [ NUL, @{ $res->file_systems } ];
       }
-   };
-
-   return $self->add_error( $e ) if ($e = $self->catch);
+   }
+   catch ($e) { return $self->add_error( $e ) }
 
    # Add HTML elements items to form
    $self->clear_form( { firstfld => q(ptype) } );
 
    if ($data->count) {
-      $self->add_field( { data   => $data,
-                          select => q(left), type => q(table) } );
+      $self->add_field( { data   => $data,   id       => q(processes),
+                          select => q(left), sortable => TRUE,
+                          type   => q(table) } );
    }
    else {
       if ($ptype == 1 || $ptype == 2) {
@@ -72,10 +75,10 @@ sub proc_table_form {
       }
       else { $text = 'There are no processes on this filesystem' }
 
-      $self->add_field( { text   => $text, type => q(note) } );
+      $self->add_field( { text => $text, type => q(note) } );
    }
 
-   $self->group_fields( { id     => $form.q(.select), nitems => 1 } );
+   $self->group_fields( { id => $form.q(.select) } );
 
    # Add buttons to form
    $self->add_buttons( qw(Terminate Kill Abort) );
@@ -86,25 +89,25 @@ sub proc_table_form {
                                       2 => 'Specific Processes',
                                       3 => 'Processes by filesystem' },
                         name     => q(ptype),
-                        prompt   => 'Display&nbsp;type',
+                        prompt   => 'Display&#160;type',
                         onchange => 'submit()',
                         pwidth   => 10,
-                        sep      => q(&nbsp;),
+                        sep      => '&#160;',
                         type     => q(popupMenu),
-                        values   => [ $NUL, qw(1 2 3) ] } );
+                        values   => [ NUL, qw(1 2 3) ] } );
 
    if ($ptype) {
       if ($ptype == 1) {
          $self->add_append( { default   => $user,
                               name      => q(user),
                               onchange  => 'submit()',
-                              prompt    => 'Show&nbsp;users',
+                              prompt    => 'Show&#160;users',
                               pwidth    => 10,
-                              sep       => q(&nbsp;),
+                              sep       => '&#160;',
                               type      => q(popupMenu),
                               values    => $users } );
-         $self->add_hidden( q(pattern), $pattern );
-         $self->add_hidden( q(fsystem), $fsystem );
+         $pattern and $self->add_hidden( q(pattern), $pattern );
+         $fsystem and $self->add_hidden( q(fsystem), $fsystem );
       }
       elsif ($ptype == 2) {
          $self->add_append( { default   => $pattern,
@@ -113,11 +116,11 @@ sub proc_table_form {
                               onblur    => 'submit()',
                               prompt    => 'Pattern',
                               pwidth    => 10,
-                              sep       => q(&nbsp;),
+                              sep       => '&#160;',
                               type      => q(textfield),
                               width     => 15 } );
-         $self->add_hidden( q(fsystem), $fsystem );
-         $self->add_hidden( q(user), $user );
+         $fsystem and $self->add_hidden( q(fsystem), $fsystem );
+         $user    and $self->add_hidden( q(user), $user );
       }
       elsif ($ptype == 3) {
          $self->add_append( { default   => $fsystem,
@@ -125,48 +128,46 @@ sub proc_table_form {
                               onchange  => 'submit()',
                               prompt    => 'Filesystem',
                               pwidth    => 10,
-                              sep       => q(&nbsp;),
+                              sep       => '&#160;',
                               type      => q(popupMenu),
                               values    => $fss } );
-         $self->add_hidden( q(pattern), $pattern );
-         $self->add_hidden( q(user), $user );
+         $pattern and $self->add_hidden( q(pattern), $pattern );
+         $user    and $self->add_hidden( q(user), $user );
       }
    }
 
-   $self->add_append( { default => $signals,
-                        labels  => { 1 => 'Process only',
-                                     2 => 'Process and children' },
-                        name    => q(signals),
-                        prompt  => 'Propagation',
-                        pwidth  => 10,
-                        sep     => q(&nbsp;),
-                        type    => q(popupMenu),
-                        values  => [ $NUL, 1, 2 ] } );
+   $self->add_append( { default  => $signals,
+                        labels   => { 1 => 'Process only',
+                                      2 => 'Process and children' },
+                        name     => q(signals),
+                        onchange => 'submit()',
+                        prompt   => 'Propagation',
+                        pwidth   => 10,
+                        sep      => '&#160;',
+                        type     => q(popupMenu),
+                        values   => [ NUL, 1, 2 ] } );
    return;
 }
 
 sub signal_process {
-   my $self = shift; my $pids = []; my ($nrows, $pid);
+   my $self = shift; my $pids = []; my $pid;
 
-   unless ($nrows = $self->query_value( q(table_nrows) )) {
-      $self->throw( 'No processes specified' );
-   }
+   my $nrows = $self->query_value( q(_processes_nrows) )
+      or throw 'Process not specified';
 
    for my $row (0 .. $nrows) {
-      if ($pid = $self->query_value( q(table_select).$row )) {
-         push @{ $pids }, $pid;
-      }
+      $pid = $self->query_value( q(processes_select).$row )
+         and push @{ $pids }, $pid;
    }
 
-   $self->throw( 'No processes specified' ) unless ($pids->[0]);
+   $pids->[ 0 ] or throw 'Processes not specified';
 
+   my $flag = $self->query_value( q(signals) ) eq q(1) ? TRUE : FALSE;
    my $ref  = { Abort => q(ABRT), Kill => q(KILL), Terminate => q(TERM) };
    my $sig  = $ref->{ $self->context->stash->{_method} || q(Terminate) };
-   my $flag = $self->query_value( q(signals) ) eq q(1) ? 1 : 0;
-   my $res  = $self->processes->signal_process( $flag, $sig, $pids );
 
-   $self->add_result( $res );
-   return;
+   $self->add_result( $self->next::method( $flag, $sig, $pids )->out );
+   return TRUE;
 }
 
 1;
@@ -181,7 +182,7 @@ CatalystX::Usul::Model::Process - View and signal processes
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1062 $
 
 =head1 Synopsis
 
@@ -226,9 +227,11 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Model>
+=item L<CatalystX::Usul::Constants>
 
-=item L<Proc::ProcessTable>
+=item L<CatalystX::Usul::IPC>
+
+=item L<CatalystX::Usul::Model>
 
 =back
 
@@ -248,7 +251,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2011 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

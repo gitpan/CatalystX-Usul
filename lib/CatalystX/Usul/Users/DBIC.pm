@@ -1,16 +1,19 @@
-# @(#)$Id: DBIC.pm 619 2009-06-30 11:54:42Z pjf $
+# @(#)$Id: DBIC.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Users::DBIC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 619 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Users);
 
-use Crypt::PasswdMD5;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(say sub_name throw);
+use CatalystX::Usul::Time;
+use MRO::Compat;
+use TryCatch;
 
-my $NUL       = q();
-my %FEATURES  = ( roles => [ q(roles) ], session => 1, );
+my %FEATURES  = ( roles => [ q(roles) ], session => TRUE, );
 my %FIELD_MAP =
    ( active        => q(active),        crypted_password => q(password),
      email_address => q(email_address), first_name       => q(first_name),
@@ -19,149 +22,110 @@ my %FIELD_MAP =
      uid           => q(id),            username         => q(username),
      work_phone    => q(work_phone), );
 
-__PACKAGE__->config( passwd_type => q(md5), _dirty => 1, );
+__PACKAGE__->mk_accessors( qw(dbic_user_class dbic_user_model) );
 
-__PACKAGE__->mk_accessors( qw(dbic_user_class dbic_user_model
-                              passwd_type _dirty) );
+sub new {
+   my ($class, $app, $attrs) = @_;
+
+   my $new = $class->next::method( $app, $attrs );
+
+   $new->dbic_user_model( $app->model( $new->dbic_user_class ) );
+
+   return $new;
+}
 
 # Interface methods
 
 sub activate_account {
    my ($self, $user) = @_;
 
-   my ($user_obj) = $self->_assert_user_known_with_src( $user );
+   return $self->_execute( sub {
+      my $user_obj = $self->assert_user( $user );
 
-   $user_obj->active( 1 ); $user_obj->update;
-   $self->_set_dirty;
-   return;
+      $user_obj->active( TRUE ); $user_obj->update;
+   } );
 }
 
-sub change_password {
-   my ($self, $user, $old, $new) = @_;
+sub assert_user {
+   my $self     = shift;
+   my $user     = shift or throw 'User not specified';
+   my $rs       = $self->dbic_user_model->search( { username => $user } );
+   my $user_obj = $rs->first
+      or throw error => 'User [_1] unknown', args => [ $user ];
 
-   $self->update_password( 0, $user, $old, $new );
-   return;
+   return $user_obj;
 }
 
 sub create {
    my ($self, $fields) = @_;
-   my ($cols, $e, $passwd, $pname, $profile, $role, $user);
 
-   $pname   = delete $fields->{profile};
-   $profile = $self->profile_domain->find( $pname );
-   $passwd  = $fields->{password} || $profile->passwd || $self->def_passwd;
-   $user    = $fields->{username};
+   return $self->_execute( sub {
+      my $user    = $fields->{username};
+      my $pname   = delete $fields->{profile};
+      my $profile = $self->profiles->find( $pname );
+      my $passwd  = $fields->{password}
+                 || $profile->passwd || $self->def_passwd;
 
-   $fields->{password} = unix_md5_crypt( $passwd ) if ($passwd !~ m{ \* }mx);
+      $passwd !~ m{ [*!] }msx
+         and $fields->{password} = $self->_encrypt_password( $passwd );
 
-   $cols->{ $_ } = $fields->{ $_ } for (values %FIELD_MAP);
+      my $cols; $cols->{ $_ } = $fields->{ $_ } for (values %FIELD_MAP);
 
-   eval { $self->dbic_user_model->create( $cols ) };
+      $self->dbic_user_model->create( $cols );
 
-   $self->throw( $e ) if ($e = $self->catch);
+      $self->roles->is_member_of_role( $pname, $user )
+         or $self->roles->add_user_to_role( $pname, $user );
 
-   $self->_set_dirty;
-
-   unless ($self->role_domain->is_member_of_role( $pname, $user )) {
-      $self->role_domain->add_user_to_role( $pname, $user );
-   }
-
-   if ($profile->roles) {
-      for $role (split m{ , }mx, $profile->roles) {
-         unless ($self->role_domain->is_member_of_role( $role, $user )) {
-            $self->role_domain->add_user_to_role( $role, $user );
+      if ($profile->roles) {
+         for my $role (split m{ , }mx, $profile->roles) {
+            $self->roles->is_member_of_role( $role, $user )
+               or $self->roles->add_user_to_role( $role, $user );
          }
       }
-   }
-
-   return;
+   } );
 }
 
 sub delete {
    my ($self, $user) = @_;
 
-   my ($user_obj) = $self->_assert_user_known_with_src( $user );
-
-   $user_obj->delete;
-   $self->_set_dirty;
-   return;
+   return $self->_execute( sub { $self->assert_user( $user )->delete } );
 }
 
 sub get_features {
    return \%FEATURES;
 }
 
-sub get_primary_rid {
-   return;
-}
-
-sub get_user {
-   my ($self, $user, $verbose) = @_; my ($cache) = $self->_load; my $new;
-
-   $new->{ $_ } = $self->field_defaults->{ $_ } for (keys %FIELD_MAP);
-
-   bless $new, ref $self || $self;
-
-   return $new unless ($user && exists $cache->{ $user });
-
-   for (keys %FIELD_MAP) {
-      $new->{ $_ } = $cache->{ $user }->{ $FIELD_MAP{ $_ } };
-   }
-
-   return $new;
-}
-
-sub get_users_by_rid {
-   return ();
-}
-
-sub list {
-   my ($self, $pattern) = @_; $pattern ||= q( .+ );
-
-   my ($cache) = $self->_load; my (%found, @users);
-
-   for my $user (keys %{ $cache }) {
-      if (not $found{ $user } and $user =~ m{ $pattern }mx) {
-         push @users, $user; $found{ $user } = 1;
-      }
-   }
-
-   return \@users;
-}
-
-sub set_password {
-   my ($self, $user, $password, $encrypted) = @_;
-
-   $self->update_password( 1, $user, q(), $password, $encrypted );
-   return;
+sub get_field_map {
+   return \%FIELD_MAP;
 }
 
 sub update {
-   my ($self, $fields)  = @_; my $user = $fields->{username};
+   my ($self, $fields)  = @_;
 
-   my ($user_obj, $src) = $self->_assert_user_known_with_src( $user );
+   return $self->_execute( sub {
+      my $user     = $fields->{username};
+      my $user_obj = $self->assert_user( $user );
+      my $src      = $self->dbic_user_model->result_source;
 
-   for my $field (values %FIELD_MAP) {
-      if ($src->has_column( $field ) && exists $fields->{ $field }) {
-         $user_obj->$field( $fields->{ $field } );
+      for my $field (values %FIELD_MAP) {
+         $src->has_column( $field ) and exists $fields->{ $field }
+            and $user_obj->$field( $fields->{ $field } );
       }
-   }
 
-   $user_obj->update; $self->_set_dirty;
-   return;
+      $user_obj->update;
+   } );
 }
 
 sub update_password {
-   my ($self, @rest) = @_; my ($force, $user) = @rest;
+   my ($self, @rest) = @_;
 
-   $self->throw( 'No user specified' ) unless ($user);
+   return $self->_execute( sub {
+      my ($force, $user) = @rest; my $user_obj = $self->assert_user( $user );
 
-   my ($user_obj) = $self->_assert_user_known_with_src( $user );
-
-   $user_obj->password( $self->encrypt_password( @rest ) );
-   $user_obj->pwlast( $force ? 0 : int time / 86_400 );
-   $user_obj->update; $self->_set_dirty;
-   return;
+      $user_obj->password( $self->encrypt_password( @rest ) );
+      $user_obj->pwlast( $force ? 0 : int time / 86_400 );
+      $user_obj->update;
+   } );
 }
 
 sub user_report {
@@ -171,31 +135,29 @@ sub user_report {
 
    for my $user (@{ $self->retrieve->user_list }) {
       my $user_ref = $self->get_user( $user );
-      my $passwd   = $user_ref->{password} || q();
+      my $passwd   = $user_ref->{password} || NUL;
 
       @flds = ( q(C) );
    TRY: {
-      if ($passwd =~ m{ DISABLED }imx) { $flds[0] = q(D); last TRY }
-      if ($passwd =~ m{ EXPIRED }imx)  { $flds[0] = q(E); last TRY }
-      if ($passwd =~ m{ LEFT }imx)     { $flds[0] = q(L); last TRY }
-      if ($passwd =~ m{ NOLOGIN }imx)  { $flds[0] = q(N); last TRY }
-      if ($passwd =~ m{ x }imx)        { $flds[0] = q(C); last TRY }
-      if ($passwd =~ m{ \* }mx)        { $flds[0] = q(D); last TRY }
-      if ($passwd =~ m{ \! }mx)        { $flds[0] = q(D); last TRY }
+      if ($passwd =~ m{ DISABLED }imsx) { $flds[ 0 ] = q(D); last TRY }
+      if ($passwd =~ m{ EXPIRED }imsx)  { $flds[ 0 ] = q(E); last TRY }
+      if ($passwd =~ m{ LEFT }imsx)     { $flds[ 0 ] = q(L); last TRY }
+      if ($passwd =~ m{ NOLOGIN }imsx)  { $flds[ 0 ] = q(N); last TRY }
+      if ($passwd =~ m{ [*!] }msx)      { $flds[ 0 ] = q(N); last TRY }
       } # TRY
 
-      $flds[1] = $user;
-      $flds[2] = $user_ref->{first_name}.q( ).$user_ref->{last_name};
-      $flds[3] = $user_ref->{location};
-      $flds[4] = $user_ref->{work_phone};
-      $flds[5] = $user_ref->{project};
-      $flds[6] = 'Never Logged In';
+      $flds[ 1 ] = $user;
+      $flds[ 2 ] = $user_ref->{first_name}.q( ).$user_ref->{last_name};
+      $flds[ 3 ] = $user_ref->{location};
+      $flds[ 4 ] = $user_ref->{work_phone};
+      $flds[ 5 ] = $user_ref->{project};
+      $flds[ 6 ] = 'Never Logged In';
 
       unless ($fmt eq q(csv)) {
          $line = sprintf '%s %-8.8s %-20.20s %-10.10s %5.5s %-14.14s %-16.16s',
                          map { defined $_ ? $_ : q(~) } @flds[ 0 .. 6 ];
       }
-      else { $line = join q(,), map { defined $_ ? $_ : q() } @flds }
+      else { $line = join q(,), map { defined $_ ? $_ : NUL } @flds }
 
       push @lines, $line;
    }
@@ -211,10 +173,10 @@ sub user_report {
       $line  = 'S Login    Full Name            Location    ';
       $line .= 'Extn Role           Last Login';
       unshift @lines, $line;
-      unshift @lines, 'Host: '.$self->host.' Printed: '.$self->stamp;
+      unshift @lines, 'Host: '.$self->host.' Printed: '.time2str;
 
       # Append footer
-      push @lines, q(), q();
+      push @lines, NUL, NUL;
       $line  = 'Status field key: C = Current, D = Disabled, ';
       $line .= 'E = Expired, L = Left, N = NOLOGIN';
       push @lines, $line;
@@ -222,83 +184,58 @@ sub user_report {
       push @lines, "Total users $count";
    }
 
-   unless ($fmt eq q(csv)) { $self->say( @lines ) }
+   unless ($fmt eq q(csv)) { say @lines }
    else { $self->io( $args->{path} )->println( join "\n", @lines  ) }
 
    return;
 }
 
-sub validate_password {
-   my ($self, $user, $password) = @_; my $e;
-
-   eval { $self->authenticate( 1, $user, $password ) };
-
-   return 1 unless ($e = $self->catch);
-
-   $self->log_debug( $e->as_string( 2 ) ) if ($self->debug);
-   return 0;
-}
-
 # Private methods
 
-sub _assert_user_known_with_src {
-   my ($self, $user) = @_; my $user_obj;
+sub _execute {
+   my ($self, $f) = @_; my $key = __PACKAGE__.q(::_execute); my $res;
 
-   my $rs = $self->dbic_user_model->search( { username => $user } );
+   $self->debug and $self->log_debug( __PACKAGE__.q(::).(sub_name 1) );
+   $self->lock->set( k => $key );
+   $self->cache->{dirty} = TRUE;
 
-   unless ($user_obj = $rs->first) {
-      $self->throw( error => 'User [_1] unknown', args => [ $user ] );
-   }
+   try        { $res = $f->() }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
-   return ($user_obj, $rs->result_source);
+   $self->cache->{dirty} = TRUE;
+   $self->lock->reset( k => $key );
+   return $res;
 }
 
 sub _load {
-   my $self = shift; my ($cache, $field, $user, $user_obj);
+   my $self = shift; my $key = __PACKAGE__.q(::_load); my $user_obj;
 
-   $self->lock->set( k => __PACKAGE__ );
+   $self->lock->set( k => $key );
 
-   unless ($self->_dirty) {
-      $cache = { %{ $self->_cache } };
-      $self->lock->reset( k => __PACKAGE__ );
-      return ($cache);
-   }
+   $self->cache->{dirty} or return $self->_cache_results( $key );
 
-   $self->_cache( {} );
+   my @keys = keys %{ $self->cache }; delete $self->cache->{ $_ } for (@keys);
 
-   eval {
+   try {
       my $user_col = $FIELD_MAP{username};
-      my $rs       = $self->dbic_user_model->search();
+      my $rs       = $self->dbic_user_model->search;
       my $src      = $rs->result_source;
 
       while (defined ($user_obj = $rs->next)) {
-         $user = $user_obj->$user_col;
+         my $user = $user_obj->$user_col;
 
-         for $field (values %FIELD_MAP) {
-            if ($src->has_column( $field )) {
-               $self->_cache->{ $user }->{ $field } = $user_obj->$field;
-            }
+         for my $field (values %FIELD_MAP) {
+            $src->has_column( $field )
+               and $self->cache->{users}->{ $user }->{ $field }
+                      = $user_obj->$field;
          }
       }
-   };
 
-   my $e = $self->catch;
+      $self->cache->{dirty} = FALSE;
+   }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
-   $cache = { %{ $self->_cache } }; $self->_dirty( 0 );
-   $self->lock->reset( k => __PACKAGE__ );
-
-   $self->throw( $e ) if ($e);
-
-   return ($cache);
-}
-
-sub _set_dirty {
-   my $self = shift;
-
-   $self->lock->set( k => __PACKAGE__ );
-   $self->_dirty( 1 );
-   $self->lock->reset( k => __PACKAGE__ );
-   return;
+   return $self->_cache_results( $key );
 }
 
 1;
@@ -313,7 +250,7 @@ CatalystX::Usul::Users::DBIC - Database user storage
 
 =head1 Version
 
-0.3.$Revision: 619 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -321,7 +258,7 @@ CatalystX::Usul::Users::DBIC - Database user storage
 
    my $class = CatalystX::Usul::Users::DBIC;
 
-   my $user_obj = $class->new( $app, $config );
+   my $user_obj = $class->new( $attrs, $app );
 
 =head1 Description
 
@@ -332,20 +269,19 @@ list of factory methods
 
 =head1 Subroutines/Methods
 
-=head2 build_per_context_instance
+=head2 new
 
-Make copies of DBIC model references available only after the application
-setup is complete
-
-=head2 get_features
-
-Returns a hashref of features supported by this store. Can be checked using
-the C<supports> method implemented in C<CatalystX::Usul::Model>
+Constructor
 
 =head2 activate_account
 
 Searches the user model for the supplies user name and if it exists sets
 the active column to true
+
+=head2 assert_user
+
+Returns a DBIC user object for the specified user or throws an exception
+if the user does not exist
 
 =head2 change_password
 
@@ -366,6 +302,15 @@ roles appropriate to the user profile
 =head2 delete
 
 Deletes a user object from the user model
+
+=head2 get_features
+
+Returns a hashref of features supported by this store. Can be checked using
+the C<supports> method implemented in C<CatalystX::Usul::Model>
+
+=head2 get_field_map
+
+Returns a reference to the package scoped variable C<%FIELD_MAP>
 
 =head2 get_primary_rid
 
@@ -407,13 +352,6 @@ Updates the users password in the database
 
 Generate a report from the data in the user database
 
-=head2 validate_password
-
-Called by L<check_password|CatalystX::Usul::Users/check_password> in
-the parent class. This method calls
-L<authenticate|CatalystX::Usul::Users/authenticate> in the parent
-class
-
 =head1 Diagnostics
 
 None
@@ -427,8 +365,6 @@ None
 =over 3
 
 =item L<CatalystX::Usul::Model::Identity::Users>
-
-=item L<Crypt::PasswdMD5>
 
 =back
 

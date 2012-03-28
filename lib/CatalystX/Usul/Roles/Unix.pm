@@ -1,182 +1,195 @@
-# @(#)$Id: Unix.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Unix.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Roles::Unix;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Roles CatalystX::Usul::Utils);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Roles CatalystX::Usul::IPC);
 
-use Unix::GroupFile;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(throw untaint_path);
+use File::UnixAuth;
+use TryCatch;
 
-__PACKAGE__->config( backup_extn => q(.bak),
-                     baseid      => 100,
-                     group_file  => q(/etc/group),
-                     inc         => 1,
-                     _mtime      => 0 );
+__PACKAGE__->mk_accessors( qw(backup_extn baseid group_obj group_path
+                              inc _mtime) );
 
-__PACKAGE__->mk_accessors( qw(backup_extn baseid group_file inc _mtime) );
+sub new {
+   my ($class, $app, $attrs) = @_;
+
+   $attrs->{backup_extn} ||= q(.bak);
+   $attrs->{baseid     } ||= 1000;
+   $attrs->{group_path } ||= q(/etc/group);
+   $attrs->{inc        } ||= 1;
+   $attrs->{_mtime     }   = 0;
+
+   my $new = $class->next::method( $app, $attrs );
+
+   $new->group_path( $new->_build_group_path );
+   $new->group_obj ( $new->_build_group_obj  );
+
+   return $new;
+}
 
 # Factory methods
 
 sub add_user_to_role {
-   my ($self, $role, $user) = @_; my $cmd;
+   my ($self, @rest) = @_;
 
-   $cmd  = $self->suid.' -n -c roles_update -- add user "';
-   $cmd .= $user.'" "'.$role.'" ';
-   $self->run_cmd( $cmd, { err => q(out) } );
-   return;
+   return $self->_run_as_root( qw(roles_update add user), @rest );
 }
 
 sub create {
-   my ($self, $role) = @_; my $cmd;
+   my ($self, @rest) = @_;
 
-   $cmd = $self->suid.' -n -c roles_update -- add group "" "'.$role.'" ';
-   $self->run_cmd( $cmd, { err => q(out) } );
-   return;
+   return $self->_run_as_root( qw(roles_update add group), @rest );
 }
 
 sub delete {
-   my ($self, $role) = @_; my $cmd;
+   my ($self, @rest) = @_;
 
-   $cmd = $self->suid.' -n -c roles_update -- delete group "" "'.$role.'" ';
-   $self->run_cmd( $cmd, { err => q(out) } );
-   return;
+   return $self->_run_as_root( qw(roles_update delete group), @rest );
 }
 
 sub remove_user_from_role {
-   my ($self, $role, $user) = @_; my $cmd;
+   my ($self, @rest) = @_;
 
-   $cmd  = $self->suid.' -n -c roles_update -- delete user "';
-   $cmd .= $user.'" "'.$role.'" ';
-   $self->run_cmd( $cmd, { err => q(out) } );
-   return;
+   return $self->_run_as_root( qw(roles_update delete user), @rest );
 }
 
 # Called from suid as root
 
 sub roles_update {
-   my ($self, $cmd, $fld, $user, $grp) = @_;
+   my ($self, $cmd, $fld, $grp, $user) = @_;
 
-   unless ($cmd && ($cmd eq q(add) || $cmd eq q(delete))) {
-      $self->throw( error => 'Command [_1] unknown', args => [ $cmd || q() ] );
+   ($cmd and ($cmd eq q(add) or $cmd eq q(delete)))
+      or throw error => 'Command [_1] unknown', args => [ $cmd || NUL ];
+
+   ($fld and ($fld eq q(group) or $fld eq q(user)))
+      or throw error => 'Field [_1] unknown', args => [ $fld || NUL ];
+
+   ($user or ($fld and $fld eq q(group))) or throw 'User not specified';
+
+   unless (($cmd and $cmd eq q(add) and $fld and $fld eq q(group))
+           or $self->is_role( $grp )) {
+      throw error => 'Role [_1] unknown', args => [ $grp || NUL ];
    }
 
-   unless ($fld && ($fld eq q(group) || $fld eq q(user))) {
-      $self->throw( error => 'Field [_1] unknown', args => [ $fld || q() ] );
-   }
+   my $key = __PACKAGE__.q(::_execute); $self->lock->set( k => $key );
 
-   unless ($user || ($fld && $fld eq q(group))) {
-      $self->throw( 'No user specified' );
-   }
+   try {
+      my $rs = $self->group_obj->resultset;
 
-   unless (($cmd && $cmd eq q(add) && $fld && $fld eq q(group))
-           || $self->is_role( $grp )) {
-      $self->throw( error => 'Role [_1] unknown', args => [ $grp || q() ] );
-   }
+      if ($cmd eq q(add)) {
+         if ($fld eq q(group)) {
+            $rs->create( { name => $grp, gid => $self->_get_new_gid } );
+         }
+         else {
+            my $grp_obj = $rs->find( { name => $grp } )
+               or throw error => 'Group [_1] unknown', args => [ $grp ];
 
-   my $path = $self->_get_group_file;
-   $self->lock->set( k => $path );
-   my $group_obj = $self->_get_group_obj( $path, q(rw) );
-
-   if ($cmd eq q(add)) {
-      if ($fld eq q(group)) {
-         $group_obj->group( $grp, q(*), $self->_get_new_gid);
+            $grp_obj->add_user_to_group( $user );
+         }
       }
-      else { $group_obj->add_user( $grp, $user ) }
-   }
-   elsif ($cmd eq q(delete)) {
-      if ($fld eq q(group)) { $group_obj->delete( $grp ) }
-      else { $group_obj->remove_user( $grp, $user ) }
-   }
+      elsif ($cmd eq q(delete)) {
+         if ($fld eq q(group)) { $rs->delete( { name => $grp } ) }
+         else {
+            my $grp_obj = $rs->find( { name => $grp } )
+               or throw error => 'Group [_1] unknown', args => [ $grp ];
 
-   $group_obj->commit( backup => $self->backup_extn );
-   $self->lock->reset( k => $path );
+            $grp_obj->remove_user_from_group( $user );
+         }
+      }
+   }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
+
+   $self->lock->reset( k => $key );
    return "Role update $cmd $fld complete";
 }
 
 # Private methods
 
-sub _get_group_file {
-   my ($self, $path) = @_; $path ||= $self->group_file;
+sub _build_group_obj {
+   my $self  = shift;
 
-   if ($path =~ m{ \A ([[:print:]]+) \z }mx) { $path = $1  } # now untainted
+   return File::UnixAuth->new( ioc_obj     => $self, path => $self->group_path,
+                               source_name => q(group) );
+}
 
-   unless ($path && -f $path) {
-      $self->throw( error => 'File [_1] not found', args => [ $path ] );
-   }
+sub _build_group_path {
+   my $self = shift; my $path = untaint_path $self->group_path;
+
+   $path or throw 'Group file path not specified';
+   -f $path or throw error => 'File [_1] not found', args => [ $path ];
 
    return $path;
 }
 
-sub _get_group_obj {
-   my ($self, $path, $mode) = @_;
-
-   my $group_obj = Unix::GroupFile->new
-      ( $path, locking => q(none), mode => $mode );
-
-   unless ($group_obj) {
-      $self->lock->reset( k => $path );
-      $self->throw( 'Cannot create group file object' );
-   }
-
-   return $group_obj;
-}
-
 sub _get_new_gid {
-   my $self = shift; my ($base_id, $gid, @gids, $inc, $new_id);
+   my $self    = shift;
+   my $base_id = $self->baseid;
+   my ($cache) = $self->_load;
+   my $inc     = $self->inc;
+   my $new_id  = $base_id;
 
-   $base_id = $self->baseid; $inc = $self->inc; $new_id = $base_id; @gids = ();
-
-   push @gids, $self->_cache->{ $_ }->{id} for (keys %{ $self->_cache });
-
-   for $gid (sort { $a <=> $b } @gids) {
-      if ($gid >= $base_id) { last if ($gid > $new_id); $new_id = $gid + $inc }
+   for my $gid (sort { $a <=> $b }
+                map  { $cache->{ $_ }->{id} } keys %{ $cache }) {
+      if ($gid >= $base_id) { $gid > $new_id and last; $new_id = $gid + $inc }
    }
 
    return $new_id;
 }
 
 sub _load {
-   my $self = shift;
-   my ($cache, $gid, $group, $group_obj, $id2name, $mtime);
-   my ($path, $updt, $user2role, $users);
+   my $self = shift; my $key = __PACKAGE__.q(::_load);
 
-   $path  = $self->_get_group_file;
-   $self->lock->set( k => $path );
-   $mtime = $self->status_for( $path )->{mtime};
-   $updt  = $mtime == $self->_mtime ? 0 : 1;
+   $self->lock->set( k => $key );
+
+   my $mtime = $self->status_for( $self->group_path )->{mtime};
+   my $updt  = $mtime == $self->_mtime ? FALSE : TRUE;
+
    $self->_mtime( $mtime );
 
-   unless ($updt) {
-      $cache     = { %{ $self->_cache     } };
-      $id2name   = { %{ $self->_id2name   } };
-      $user2role = { %{ $self->_user2role } };
-      $self->lock->reset( k => $path );
-      return ($cache, $id2name, $user2role);
+   $updt or return $self->_cache_results( $key );
+
+   delete $self->cache->{ $_ } for (keys %{ $self->cache });
+
+   try {
+      my $data = $self->group_obj->load->{group};
+
+      for my $group (keys %{ $data }) {
+         my $group_data = $data->{ $group };
+         my $gid        = $group_data->{gid};
+         my $users      = $group_data->{members};
+
+         unless (exists $self->cache->{id2name}->{ $gid }) {
+            $self->cache->{id2name}->{ $gid    } = $group;
+            $self->cache->{roles  }->{ $group  } = {
+               id     => $gid,
+               passwd => $group_data->{password},
+               users  => [] };
+         }
+
+         push @{ $self->cache->{roles}->{ $group }->{users} }, @{ $users };
+         push @{ $self->cache->{user2role}->{ $_ } }, $group for (@{ $users });
+      }
    }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
-   $self->_cache( {} ); $self->_id2name( {} ); $self->_user2role( {} );
-   $group_obj = $self->_get_group_obj( $path, q(r) );
+   return $self->_cache_results( $key );
+}
 
-   for $group ($group_obj->groups) {
-      next unless ($gid = $group_obj->gid( $group ));
-      next if     (exists $self->_id2name->{ $gid });
+sub _run_as_root {
+   my ($self, $method, @args) = @_;
 
-      $self->_id2name->{ $gid } = $group;
-      $users = [ $group_obj->members( $group ) ];
-      $self->_cache->{ $group } = { id     => $gid,
-                                    passwd => $group_obj->passwd( $group ),
-                                    users  => $users };
+   my $cmd = [ $self->suid, ($self->debug ? q(-D) : q(-n)), q(-c),
+               $method, q(--), @args ];
+   my $out = $self->run_cmd( $cmd, { err => q(out) } )->out;
 
-      push @{ $self->_user2role->{ $_ } }, $group for (@{ $users });
-   }
+   $self->debug and $self->log->debug( $out );
 
-   $cache     = { %{ $self->_cache     } };
-   $id2name   = { %{ $self->_id2name   } };
-   $user2role = { %{ $self->_user2role } };
-   $self->lock->reset( k => $path );
-   return ($cache, $id2name, $user2role);
+   return $out;
 }
 
 1;
@@ -191,7 +204,7 @@ CatalystX::Usul::Roles::Unix - Group management for the Unix OS
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -199,7 +212,7 @@ CatalystX::Usul::Roles::Unix - Group management for the Unix OS
 
    my $class = CatalystX::Usul::Roles::Unix;
 
-   my $role_obj = $class->new( $app, $config );
+   my $role_obj = $class->new( $attrs, $app );
 
 =head1 Description
 
@@ -208,6 +221,10 @@ I</etc/group>. This class implements the methods required by it's
 base class
 
 =head1 Subroutines/Methods
+
+=head2 new
+
+Constructor
 
 =head2 add_user_to_role
 

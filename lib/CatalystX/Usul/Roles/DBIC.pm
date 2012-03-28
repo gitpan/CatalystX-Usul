@@ -1,136 +1,149 @@
-# @(#)$Id: DBIC.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: DBIC.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Roles::DBIC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Roles);
 
-__PACKAGE__->config( _dirty => 1 );
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(is_member sub_name throw);
+use TryCatch;
 
 __PACKAGE__->mk_accessors( qw(dbic_role_class dbic_user_roles_class
-                              dbic_role_model dbic_user_roles_model _dirty) );
+                              dbic_role_model dbic_user_roles_model) );
+
+sub new {
+   my ($class, $app, $attrs) = @_;
+
+   my $new = $class->next::method( $app, $attrs );
+
+   $new->cache->{dirty} = TRUE;
+   $new->dbic_role_model( $app->model( $new->dbic_role_class ) );
+   $new->dbic_user_roles_model( $app->model( $new->dbic_user_roles_class ) );
+
+   return $new;
+}
 
 # Factory methods
 
 sub add_user_to_role {
-   my ($self, $role, $user) = @_; my $e;
+   my ($self, $role, $user) = @_;
 
-   my $rid      = $self->get_rid( $role );
-   my $user_obj = $self->user_domain->find_user( $user );
+   return $self->_execute( sub {
+      my $role_id  = $self->get_rid( $role )
+         or throw error => 'Role [_1] unknown', args => [ $role ];
+      my $user_obj = $self->users->find_user( $user );
 
-   unless ($self->is_member( $role, @{ $user_obj->roles } )) {
-      eval { $self->dbic_user_roles_model->create
-                ( { role_id => $rid, user_id => $user_obj->uid } ) };
+      is_member $role, $user_obj->roles and return;
 
-      $self->throw( $e ) if ($e = $self->catch);
-
-      $self->_dirty( 1 );
-   }
-
-   return;
+      $self->dbic_user_roles_model->create
+         ( { role_id => $role_id, user_id => $user_obj->uid } );
+   } );
 }
 
 sub create {
-   my ($self, $role) = @_; my $e;
+   my ($self, $role) = @_;
 
-   eval { $self->dbic_role_model->create( { role => $role } ) };
-
-   $self->throw( $e ) if ($e = $self->catch);
-
-   $self->_dirty( 1 );
-   return;
+   return $self->_execute( sub {
+      $self->dbic_role_model->create( { role => $role } );
+   } );
 }
 
 sub delete {
    my ($self, $role) = @_;
 
-   $self->lock->set( k => __PACKAGE__ );
+   return $self->_execute( sub {
+      my $role_obj = $self->dbic_role_model->search( { role => $role } );
 
-   my $role_obj = $self->dbic_role_model->search( { role => $role } );
+      defined $role_obj
+         or throw error => 'Role [_1] unknown', args => [ $role ];
 
-   unless (defined $role_obj) {
-      $self->lock->reset( k => __PACKAGE__ );
-      $self->throw( error => 'Role [_1] unknown', args => [ $role ] );
-   }
-
-   $role_obj->delete; $self->_dirty( 1 );
-   $self->lock->reset( k => __PACKAGE__ );
-   return;
+      $role_obj->delete;
+   } );
 }
 
 sub remove_user_from_role {
    my ($self, $role, $user) = @_;
 
-   my $rid      = $self->get_rid( $role );
-   my $user_obj = $self->user_domain->find_user( $user );
+   return $self->_execute( sub {
+      my $role_id  = $self->get_rid( $role )
+         or throw error => 'Role [_1] unknown', args => [ $role ];
+      my $user_obj = $self->users->find_user( $user );
 
-   if ($self->is_member( $role, @{ $user_obj->roles } )) {
-      $self->lock->set( k => __PACKAGE__ );
+      is_member $role, $user_obj->roles or return;
 
       my $user_roles_obj = $self->dbic_user_roles_model->search
-         ( { role_id => $rid, user_id => $user_obj->uid } );
+         ( { role_id => $role_id, user_id => $user_obj->uid } );
 
-      unless (defined $user_roles_obj) {
-         $self->lock->reset( k => __PACKAGE__ );
-         $self->throw( error => 'User [_1] not in role [_2]',
-                       args  => [ $user, $role ] );
-      }
+      defined $user_roles_obj
+         or throw error => 'User [_1] not in role [_2]',
+                  args  => [ $user, $role ];
 
-      $user_roles_obj->delete; $self->_dirty( 1 );
-      $self->lock->reset( k => __PACKAGE__ );
-   }
-
-   return;
+      $user_roles_obj->delete;
+   } );
 }
 
 # Private methods
 
+sub _execute {
+   my ($self, $f) = @_; my $key = __PACKAGE__.q(::_execute); my $res;
+
+   $self->debug and $self->log_debug( __PACKAGE__.q(::).(sub_name 1) );
+   $self->lock->set( k => $key );
+
+   try        { $res = $f->() }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
+
+   $self->cache->{dirty} = TRUE;
+   $self->lock->reset( k => $key );
+   return $res;
+}
+
 sub _load {
-   my $self = shift;
-   my ($attr, $cache, $id2name, $role, $role_obj, $rs);
-   my ($user, $user_roles_obj, $user2role);
+   my $self = shift; my $key = __PACKAGE__.q(::_load);
 
-   $self->lock->set( k => __PACKAGE__ );
+   $self->lock->set( k => $key );
 
-   unless ($self->_dirty) {
-      $cache     = { %{ $self->_cache     } };
-      $id2name   = { %{ $self->_id2name   } };
-      $user2role = { %{ $self->_user2role } };
-      $self->lock->reset( k => __PACKAGE__ );
-      return ($cache, $id2name, $user2role);
+   $self->cache->{dirty} or return $self->_cache_results( $key );
+
+   my @keys = keys %{ $self->cache }; delete $self->cache->{ $_ } for (@keys);
+
+   try {
+      my ($role_obj, $user_roles_obj);
+      my $rs = $self->dbic_role_model->search();
+
+      while (defined ($role_obj = $rs->next)) {
+         my $role = $role_obj->get_column( q(role) );
+
+         $self->cache->{roles}->{ $role }
+            = { id => $role_obj->id, users => [] };
+         $self->cache->{id2name}->{ $role_obj->id } = $role;
+      }
+
+      my $attr = { include_columns => [ q(role_rel.role),
+                                        q(user_rel.username) ],
+                   join            => [ q(role_rel), q(user_rel) ] };
+
+      $rs = $self->dbic_user_roles_model->search( {}, $attr );
+
+      while (defined ($user_roles_obj = $rs->next)) {
+         my $role = $user_roles_obj->role_rel->role;
+         my $user = $user_roles_obj->user_rel->username;
+
+         $self->cache->{user2role}->{ $user }
+            or $self->cache->{user2role}->{ $user } = [];
+
+         push @{ $self->cache->{roles}->{ $role }->{users} }, $user;
+         push @{ $self->cache->{user2role}->{ $user } }, $role;
+      }
+
+      $self->cache->{dirty} = FALSE;
    }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
-   $self->_cache( {} ); $self->_id2name( {} ); $self->_user2role( {} );
-   $rs   = $self->dbic_role_model->search();
-
-   while (defined ($role_obj = $rs->next)) {
-      $role = $role_obj->get_column( q(role) );
-      $self->_cache->{ $role } = { id => $role_obj->id, users => [] };
-      $self->_id2name->{ $role_obj->id } = $role;
-   }
-
-   $attr = { include_columns => [ q(role.role), q(user.username) ],
-             join            => [ q(role), q(user) ] };
-   $rs   = $self->dbic_user_roles_model->search( {}, $attr );
-
-   while (defined ($user_roles_obj = $rs->next)) {
-      $role = $user_roles_obj->get_column( q(role) );
-      $user = $user_roles_obj->get_column( q(username) );
-
-      $self->_user2role->{ $user } = [] unless ($self->_user2role->{ $user });
-
-      push @{ $self->_cache->{ $role }->{users} }, $user;
-      push @{ $self->_user2role->{ $user } }, $role;
-   }
-
-   $cache     = { %{ $self->_cache     } };
-   $id2name   = { %{ $self->_id2name   } };
-   $user2role = { %{ $self->_user2role } };
-   $self->_dirty( 0 );
-   $self->lock->reset( k => __PACKAGE__ );
-   return ($cache, $id2name, $user2role);
+   return $self->_cache_results( $key );
 }
 
 1;
@@ -145,7 +158,7 @@ CatalystX::Usul::Roles::DBIC - Role management database storage
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -153,7 +166,7 @@ CatalystX::Usul::Roles::DBIC - Role management database storage
 
    my $class = CatalystX::Usul::Roles::DBIC;
 
-   my $role_obj = $class->new( $app, $config );
+   my $role_obj = $class->new( $attrs, $app );
 
 =head1 Description
 
@@ -162,6 +175,10 @@ database using L<DBIx::Class>. This class implements the methods
 required by it's base class
 
 =head1 Subroutines/Methods
+
+=head2 new
+
+Constructor
 
 =head2 build_per_context_instance
 

@@ -1,59 +1,63 @@
-# @(#)$Id: Users.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Users.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Users;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
-use Class::C3;
-use Crypt::PasswdMD5;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(exception throw);
+use CatalystX::Usul::UserProfiles;
+use Crypt::Eksblowfish::Bcrypt qw(bcrypt en_base64);
+use File::MailAlias;
+use MRO::Compat;
 use Sys::Hostname;
 use Scalar::Util qw(weaken);
+use TryCatch;
 
-my $NUL    = q();
-my $SPC    = q( );
-my @CSET   = ( q(.), q(/), 0 .. 9, q(A) .. q(Z), q(a) .. q(z) );
+my @BASE64 = ( q(a) .. q(z), q(A) .. q(Z), 0 .. 9, q(.), q(/) );
 my %FIELDS =
-   ( active           => 0,             auth_realm       => undef,
-     crypted_password => $NUL,          email_address    => $NUL,
-     first_name       => $NUL,          homedir          => q(/tmp),
-     home_phone       => $NUL,          uid              => $NUL,
-     last_name        => $NUL,          location         => $NUL,
-     pgid             => $NUL,          project          => $NUL,
-     pwafter          => 0,             pwdisable        => 0,
-     pwlast           => 0,             pwnext           => 0,
-     pwwarn           => 0,             pwexpires        => 0,
-     shell            => q(/bin/false), username         => q(unknown),
-     work_phone       => $NUL, );
+   ( active           => 0,   auth_realm       => undef,
+     crypted_password => NUL, email_address    => NUL,
+     first_name       => NUL, homedir          => q(/tmp),
+     home_phone       => NUL, last_name        => NUL,
+     location         => NUL, pgid             => NUL,
+     project          => NUL, pwafter          => 0,
+     pwdisable        => 0,   pwlast           => undef,
+     pwnext           => 0,   pwwarn           => 0,
+     pwexpires        => 0,   shell            => q(/bin/false),
+     uid              => NUL, username         => q(unknown),
+     work_phone       => NUL, );
 
 __PACKAGE__->mk_accessors( keys %FIELDS );
 
-__PACKAGE__->config( def_passwd       => q(*DISABLED*),
-                     host             => hostname,
-                     max_login_trys   => 3,
-                     max_pass_hist    => 10,
-                     min_fullname_len => 6,
-                     sessdir          => q(hist),
-                     user_pattern     => q(\A [a-zA-Z0-9]+),
-                     userid_len       => 3, );
-
-__PACKAGE__->mk_accessors( qw(alias_domain def_passwd field_defaults
+__PACKAGE__->mk_accessors( qw(aliases cache def_passwd field_defaults
                               host max_login_trys max_pass_hist
-                              min_fullname_len profile_domain
-                              role_domain roles sessdir user_list
-                              user_pattern userid_len _cache
-                              _rid2users _uid2name) );
+                              min_fullname_len passwd_type profiles
+                              roles sessdir user_list user_pattern
+                              userid_len) );
 
 sub new {
-   my ($self, $app, $config) = @_;
+   my ($self, $app, $attrs) = @_;
 
-   my $new      = $self->next::method( $app, $config );
-   my $app_conf = $app->config || {};
+   $attrs->{cache           } ||= { dirty => TRUE };
+   $attrs->{def_passwd      } ||= q(*DISABLED*);
+   $attrs->{field_defaults  }   = \%FIELDS;
+   $attrs->{host            } ||= hostname;
+   $attrs->{max_login_trys  } ||= 3;
+   $attrs->{max_pass_hist   } ||= 10;
+   $attrs->{min_fullname_len} ||= 6;
+   $attrs->{passwd_type     } ||= q(Blowfish);
+   $attrs->{user_pattern    } ||= q(\A [a-zA-Z0-9]+);
+   $attrs->{userid_len      } ||= 3;
 
-   $new->field_defaults( \%FIELDS                              );
-   $new->sessdir       ( $app_conf->{sessdir} || $new->sessdir );
+   my $new = $self->next::method( $app, $attrs );
+   my $ac  = $app->config || {};
+
+   $new->aliases ( $new->_build_aliases ( $ac ) );
+   $new->profiles( $new->_build_profiles( $ac ) );
 
    return $new;
 }
@@ -61,24 +65,22 @@ sub new {
 # C::A::Store methods
 
 sub check_password {
-   my ($self, $password) = @_; my $username = $self->username; my $udm;
+   my ($self, $password) = @_; my $username = $self->username;
 
-   return if (not $username or $username eq q(unknown));
+   (not $username or $username eq q(unknown)) and return;
 
-   return unless ($udm = $self->{_domain});
+   my $udm = $self->{_domain} or return;
 
-   return $udm->validate_password( $username, $password );
+   return $udm->_validate_password( $username, $password );
 }
 
 sub find_user {
    my ($self, $user, $verbose) = @_;
 
-   my $new = $self->get_user( $user, $verbose );
+   my $new = $self->get_user( $user, $verbose ); $new->roles( [] );
 
-   if ($new->username ne q(unknown) && $self->supports( qw(roles) )) {
-      $new->roles( [ $self->role_domain->get_roles( $user, $new->pgid ) ] );
-   }
-   else { $new->roles( [] ) }
+   $new->username ne q(unknown) and $self->supports( qw(roles) )
+      and $new->roles( [ $self->roles->get_roles( $user, $new->pgid ) ] );
 
    $new->{_domain} = $self; weaken( $new->{_domain} );
 
@@ -88,8 +90,8 @@ sub find_user {
 sub for_session {
    my $self = shift;
 
-   delete $self->{crypted_password};
-   delete $self->{_domain};
+   delete $self->{crypted_password}; delete $self->{_domain};
+
    return $self;
 }
 
@@ -107,161 +109,128 @@ sub id {
 
 # Object methods
 
+sub activate_account {
+   my ($self, $key) = @_; return;
+}
+
 sub authenticate {
-   my ($self, $test_for_expired, $user, $passwd) = @_; my ($e, $n_trys, $res);
+   my ($self, $test_for_expired, $user, $passwd) = @_;
 
-   $self->throw( 'No user specified' ) unless ($user);
+   my $user_obj = $self->_assert_user( $user );
 
-   my $user_obj = $self->_assert_user_known( $user );
+   $user_obj->active
+      or throw error => 'User [_1] account inactive', args => [ $user ];
 
-   unless ($user_obj->active) {
-      $self->throw( error => 'User [_1] account inactive', args => [ $user ] );
-   }
-
-   if ($test_for_expired and $self->_has_password_expired( $user_obj )) {
-      $self->throw( error => 'User [_1] password expired', args => [ $user ] );
-   }
+   $test_for_expired and $self->_has_password_expired( $user_obj )
+      and throw error => 'User [_1] password expired', args => [ $user ];
 
    if ($passwd eq q(stdin)) {
-      $passwd = <STDIN>; $passwd ||= $NUL; chomp $passwd;
+      $passwd = <STDIN>; $passwd ||= NUL; chomp $passwd;
    }
 
-   if ($user_obj->crypted_password =~ m{ \A \$ 1 \$ }msx) {
-      $res = unix_md5_crypt( $passwd, $user_obj->crypted_password );
-   }
-   else { $res = crypt $passwd, $user_obj->crypted_password }
-
-   my $path = $self->catfile( $self->sessdir, $user );
+   my $stored   = $user_obj->crypted_password || NUL;
+   my $supplied = $self->_encrypt_password( $passwd, $stored );
+   my $path     = $self->io( $self->catfile( $self->sessdir, $user ) );
 
    $self->lock->set( k => $path );
 
-   if ($res eq $user_obj->crypted_password) {
-      unlink $path if (-f $path);
+   if ($supplied eq $stored) {
+      $path->is_file and $path->unlink;
       $self->lock->reset( k => $path );
       return $user_obj;
    }
 
-   if (-f $path) {
-      $n_trys = eval { $self->io( $path )->chomp->getline };
-
-      if ($e = $self->catch) {
-         $self->lock->reset( k => $path ); $self->throw( $e );
-      }
-
-      $n_trys ||= 0; $n_trys++;
-   }
-   else { $n_trys = 1 }
-
-   if ($self->max_login_trys and $n_trys >= $self->max_login_trys) {
-      unlink $path if (-f $path);
-      $self->lock->reset( k => $path );
-      $self->disable_account( $user );
-      $self->throw( error => 'User [_1] max login attempts [_2] exceeded',
-                    args  => [ $user, $self->max_login_trys ] );
-   }
-
-   eval { $self->io( $path )->println( $n_trys ) };
-
-   if ($e = $self->catch) {
-      $self->lock->reset( k => $path ); $self->throw( $e );
-   }
-
+   $self->_count_login_attempt( $user, $path );
    $self->lock->reset( k => $path );
-   $self->throw( error => 'User [_1] incorrect password', args => [ $user ] );
+   throw error => 'User [_1] incorrect password for class [_2]',
+         args  => [ $user, ref $user_obj ];
    return;
+}
+
+sub change_password {
+   my ($self, @rest) = @_; $self->update_password( FALSE, @rest ); return;
 }
 
 sub disable_account {
    my ($self, $user) = @_;
 
-   $self->update_password( 1, $user, $NUL, q(*DISABLED*), 1 );
+   $self->update_password( TRUE, $user, NUL, q(*DISABLED*), TRUE );
    return;
 }
 
 sub encrypt_password {
    my ($self, $force, $user, $old_pass, $new_pass, $encrypted) = @_;
-   my ($enc_pass, @flds, $line, $res);
 
    unless ($force) {
-      my $user_obj = $self->authenticate( 0, $user, $old_pass );
+      my $user_obj = $self->authenticate( FALSE, $user, $old_pass );
 
-      if (($res = $self->_can_change_password( $user_obj )) > 0) {
+      if ((my $days = $self->_can_change_password( $user_obj )) > 0) {
          my $msg = 'User [_1] cannot change password for [_2] days';
 
-         $self->throw( error => $msg, args => [ $user, $res ] );
+         throw error => $msg, args => [ $user, $days ];
       }
    }
 
-   my $path = $self->catfile( $self->sessdir, $user.q(_history) );
+   my $enc_pass;
+   my @passwords = ();
+   my $path      = $self->catfile( $self->sessdir, $user.q(_history) );
+   my $io        = $self->io( $path )->chomp->lock;
 
-   unless ($encrypted) {
-      if (not $force
-          and -f $path
-          and $line = $self->io( $path )->chomp->lock->getline) {
-         @flds = split m{ , }mx, $line;
+   if ($encrypted) { $enc_pass = $new_pass }
+   else {
+      if (not $force and $io->is_file and my $line = $io->getline) {
+         @passwords = split m{ , }mx, $line;
 
-         for my $i (0 .. $#flds - 1) {
-            if ($self->passwd_type eq q(md5)) {
-               $enc_pass = unix_md5_crypt( $new_pass, $flds[ $i ] );
-            }
-            else { $enc_pass = crypt $new_pass, $flds[ $i ] }
-
-            $self->throw( 'Password used before' ) if ($enc_pass eq $flds[$i]);
+         for my $used_pass (@passwords) {
+            $enc_pass = $self->_encrypt_password( $new_pass, $used_pass );
+            $enc_pass eq $used_pass and throw 'Password used before';
          }
       }
 
-      if ($self->passwd_type eq q(md5)) {
-         $enc_pass  = unix_md5_crypt( $new_pass );
-      }
-      else {
-         $enc_pass  = crypt $new_pass, join $NUL, @CSET[ rand 64, rand 64 ];
-      }
+      $enc_pass = $self->_encrypt_password( $new_pass );
    }
-   else { $enc_pass = $new_pass }
 
    unless ($force) {
-      push @flds, $enc_pass;
-
-      while ($#flds > $self->max_pass_hist) { shift @flds }
-
-      $self->io( $path )->lock->println( join q(,), @flds );
+      push @passwords, $enc_pass;
+      shift @passwords while ($#passwords > $self->max_pass_hist);
+      $io->close->println( join q(,), @passwords );
    }
 
    return $enc_pass;
 }
 
 sub get_new_user_id {
-   my ($self, $first_name, $last_name, $prefix) = @_;
-   my ($carry, @chars, $i, $lastp, $lid, $name_len, $ripple, @words);
+   my ($self, $first_name, $last_name, $prefix) = @_; my $lid;
+
+   defined $prefix or $prefix = NUL;
 
    my $name = (lc $last_name).(lc $first_name);
 
    if ((length $name) < $self->min_fullname_len) {
-      $self->throw( error => 'User name [_1] too short [_2] character min.',
-                    args  => [ $first_name.$SPC.$last_name,
-                               $self->min_fullname_len ] );
+      throw error => 'User name [_1] too short [_2] character min.',
+            args  => [ $first_name.SPC.$last_name, $self->min_fullname_len ];
    }
 
-   $name_len  = $self->userid_len;
-   $prefix    = $NUL unless (defined $prefix);
-   $lastp     = length $name < $name_len ? length $name : $name_len;
-   @chars     = ();
-   $chars[$_] = $_ for (0 .. $lastp - 1);
+   my $name_len = $self->userid_len;
+   my $lastp    = length $name < $name_len ? length $name : $name_len;
+   my @chars    = ();
+
+   $chars[ $_ ] = $_ for (0 .. $lastp - 1);
 
    while ($chars[ $lastp - 1 ] < length $name) {
-      $lid = $NUL; $i = 0;
+      my $i = 0; $lid = NUL;
 
       while ($i < $lastp) { $lid .= substr $name, $chars[ $i++ ], 1 }
 
-      last unless ($self->is_user( $prefix.$lid ));
+      $self->is_user( $prefix.$lid ) or last;
 
       $i = $lastp - 1; $chars[ $i ] += 1;
 
-      while ($i >= 0 && $chars[ $i ] >= length $name) {
-         $ripple = $i - 1; $chars[ $ripple ] += 1;
+      while ($i >= 0 and $chars[ $i ] >= length $name) {
+         my $ripple = $i - 1; $chars[ $ripple ] += 1;
 
          while ($ripple < $lastp) {
-            $carry = $ripple + 1; $chars[ $carry ] = $chars[ $ripple++ ] + 1;
+            my $carry = $ripple + 1; $chars[ $carry ] = $chars[ $ripple++ ] +1;
          }
 
          $i--;
@@ -269,55 +238,118 @@ sub get_new_user_id {
    }
 
    if ($chars[ $lastp - 1 ] >= length $name) {
-      $self->throw( error => 'User name [_1] no ids left',
-                    args  => [ $first_name.$SPC.$last_name ] );
+      throw error => 'User name [_1] no ids left',
+            args  => [ $first_name.SPC.$last_name ];
    }
 
-   unless ($lid) {
-      $self->throw( error => 'User name [_1] no user id', args => [ $name ] );
-   }
+   $lid or throw error => 'User name [_1] no user id', args => [ $name ];
 
-   return ($prefix || $NUL).$lid;
+   return ($prefix || NUL).$lid;
+}
+
+sub get_primary_rid {
+   return;
+}
+
+sub get_user {
+   my ($self, $user) = @_;
+
+   my $new = bless {}, ref $self || $self;
+
+   $new->{ $_ } = $FIELDS{ $_ } for (keys %FIELDS);
+
+   my $uref = $self->_get_user_ref( $user ) or return $new;
+   my $map  = $self->get_field_map;
+
+   $new->{ $_ } = $uref->{ $map->{ $_ } } for (keys %{ $map });
+
+   return $new;
+}
+
+sub get_users_by_rid {
+   return ();
 }
 
 sub is_user {
-   my ($self, $user) = @_;
+   my ($self, $user) = @_; return $self->_get_user_ref( $user ) ? TRUE : FALSE;
+}
 
-   return unless ($user);
+sub list {
+   my ($self, $pattern) = @_; my (%found, @users); $pattern ||= q( .+ );
 
-   my ($cache) = $self->_load;
+   push @users, map  {     $found{ $_ } = TRUE; $_ }
+                grep { not $found{ $_ } and $_ =~ m{ $pattern }mx }
+                sort keys %{ ($self->_load)[ 0 ] };
 
-   return exists $cache->{ $user } ? 1 : 0;
+   return \@users;
+}
+
+sub make_email_address {
+   my ($self, $user) = @_; $user or return NUL; my $alias;
+
+   exists $self->aliases->aliases_map->{ $user }
+      and $alias = $self->aliases->find( $user )
+      and return $alias->recipients->[ 0 ];
+
+   return $user.q(@).$self->aliases->mail_domain;
 }
 
 sub retrieve {
    my ($self, $pattern, $user) = @_;
 
-   my $user_obj = $self->find_user( $user, 1 );
+   my $user_obj = $self->find_user( $user, TRUE );
 
    $user_obj->user_list( $self->list( $pattern || $self->user_pattern ) );
 
    return $user_obj;
 }
 
+sub set_password {
+   my ($self, $user, @rest) = @_;
+
+   $self->update_password( TRUE, $user, NUL, @rest );
+   return;
+}
+
 # Private methods
 
-sub _assert_user_known {
-   my ($self, $user, $verbose) = @_;
+sub _assert_user {
+   my ($self, $user, $verbose) = @_; $user or throw 'User not specified';
 
    my $user_obj = $self->get_user( $user, $verbose );
 
-   if ($user_obj->username eq q(unknown)) {
-      $self->throw( error => 'User [_1] unknown', args => [ $user ] );
-   }
+   $user_obj->username eq q(unknown)
+      and throw error => 'User [_1] unknown', args => [ $user ];
 
    return $user_obj;
 }
 
-sub _can_change_password {
-   my ($self, $user_obj) = @_;
+sub _build_aliases {
+   my ($self, $ac) = @_; $self->aliases and return;
 
-   return 0 unless ($user_obj->pwnext);
+   my $attrs = { ioc_obj => $self, path => $ac->{aliases_path} || NUL };
+
+   return File::MailAlias->new( $attrs );
+}
+
+sub _build_profiles {
+   my ($self, $ac) = @_; $self->profiles and return;
+
+   my $attrs = { ioc_obj => $self, path => $ac->{profiles_path} || NUL };
+
+   return CatalystX::Usul::UserProfiles->new( $attrs );
+}
+
+sub _cache_results {
+   my ($self, $key) = @_; my $cache = { %{ $self->cache } };
+
+   $self->lock->reset( k => $key );
+
+   return ($cache->{users}, $cache->{rid2users}, $cache->{uid2name});
+}
+
+sub _can_change_password {
+   my ($self, $user_obj) = @_; $user_obj->pwnext or return 0;
 
    my $now        = int time / 86_400;
    my $min_period = $user_obj->pwlast + $user_obj->pwnext;
@@ -325,20 +357,86 @@ sub _can_change_password {
    return $now >= $min_period ? 0 : $min_period - $now;
 }
 
+sub _count_login_attempt {
+   my ($self, $user, $path) = @_;
+
+   my $n_trys = $path->is_file ? $path->chomp->getline || 0 : 0;
+
+   $path->println( ++$n_trys );
+   (not $self->max_login_trys or $n_trys < $self->max_login_trys) and return;
+   $path->is_file and $path->unlink;
+   $self->lock->reset( k => $path );
+   $self->disable_account( $user );
+   throw error => 'User [_1] max login attempts [_2] exceeded',
+         args  => [ $user, $self->max_login_trys ];
+   return;
+}
+
+sub _encrypt_password {
+   my ($self, $password, $salt) = @_;
+
+   my $type = $salt && $salt =~ m{ \A \$ 1    \$ }msx ? q(MD5)
+            : $salt && $salt =~ m{ \A \$ 2 a? \$ }msx ? q(Blowfish)
+            : $salt && $salt =~ m{ \A \$ 5    \$ }msx ? q(SHA-256)
+            : $salt && $salt =~ m{ \A \$ 6    \$ }msx ? q(SHA-512)
+            : $salt                                   ? q(unix)
+                                                      : $self->passwd_type;
+
+   $salt ||= __get_salt_by_type( $type );
+
+   return $type eq q(Blowfish) ? bcrypt( $password, $salt )
+                               :  crypt  $password, $salt;
+}
+
+sub _get_user_ref {
+   my ($self, $user) = @_; $user or return;
+
+   my ($cache) = $self->_load; return $cache->{ $user };
+}
+
 sub _has_password_expired {
    my ($self, $user_obj) = @_;
+
    my $now     = int time / 86_400;
    my $expires = $user_obj->pwlast && $user_obj->pwafter
                ? $user_obj->pwlast +  $user_obj->pwafter : 0;
 
-   return 1 if (defined $user_obj->pwlast and $user_obj->pwlast == 0);
-   return 1 if ($expires and $now > $expires);
-   return 1 if ($user_obj->pwdisable and $now > $user_obj->pwdisable);
-   return 0;
+   return TRUE if (defined $user_obj->pwlast and $user_obj->pwlast == 0);
+   return TRUE if ($expires and $now > $expires);
+   return TRUE if ($user_obj->pwdisable and $now > $user_obj->pwdisable);
+   return FALSE;
 }
 
 sub _load {
-   return {};
+   return ({}, {}, {});
+}
+
+sub _validate_password {
+   my ($self, $user, $password) = @_;
+
+   try        { $self->authenticate( TRUE, $user, $password ) }
+   catch ($e) { $self->debug and $self->log_debug( exception $e );
+                return FALSE }
+
+   return TRUE;
+}
+
+# Private subroutines
+
+sub __get_salt_by_type {
+   my $type = shift;
+
+   $type eq q(MD5)      and return '$1$'.__get_salt_bytes( 8 );
+   $type eq q(Blowfish) and
+            return '$2a$08$'.(en_base64( __get_salt_bytes( 16 ) ));
+   $type eq q(SHA-256)  and return '$5$'.__get_salt_bytes( 8 );
+   $type eq q(SHA-512)  and return '$6$'.__get_salt_bytes( 8 );
+
+   return __get_salt_bytes( 2 );
+}
+
+sub __get_salt_bytes ($) {
+   return join NUL, map { $BASE64[ rand 64 ] } 1 .. $_[ 0 ];
 }
 
 1;
@@ -353,7 +451,7 @@ CatalystX::Usul::Users - User domain model
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -383,6 +481,10 @@ the count of failed login attempts
 
 =back
 
+=head2 activate_account
+
+Placeholder methods returns undef. May be overridden in a subclass
+
 =head2 authenticate
 
 Called by the L</check_password> method via the factory subclass. The
@@ -392,6 +494,11 @@ account is disabled. Errors can be thrown for; unknown user, inactive
 account, expired password, maximum attempts exceeded and incorrect
 password
 
+=head2 change_password
+
+Proxies a call to C<update_password> which must be implemented by
+the subclass
+
 =head2 check_password
 
 This method is required by the L<Catalyst::Authentication::Store> API. It
@@ -400,7 +507,7 @@ password is the correct one
 
 =head2 disable_account
 
-Calls L<update_password|CatalystX::Usul::Users::Unix/update_password>
+Calls C<update_password> in the subclass
 to set the users encrypted password to I<*DISABLED> thereby preventing
 the user from logging in
 
@@ -415,9 +522,12 @@ the I<force> flag is true
 
 =head2 find_user
 
-This method is required by the L<Catalyst::Authentication::Store> API. It
-returns a user object even if the user is unknown. If the user is known
-a list of roles that the user belongs to is also returned
+This method is required by the L<Catalyst::Authentication::Store>
+API. It returns a user object (obtained by calling L</get_user>)
+even if the user is unknown. If the user is known a list of roles that
+the user belongs to is also returned. Adds a weakened reference to
+self so that L<Catalyst::Authentication> can call the
+L</check_password> method
 
 =head2 for_session
 
@@ -437,10 +547,23 @@ name and surname. The supplied prefix from the user profile is prepended
 to the generated value. If the prefix contains unique domain information
 then the generated username will be globally unique to the organisation
 
+=head2 get_primary_rid
+
+Placeholder methods returns undef. May be overridden in a subclass
+
 =head2 get_object
 
 This method is required by the L<Catalyst::Authentication::Store> API.
 Returns the self referential object
+
+=head2 get_user
+
+Returns a user object for the given user id. If the user does not exist
+then a user object with a name of I<unknown> is returned
+
+=head2 get_users_by_rid
+
+Placeholder methods returns an empty list. May be overridden in a subclass
 
 =head2 id
 
@@ -451,9 +574,29 @@ Returns the username of the user object
 
 Returns true if the given user exists, false otherwise
 
+=head2 list
+
+Returns an array ref of all users
+
+=head2 make_email_address
+
+Takes a user if or an an attribute hash, returns a guess as to what the
+users email address might be
+
 =head2 retrieve
 
 Returns a user object for the selected user and a list of usernames
+
+=head2 set_password
+
+Proxies a call to C<update_password> which must be implemented by
+the subclass
+
+=head2 _validate_password
+
+Wraps a call to L</authenticate> in a try block so that a failure
+to validate the password returns false rather than throwing an
+exception
 
 =head1 Diagnostics
 
@@ -467,9 +610,19 @@ None
 
 =over 3
 
-=item L<Crypt::PasswdMD5>
+=item L<CatalystX::Usul>
+
+=item L<CatalystX::Usul::Constants>
+
+=item L<CatalystX::Usul::UserProfiles>
+
+=item L<Crypt::Eksblowfish::Bcrypt>
+
+=item L<File::MailAlias>
 
 =item L<Sys::Hostname>
+
+=item L<TryCatch>
 
 =back
 

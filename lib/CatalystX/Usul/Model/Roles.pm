@@ -1,223 +1,218 @@
-# @(#)$Id: Roles.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Roles.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Model::Roles;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(is_member throw);
+use MRO::Compat;
+use TryCatch;
 
-__PACKAGE__->mk_accessors( qw(auth_realms domain_attributes domain_class
-                              role_domain users) );
+__PACKAGE__->mk_accessors( qw(auth_realms domain_cache users) );
 
-sub new {
-   my ($self, $app, @rest) = @_;
+sub COMPONENT {
+   my ($class, $app, $config) = @_;
 
-   my $new       = $self->next::method( $app, @rest );
-   my $dom_class = $new->domain_class;
+   my $new = $class->next::method( $app, $config );
 
-   $self->ensure_class_loaded( $dom_class );
-
-   my $dom_attrs = $new->domain_attributes || {};
-
-   $new->role_domain( $dom_class->new( $app, $dom_attrs ) );
-
+   $new->ensure_class_loaded( $new->domain_class );
+   $new->domain_cache( { dirty => TRUE } );
    return $new;
 }
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_;
+   my ($self, $c, @rest) = @_; my $class;
 
-   my $new = $self->next::method( $c, @rest );
+   my $clone = $self->next::method( $c, @rest );
+   my $attrs = { %{ $clone->domain_attributes || {} },
+                 cache => $clone->domain_cache };
 
-   my $dom_attrs = $new->domain_attributes;
-
-   my $rdm = $new->role_domain( $new->domain_class->new( $c, $dom_attrs ) );
-
-   if ($rdm->can( q(dbic_role_class) )) {
-      my $class;
-
-      if ($class = $rdm->dbic_role_class) {
-         $rdm->dbic_role_model( $c->model( $class ) );
-      }
-
-      if ($class = $rdm->dbic_user_roles_class) {
-         $rdm->dbic_user_roles_model( $c->model( $class ) );
-      }
-   }
-
-   return $new;
+   $clone->domain_model( $clone->domain_class->new( $c, $attrs ) );
+   return $clone;
 }
 
 sub add_roles_to_user {
-   my ($self, $args) = @_; my ($msg, $role, $user);
+   my ($self, $args) = @_; my $roles; my $count = 0;
 
-   $self->throw( 'No user specified' ) unless ($user = $args->{user});
+   my $user = $args->{user} or throw 'User not specified';
 
-   for $role (@{ $self->query_array( $args->{field} ) }) {
-      $self->role_domain->add_user_to_role( $role, $user );
-      $msg .= $msg ? q(, ).$role : $role;
+   for my $role (@{ $args->{items} || [] }) {
+      $self->domain_model->add_user_to_role( $role, $user );
+      $roles .= $roles ? q(, ).$role : $role;
+      $count++;
    }
 
-   $self->add_result_msg( q(roles_added), $user, $msg );
-   return;
+   $count and
+      $self->add_result_msg( 'User [_1] added to roles: [_2]', $user, $roles );
+
+   return $count;
 }
 
 sub add_users_to_role {
-   my ($self, $args) = @_; my ($msg, $role, $user);
+   my ($self, $args) = @_; my ($role, $users); my $count = 0;
 
-   unless ($role = $args->{role} and $self->is_role( $role )) {
-      $self->throw( error => 'Role [_1] unknown', args => [ $role ] );
+   ($role = $args->{role} and $self->is_role( $role ))
+      or throw error => 'Role [_1] unknown', args => [ $role ];
+
+   for my $user (@{ $args->{items} || [] }) {
+      $self->domain_model->add_user_to_role( $role, $user );
+      $users .= $users ? q(, ).$user : $user;
+      $count++;
    }
 
-   for $user (@{ $self->query_array( $args->{field} ) }) {
-      $self->role_domain->add_user_to_role( $role, $user );
-      $msg .= $msg ? q(, ).$user : $user;
-   }
+   $count and
+      $self->add_result_msg( 'Role [_1] added users : [_2]', $role, $users );
 
-   $self->add_result_msg( q(users_added), $role, $msg );
-   return;
+   return $count;
 }
 
 sub create {
-   my $self = shift; my $s = $self->context->stash; my $name;
+   my $self = shift;
+   my $s    = $self->context->stash;
+   my $name = $self->query_value( q(name) ) or throw 'Role not specified';
 
-   unless ($name = $self->query_value( q(name) )) {
-      $self->throw( 'No role specified' );
-   }
-
-   if ($self->is_role( $name )) {
-      $self->throw( error => 'Role [_1] already exists', args => [ $name ] );
-   }
-
+   $self->is_role( $name )
+      and throw error => 'Role [_1] already exists', args => [ $name ];
    $name = $self->check_field( $s->{form}->{name}.q(.name), $name );
-   $self->role_domain->create( $name );
-   $self->add_result_msg( q(role_created), $name );
+   $self->domain_model->create( $name );
+   $self->add_result_msg( 'Role [_1] created', $name );
    return $name;
 }
 
 sub delete {
-   my $self = shift; my $role;
+   my $self = shift;
+   my $role = $self->query_value( q(role) ) or throw 'Role not specified';
 
-   unless ($role = $self->query_value( q(role) )) {
-      $self->throw( 'No role specified' );
-   }
-
-   unless ($self->is_role( $role )) {
-      $self->throw( error => 'Role [_1] unknown', args => [ $role ] );
-   }
-
-   $self->role_domain->delete( $role );
-   $self->add_result_msg( q(role_deleted), $role );
-   return;
+   $self->is_role( $role )
+      or throw error => 'Role [_1] unknown', args => [ $role ];
+   $self->domain_model->delete( $role );
+   $self->add_result_msg( 'Role [_1] deleted', $role );
+   return TRUE;
 }
 
 sub get_member_list {
-   my ($self, @rest) = @_;
-
-   return $self->role_domain->get_member_list( @rest );
+   my ($self, @rest) = @_; return $self->domain_model->get_member_list( @rest );
 }
 
 sub get_roles {
-   my ($self, @rest) = @_; return $self->role_domain->get_roles( @rest );
+   my ($self, @rest) = @_; return $self->domain_model->get_roles( @rest );
 }
 
 sub is_role {
-   my ($self, @rest) = @_; return $self->role_domain->is_role( @rest );
+   my ($self, @rest) = @_; return $self->domain_model->is_role( @rest );
 }
 
 sub remove_roles_from_user {
-   my ($self, $args) = @_; my ($msg, $role, $user);
+   my ($self, $args) = @_; my $count = 0; my $roles;
 
-   $self->throw( 'No user specified' ) unless ($user = $args->{user});
+   my $user = $args->{user} or throw 'User not specified';
 
-   for $role (@{ $self->query_array( $args->{field} ) }) {
-      $self->role_domain->remove_user_from_role( $role, $user );
-      $msg .= $msg ? q(, ).$role : $role;
+   for my $role (@{ $args->{items} || [] }) {
+      $self->domain_model->remove_user_from_role( $role, $user );
+      $roles .= $roles ? q(, ).$role : $role;
+      $count++;
    }
 
-   $self->add_result_msg( q(roles_removed), $user, $msg );
-   return;
+   $count and
+      $self->add_result_msg( 'User [_1] removed roles: [_2]', $user, $roles );
+
+   return $count;
 }
 
 sub remove_users_from_role {
-   my ($self, $args) = @_; my ($msg, $role, $user);
+   my ($self, $args) = @_; my ($role, $users); my $count = 0;
 
-   unless ($role = $args->{role} and $self->is_role( $role )) {
-      $self->throw( error => 'Role [_1] unknown', args => [ $role ] );
+   ($role = $args->{role} and $self->is_role( $role ))
+      or throw error => 'Role [_1] unknown', args => [ $role ];
+
+   for my $user (@{ $args->{items} || [] }) {
+      $self->domain_model->remove_user_from_role( $role, $user );
+      $users .= $users ? q(, ).$user : $user;
+      $count++;
    }
 
-   for $user (@{ $self->query_array( $args->{field} ) }) {
-      $self->role_domain->remove_user_from_role( $role, $user );
-      $msg .= $msg ? q(, ).$user : $user;
-   }
+   $count and
+      $self->add_result_msg( 'Role [_1] removed users: [_2]', $role, $users );
 
-   $self->add_result_msg( q(users_removed), $role, $msg );
-   return;
+   return $count;
 }
 
 sub role_manager_form {
-   my ($self, $realm, $role) = @_; my ($e, @members, @roles, @users);
+   my ($self, $role) = @_; my (@members, @roles, @users);
 
-   eval {
+   try {
       @members = $self->get_member_list( $role );
       @roles   = $self->get_roles( q(all) );
-      @users   = grep { !$self->is_member( $_, @members ) }
-                 @{ $self->users->retrieve( q([^\?]+), q() )->user_list };
-   };
-
-   return $self->add_error( $e ) if ($e = $self->catch);
+      @users   = grep { not is_member $_, @members }
+                     @{ $self->users->retrieve( q([^\?]+), NUL )->user_list };
+   }
+   catch ($e) { return $self->add_error( $e ) }
 
    my $s      = $self->context->stash; $s->{pwidth} -= 10;
-   my $first  = $role eq $s->{newtag} ? q(.name) : q(.role);
-   my $values = [ q(), sort keys %{ $self->auth_realms } ];
+   my $realm  = $s->{role_params}->{realm} || NUL;
    my $form   = $s->{form}->{name};
+   my $first  = $role && $role eq $s->{newtag} ? q(.name) : q(.role);
+   my $values = [ NUL, sort keys %{ $self->auth_realms } ];
 
-   unshift @roles, q(), $s->{newtag};
+   unshift @roles, NUL, $s->{newtag};
 
-   $self->clear_form(   { firstfld => $form.$first } );
-   $self->add_field(    { default  => $realm,
+   $self->clear_form  ( { firstfld => $form.$first } );
+   $self->add_field   ( { default  => $realm,
                           id       => $form.q(.realm),
                           values   => $values } );
-   $self->add_field(    { default  => $role,
+   $self->add_field   ( { default  => $role,
                           id       => $form.q(.role),
                           values   => \@roles } );
    $self->group_fields( { id       => $form.q(.select), nitems => 2 } );
 
-   return unless ($role);
+   $role or return;
 
    if ($role eq $s->{newtag}) {
-      $self->add_field(    { ajaxid  => $form.q(.name) } );
+      $self->add_field   ( { ajaxid  => $form.q(.name) } );
       $self->group_fields( { id      => $form.q(.create), nitems => 1 } );
-      $self->add_buttons(  qw(Insert) );
+      $self->add_buttons ( qw(Insert) );
    }
    else {
-      $self->add_field(    { all     => \@users,
+      $self->add_field   ( { all     => \@users,
                              current => \@members,
                              id      => $form.q(.users) } );
       $self->group_fields( { id      => $form.q(.add_remove), nitems => 1 } );
-      $self->add_buttons(  qw(Update Delete) );
+      $self->add_buttons ( qw(Update Delete) );
    }
 
    return;
 }
 
-sub update {
-   my ($self, $role) = @_; my $args;
+sub update_roles {
+   my $self = shift;
+   my $user = $self->query_value( q(user) ) or throw 'User not specified';
 
-   if ($self->query_value( q(users_n_added) )) {
-      $args = { field => q(users_added), role => $role };
-      $self->add_users_to_role( $args );
-   }
+   $self->update_group_membership( {
+      add_method    => sub { $self->add_roles_to_user( @_ ) },
+      delete_method => sub { $self->remove_roles_from_user( @_ ) },
+      field         => q(groups),
+      method_args   => { user => $user },
+   } ) or throw 'Roles not selected';
 
-   if ($self->query_value( q(users_n_deleted) )) {
-      $args = { field => q(users_deleted), role => $role };
-      $self->remove_users_from_role( $args );
-   }
+   return TRUE;
+}
 
-   return;
+sub update_users {
+   my $self = shift;
+   my $role = $self->query_value( q(role) ) or throw 'Role not specified';
+
+   $self->update_group_membership( {
+      add_method    => sub { $self->add_users_to_role( @_ ) },
+      delete_method => sub { $self->remove_users_from_role( @_ ) },
+      field         => q(users),
+      method_args   => { role => $role },
+   } ) or throw 'Users not selected';
+
+   return TRUE;
 }
 
 1;
@@ -232,7 +227,7 @@ CatalystX::Usul::Model::Roles - Manage the roles and their members
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -250,7 +245,9 @@ CatalystX::Usul::Model::Roles - Manage the roles and their members
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
+
+Constructor
 
 =head2 build_per_context_instance
 
@@ -329,9 +326,17 @@ Removes one or more users from a role
 
 Adds data to the stash which displays the role management screen
 
-=head2 update
+=head2 update_roles
 
-   $role_obj->update;
+   $role_obj->update_roles;
+
+Called as an action from the the management screen. This method determines
+if roles have been added and/or removed from the selected user and calls
+L</add_roles_to_user> and/or L</remove_roles_from_user> as appropriate
+
+=head2 update_users
+
+   $role_obj->update_users;
 
 Called as an action from the the management screen. This method determines
 if users have been added and/or removed from the selected role and calls

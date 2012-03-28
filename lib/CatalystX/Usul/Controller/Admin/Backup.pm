@@ -1,44 +1,34 @@
-# @(#)$Id: Backup.pm 584 2009-06-12 15:25:11Z pjf $
+# @(#)$Id: Backup.pm 953 2011-04-18 03:12:03Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Backup;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 584 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 953 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-__PACKAGE__->config( device_class => q(Tapes),
-                     fs_class     => q(FileSystem),
+__PACKAGE__->config( device_class => q(TapeBackup),
                      logfile      => q(cli.log),
                      namespace    => q(admin) );
 
-__PACKAGE__->mk_accessors( qw(device_class fs_class logfile) );
+__PACKAGE__->mk_accessors( qw(device_class logfile) );
 
-sub backup_base : Chained(common) CaptureArgs(0) {
-   my ($self, $c) = @_;
-   my $s          = $c->stash;
-   my $model      = $s->{device_model} = $c->model( $self->device_class );
-   my $ref        = $s->{os} || {};
+sub backup_base : Chained(common) PathPart(backup) CaptureArgs(0) {
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   for (grep { $model->can( $_ ) } keys %{ $ref }) {
-      $model->$_( $ref->{ $_ }->{value} );
-   }
-
+   $s->{device_model } = $c->model( $self->device_class );
+   $s->{device_params} = $self->get_uri_query_params( $c );
    return;
 }
 
 sub backup : Chained(backup_base) PathPart('') Args HasActions {
-   my ($self, $c, $device, $format, $paths) = @_;
+   my ($self, $c, $paths) = @_;
 
-   $device = $self->set_key( $c, q(device), $device );
-   $format = $self->set_key( $c, q(format), $format );
-   $paths  = $self->set_key( $c, q(paths),  $paths  );
-   $c->stash->{device_model}->form( $device, $format, $paths );
-   return;
+   return $c->stash->{device_model}->form( $paths );
 }
 
 sub backup_eject : ActionFor(backup.eject) {
-   my ($self, $c) = @_; $c->stash->{device_model}->eject; return 1;
+   my ($self, $c) = @_; return $c->stash->{device_model}->eject;
 }
 
 sub backup_logfile : Chained(backup_base) PathPart(logfile) Args(0) {
@@ -46,12 +36,13 @@ sub backup_logfile : Chained(backup_base) PathPart(logfile) Args(0) {
 
    my $path = $self->catfile( $c->config->{logsdir}, $self->logfile );
 
-   $c->model( $self->fs_class )->view_file( q(logfile), $path );
-   return;
+   return $c->model( $self->fs_class )->view_file( q(logfile), $path );
 }
 
 sub backup_start : ActionFor(backup.start) {
-   my ($self, $c) = @_; $c->stash->{device_model}->start; return 1;
+   my ($self, $c, $paths) = @_;
+
+   return $c->stash->{device_model}->start( $paths );
 }
 
 1;
@@ -66,7 +57,7 @@ CatalystX::Usul::Controller::Admin::Backup - Tape device backups
 
 =head1 Version
 
-0.3.$Revision: 584 $
+0.4.$Revision: 953 $
 
 =head1 Synopsis
 

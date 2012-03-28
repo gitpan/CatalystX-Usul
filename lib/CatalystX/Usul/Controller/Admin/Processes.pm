@@ -1,29 +1,31 @@
-# @(#)$Id: Processes.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Processes.pm 873 2010-08-02 17:57:04Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Processes;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 873 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-__PACKAGE__->config( namespace => q(admin) );
+__PACKAGE__->config( namespace     => q(admin),
+                     process_class => q(Process) );
+
+__PACKAGE__->mk_accessors( qw(process_class) );
 
 sub proc_table : Chained(common) Args HasActions {
-   my ($self, $c, $ptype, $user, $fsystem, $signals) = @_;
+   my ($self, $c, @args) = @_;
 
-   $ptype   = $self->set_key( $c, q(ptype),   $ptype   );
-   $user    = $self->set_key( $c, q(user),    $user    );
-   $fsystem = $self->set_key( $c, q(fsystem), $fsystem );
-   $signals = $self->set_key( $c, q(signals), $signals );
-   $c->model( q(Process) )->form( $ptype, $user, $fsystem, $signals );
-   return;
+   $c->stash->{process_params} = $self->get_uri_query_params( $c );
+
+   return $c->model( $self->process_class )->form( @args );
 }
 
 sub proc_table_signal : ActionFor(proc_table.abort)
                         ActionFor(proc_table.kill)
                         ActionFor(proc_table.terminate) {
-   my ($self, $c) = @_; $c->model( q(Process) )->signal_process; return 1;
+   my ($self, $c) = @_;
+
+   return $c->model( $self->process_class )->signal_process;
 }
 
 1;
@@ -38,7 +40,7 @@ CatalystX::Usul::Controller::Admin::Processes - Process table manipulation
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 873 $
 
 =head1 Synopsis
 

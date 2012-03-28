@@ -1,85 +1,19 @@
-# @(#)$Id: Root.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Root.pm 1116 2012-03-11 23:05:42Z pjf $
 
 package CatalystX::Usul::Controller::Root;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1116 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(env_prefix is_member);
+use MRO::Compat;
 
-my $SEP = q(/);
+__PACKAGE__->config( imager_class => q(Imager), );
 
-sub about : Chained(lang) Args(0) Public {
-   # Display license and authorship information
-   my ($self, $c) = @_;
-
-   my $model = $c->model( q(Base) );
-
-   $model->add_header;
-   $model->simple_page( q(about) );
-   $self->set_popup( $c );
-   return;
-}
-
-sub access_denied : Chained(lang) Args Public {
-   # The auto method has decided not to allow access to the requested room
-   my ($self, $c, $ns, $name) = @_; my $s = $c->stash; my $msg;
-
-   unless ($s->{denied_level} = $ns and $s->{denied_room} = $name) {
-      $msg = 'No action namespace and/or name specified';
-
-      return $self->error_page( $c, $msg );
-   }
-
-   my $model = $c->model( q(Navigation) );
-
-   $model->add_header;
-   $model->clear_controls;
-   $model->add_menu_back;
-   $model->simple_page( q(cracker) );
-   $msg = 'Access denied to [_1] for [_2]';
-   $self->log_warn( $self->loc( $c, $msg, $ns.$SEP.$name, $s->{user} ) );
-   $c->res->status( 403 );
-   return 0;
-}
-
-sub app_closed : Chained(lang) Args HasActions {
-   # Application has been closed by the administrators
-   my ($self, $c) = @_;
-   my $s          = $c->stash;
-   my $form       = $s->{form}->{name};
-   my $model      = $c->model( q(Navigation) );
-
-   $model->add_header;
-   $model->clear_controls;
-   $model->add_menu_blank;
-   $model->simple_page( $form );
-   $model->add_field  ( { id => $form.q(.user)   } );
-   $model->add_field  ( { id => $form.q(.passwd) } );
-   $model->add_hidden ( $form, 0 );
-   $model->add_buttons( q(Login) );
-
-   $s->{token} = $c->config->{token};
-   return 0;
-}
-
-sub app_reopen : ActionFor(app_closed.login) {
-   # Open the application to users
-   my ($self, $c) = @_; my $cfg = $c->config;
-
-   unless ($c->forward( $SEP.$cfg->{authenticate}.q(_login), [ 1 ] )) {
-      return 0;
-   }
-
-   if ($self->is_member( $cfg->{admin_role}, @{ $c->user->roles } )) {
-      $c->model( q(Config::Globals) )->save;
-   }
-
-   $self->redirect_to_path( $c, $cfg->{default_action} );
-   return 1;
-}
+__PACKAGE__->mk_accessors( qw(default_namespace imager_class) );
 
 sub auto : Private {
    return shift->next::method( @_ );
@@ -89,140 +23,173 @@ sub begin : Private {
    return shift->next::method( @_ );
 }
 
-sub captcha : Chained(lang) Args(0) Public {
-   # Dynamically generate a jpeg image displaying a random number
-   my ($self, $c) = @_; delete $c->stash->{token}; return $c->create_captcha();
-}
-
-sub company : Chained(lang) Args(0) Public {
-   # And now a short message from our sponsor
-   my ($self, $c) = @_;
-
-   my $model = $c->model( q(Base) );
-
-   $model->add_header;
-   $model->simple_page( q(company) );
-   $self->set_popup( $c );
-   return;
-}
-
 sub end : Private {
    return shift->next::method( @_ );
-}
-
-sub feedback : Chained(lang) Args HasActions {
-   # Form to send an email to the site administrators
-   my ($self, $c, @rest) = @_;
-
-   $c->model( q(Help) )->form( @rest );
-   $self->set_popup( $c );
-   return;
-}
-
-sub feedback_send : ActionFor(feedback.send) {
-   # Send an email to the site administrators
-   my ($self, $c) = @_; $c->model( q(Help) )->feedback_send; return 1;
-}
-
-sub help : Chained(lang) Args Public {
-   return shift->next::method( @_ );
-}
-
-sub imager : Chained(lang) Args Public {
-   my ($self, $c, @args) = @_; my $e;
-
-   my $model = $c->model( q(Imager) ); delete $c->stash->{token};
-
-   my ($data, $type, $mtime) = eval {
-      $model->transform( [ @args ], $c->req->query_parameters );
-   };
-
-   if ($e = $self->catch) {
-      return $self->error_page( $c, $e->as_string, @{ $e->args } );
-   }
-
-   return $self->error_page( $c, 'No body data specified' ) unless ($data);
-
-   $c->res->body( $data );
-   $c->res->content_type( $type );
-   $c->res->headers->last_modified( $mtime ) if ($mtime);
-# TODO: Work out what to do with expires header
-#    $c->res->headers->expires( time() );
-   return;
-}
-
-sub lang : Chained(/) PathPart('') CaptureArgs(1) {
-   # Capture the language selection from the requested url
-}
-
-sub lock_display : Chained(lang) Args(0) {
-   # TODO: Move this to a plugin
-   my ($self, $c) = @_; my $model = $c->model( q(Base) );
-
-   $model->lock_display( $model->query_value( q(display) ) );
-   $c->res->status( 204 );
-   $c->detach;
-   return;
-}
-
-sub quit : Chained(/) Args(0) Public {
-   my ($self, $c) = @_; my $s = $c->stash;
-
-   exit 0 if ($ENV{ $self->env_prefix( $c->config->{name} ).q(_QUIT_OK) });
-
-   $self->log_warn( $self->loc( $c, 'Quit attempted by [_1]', $s->{user} ) );
-
-   return $self->redirect_to_path( $c );
-}
-
-sub redirect_to_default : Chained(/) PathPart('') Args {
-   my ($self, $c) = @_; return $self->redirect_to_path( $c );
 }
 
 sub render : ActionClass(RenderView) {
 }
 
-sub room_closed : Chained(lang) Args Public {
-   # Requested page exists but is temporarily unavailable
-   my ($self, $c, $ns, $name) = @_; my $s = $c->stash; my $e;
+sub about : Chained(/) Args(0) Public {
+   # Display license and authorship information
+   my ($self, $c) = @_; $self->set_popup( $c, q(close) );
 
-   unless ($s->{closed_level} = $ns and $s->{closed_room} = $name) {
-      my $msg = 'No action namespace and/or name specified';
+   return $c->model( $self->help_class )->form;
+}
+
+sub access_denied : Chained(/) Args Public {
+   # The auto method has decided not to allow access to the requested room
+   my ($self, $c, $ns, @rest) = @_;
+
+   my $s = $c->stash; my $name = join SEP, @rest;
+
+   unless ($s->{denied_namespace} = $ns and $s->{denied_action} = $name) {
+      my $msg = 'Action namespace and/or action name not specified';
 
       return $self->error_page( $c, $msg );
    }
 
-   my $model = $c->model( q(Navigation) );
+   $self->add_header( $c ); $self->reset_nav_menu( $c, q(back) );
 
-   $model->add_header;
-   $model->clear_controls;
-   $model->add_menu_back;
-   $model->simple_page( q(closed) );
-   $self->log_warn( $self->loc( $c, 'Action [_1]/[_2] closed', $ns, $name ) );
+   $c->action->name( q(cracker) );
+
+   my $msg = 'Access denied to [_1] for [_2]';
+
+   $self->log_warn( $self->loc( $s, $msg, $ns.SEP.$name, $s->{user} ) );
+   $c->res->status( 403 );
+   return FALSE;
+}
+
+sub action_closed : Chained(/) Args Public {
+   # Requested page exists but is temporarily unavailable
+   my ($self, $c, $ns, @rest) = @_;
+
+   my $s = $c->stash; my $name = join SEP, @rest;
+
+   unless ($s->{closed_namespace} = $ns and $s->{closed_action} = $name) {
+      my $msg = 'Action namespace and/or action name not specified';
+
+      return $self->error_page( $c, $msg );
+   }
+
+   $self->add_header( $c ); $self->reset_nav_menu( $c, q(back) );
+
+   $self->log_warn( $self->loc( $s, 'Action [_1]/[_2] closed', $ns, $name ) );
+   $c->res->status( 423 );
    return;
+}
+
+sub app_closed : Chained(/) Args HasActions {
+   # Application has been closed by the administrators
+   my ($self, $c) = @_; $self->add_header( $c );
+
+   $self->reset_nav_menu( $c, q(blank) )->form;
+
+   return FALSE;
+}
+
+sub app_reopen : ActionFor(app_closed.login) {
+   # Open the application to users
+   my ($self, $c) = @_; my $s = $c->stash; my $cfg = $c->config;
+
+   $self->set_identity_model( $c ); $s->{user_model}->authenticate;
+
+   $self->can( q(persist_state) )
+      and $self->set_uri_query_params( $c, { realm => $s->{realm} } );
+
+   if (is_member $cfg->{admin_role}, $c->user->roles) {
+      $c->model( $self->global_class )->save;
+      $self->redirect_to_path( $c, $s->{wanted} );
+   }
+
+   return TRUE;
+}
+
+sub captcha : Chained(/) Args(0) NoToken Public {
+   # Dynamically generate a jpeg image displaying a random number
+   my ($self, $c) = @_;
+
+   return $c->model( $self->realm_class )->users->create_captcha;
+}
+
+sub company : Chained(/) Args(0) Public {
+   # And now a short message from our sponsor
+   my ($self, $c) = @_; return $self->set_popup( $c, q(close) );
+}
+
+sub feedback : Chained(/) Args HasActions {
+   # Form to send an email to the site administrators
+   my ($self, $c, @rest) = @_;
+
+   $c->model( $self->help_class )->form( @rest );
+
+   return $self->set_popup( $c, q(close) );
+}
+
+sub feedback_send : ActionFor(feedback.send) {
+   # Send an email to the site administrators
+   my ($self, $c) = @_; return $c->model( $self->help_class )->feedback_send;
+}
+
+sub help : Chained(/) Args Public {
+   return shift->next::method( @_ );
+}
+
+sub imager : Chained(/) Args NoToken Public {
+   my ($self, $c, @args) = @_; my $model = $c->model( $self->imager_class );
+
+   my ($data, $type, $mtime)
+      = $model->transform( [ @args ], $c->req->query_parameters );
+
+   $data or return $self->error_page( $c, 'No body data generated' );
+
+   $c->res->body( $data );
+   $c->res->content_type( $type );
+   $mtime and $c->res->headers->last_modified( $mtime );
+# TODO: Work out what to do with expires header
+#    $c->res->headers->expires( time() );
+   return;
+}
+
+sub quit : Chained(/) Args(0) Public {
+   my ($self, $c) = @_; my $s = $c->stash; my $cfg = $c->config;
+
+   $ENV{ (env_prefix $cfg->{name}).q(_QUIT_OK) } and exit 0;
+
+   $self->log_warn( $self->loc( $s, 'Quit attempted by [_1]', $s->{user} ) );
+
+   return $self->redirect_to_path( $c, $self->default_namespace );
+}
+
+sub redirect_to_default : Chained(/) PathPart('') Args {
+   my ($self, $c) = @_;
+
+   return $self->redirect_to_path( $c, $self->default_namespace );
+}
+
+sub select_language : Chained(/) Args(0) Public {
+   my ($self, $c) = @_; my $params = $c->req->params;
+
+   if ($c->can( q(session) )) {
+      $c->session( language => $params->{select_language} );
+   }
+
+   return $self->redirect_to_path( $c, $params->{referer} );
 }
 
 sub version {
    return $VERSION;
 }
 
-sub view_source : Chained(lang) Args Public {
+sub view_source : Chained(/) Args Public {
    # Display the source code with syntax highlighting
-   my ($self, $c, $module) = @_; my $e;
+   my ($self, $c, $module) = @_;
 
-   return $self->error_page( $c, 'No module specified' ) unless ($module);
+   $module or return $self->error_page( $c, 'Module not specified' );
 
-   eval {
-      my $model = $c->model( q(Navigation) );
+   $self->add_header( $c ); $self->reset_nav_menu( $c, q(close) );
 
-      $self->common( $c );
-      $model->clear_controls;
-      $model->add_menu_back;
-      $c->model( q(FileSystem) )->view_file( q(source), $module );
-   };
-
-   $self->error_page( $c, $e->as_string ) if ($e = $self->catch);
-
+   $c->model( $self->fs_class )->view_file( q(source), $module );
    return;
 }
 
@@ -238,7 +205,7 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-0.1$Revision: 576 $
+0.1$Revision: 1116 $
 
 =head1 Synopsis
 
@@ -259,6 +226,11 @@ Display a simple popop window containing the copyright and license information
 =head2 access_denied
 
 The auto method redirects unauthorised users to this endpoint
+
+=head2 action_closed
+
+The requested endpoint exists but has been deactivated by the
+administrators
 
 =head2 app_closed
 
@@ -312,15 +284,6 @@ Generates transformations of any image under the document root. Calls
 L<transform|CatalystX::Usul::Model::Iamger/transform> and sets the
 response object directly
 
-=head2 lang
-
-Capture the required language. The actual work is done in the
-L</begin> method
-
-=head2 lock_display
-
-Locks the display. Silly but I couldn't resist
-
 =head2 quit
 
 Called when collecting profile data using L<Devel::NYTProf> to stop
@@ -335,12 +298,10 @@ Redirects to default controller. Matches any uri not matched by another action
 
 Use the renderview action class
 
-=head2 room_closed
+=head2 select_language
 
-The requested endpoint exists but has been deactivated by the
-administrators.  The page is generated by the
-L<simple page|CatalystX::Usul::Plugin::Model::StashHelper/simple_page> method
-in the base class
+Handles the post request to select the language used. Stores the requested
+language in the session and the redirects back to the original uri
 
 =head2 version
 

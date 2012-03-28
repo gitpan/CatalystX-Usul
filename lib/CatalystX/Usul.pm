@@ -1,242 +1,190 @@
-# @(#)$Id: Usul.pm 625 2009-06-30 16:32:54Z pjf $
+# @(#)$Id: Usul.pm 1133 2012-03-28 10:56:41Z pjf $
 
 package CatalystX::Usul;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 625 $ =~ /\d+/gmx );
-use parent qw(Catalyst::Component CatalystX::Usul::Base);
+use namespace::autoclean;
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1133 $ =~ /\d+/gmsx );
+use parent qw(CatalystX::Usul::Base CatalystX::Usul::File CatalystX::Usul::Log);
 
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions
+    qw(arg_list is_arrayref is_hashref merge_attributes my_prefix);
+use CatalystX::Usul::L10N;
 use Class::Null;
 use File::Spec;
 use IPC::SRLock;
 use Module::Pluggable::Object;
-use Text::Markdown qw(markdown);
+use MRO::Compat;
+use Scalar::Util qw(blessed);
 
-__PACKAGE__->mk_accessors( qw(debug encoding lock log prefix
-                              redirect_to secret suid tabstop tempdir) );
+my $ATTRS = { config   => {},       debug    => FALSE,
+              encoding => q(UTF-8), log      => Class::Null->new,
+              suid     => NUL,      tempdir  => File::Spec->tmpdir, };
 
-my $LSB = q([);
-my $NUL = q();
-my $SEP = q(/);
-my $SPC = q( );
+__PACKAGE__->mk_accessors( qw(config debug encoding l10n lock
+                              log prefix secret suid tempdir) );
+
+__PACKAGE__->mk_log_methods();
 
 sub new {
-   my ($self, $app, $config) = @_; $app ||= Class::Null->new;
+   my ($self, @rest) = @_; my $class = blessed $self || $self;
 
-   my $ac     = $app->config || {};
-   my $new    = $self->next::method( $app, $config );
-   my $prefix = (split m{ _ }mx, ($ac->{suid} || $NUL))[0];
+   my $new = bless BUILDARGS( q(_arg_list), $class, @rest ), $class;
 
-   $new->debug      ( $app->debug        || 0                      );
-   $new->encoding   ( $ac->{encoding   } || q(UTF-8)               );
-   $new->log        ( $app->log          || Class::Null->new       );
-   $new->prefix     ( $ac->{prefix     } || $prefix                );
-   $new->redirect_to( $ac->{redirect_to} || q(redirect_to_default) );
-   $new->secret     ( $ac->{secret     } || $new->prefix           );
-   $new->suid       ( $ac->{suid       } || $NUL                   );
-   $new->tabstop    ( $ac->{tabstop    } || 3                      );
-   $new->tempdir    ( $ac->{tempdir    } || File::Spec->tmpdir     );
-
-   $new->lock( $new->_lock_obj( $ac->{lock} ) );
+   $new->build_attributes( [ qw(prefix secret lock l10n) ] );
 
    return $new;
 }
 
+sub BUILDARGS {
+   my ($next, $class, $app, @rest) = @_; my $attrs = $class->$next( @rest );
+
+   __merge_attrs( $attrs, $app || {},       [ qw(config debug log)      ] );
+   __merge_attrs( $attrs, $attrs->{config}, [ qw(encoding suid tempdir) ] );
+
+   return $attrs;
+}
+
+sub build_attributes {
+   my ($self, $attrs, $force) = @_;
+
+   for (@{ $attrs || [] }) {
+      my $builder = q(_build_).$_;
+
+      ($force or not defined $self->$_) and $self->$_( $self->$builder() );
+   }
+
+   return;
+}
+
 sub build_subcomponents {
    # Voodo by mst. Finds and loads component subclasses
-   my ($self, $base_class) = @_; my $my_class = ref $self || $self; my $dir;
+   my ($self, $base_class) = @_; my $my_class = blessed $self || $self;
 
-   ($dir = $self->find_source( $base_class )) =~ s{ \.pm \z }{}mx;
+   (my $dir = $self->find_source( $base_class )) =~ s{ [.]pm \z }{}msx;
 
    for my $path (glob $self->catfile( $dir, q(*.pm) )) {
       my $subcomponent = $self->basename( $path, q(.pm) );
       my $component    = join q(::), $my_class,   $subcomponent;
       my $base         = join q(::), $base_class, $subcomponent;
 
-      $self->load_component( $component, $base );
+      $self->_load_component( $component, $base );
    }
 
    return;
 }
 
-sub get_action {
-   my ($self, $c, $path) = @_; my $action;
+sub loc {
+   my ($self, $params, $key, @rest) = @_; my $car = $rest[ 0 ];
 
-   # Normalise the path. It must contain a SEP char
-   $path ||= $SEP;
-   $path  .= $SEP if ((index $path, $SEP) < 0);
+   my $args = (is_hashref $car) ? $car : { params => (is_arrayref $car)
+                                                   ? $car : [ @rest ] };
 
-   # Extract the action attributes
-   my ($namespace, $name) = split $SEP, $path;
+   $args->{domain_names} = [ DEFAULT_L10N_DOMAIN, $params->{ns} ];
+   $args->{locale      } = $params->{lang};
 
-   # Default the namespace and expand the root symbol
-   $namespace ||= ($c->action && $c->action->namespace) || $SEP;
-   $namespace   = $SEP if ($namespace eq q(root));
-
-   # Default the name if one was not provided
-   $name ||= $self->redirect_to;
-
-   # Return the action for this namespace/name pair
-   return $action if ($action = $c->get_action( $name, $namespace ));
-
-   my $error = 'No action for [_1]/[_2]';
-
-   $self->log_warn( $self->loc( $c, $error, $namespace, $name ) );
-   return;
-}
-
-*loc = \&localize;
-
-sub localize {
-   my ($self, $c, $key, @rest) = @_; my $s = $c->stash; my @args = ();
-
-   return unless $key;
-
-   $key = q().$key; # Force stringification. I hate Return::Value
-
-   # Lookup the message using the supplied key
-   my $messages = $s->{messages} || {};
-   my $message  = $messages->{ $key };
-   my $text;
-
-   if ($message and $text = $message->{text}) {
-      # Optionally call markdown if required
-      if ($message->{markdown}) {
-         # TODO: Cache copies of this on demand
-         my $content_type = $s->{content_type} || q(text/html);
-         my $suffix       = $content_type eq q(text/html) ? q(>) : q( />);
-
-         $text = markdown( $text, { empty_element_suffix => $suffix,
-                                    tab_width            => $self->tabstop } );
-      }
-   }
-   else { $text = $key } # Default the message text to the key
-
-   if ($rest[ 0 ]) {
-      @args = ref $rest[ 0 ] eq q(ARRAY) ? @{ $rest[ 0 ] } : @rest;
-   }
-
-   # Expand positional parameters of the form [_<n>]
-   if ((index $text, $LSB) >= 0) {
-      push @args, map { $NUL } 0 .. 10;
-      $text =~ s{ \[ _ (\d+) \] }{$args[ $1 - 1 ]}gmx;
-   }
-
-   return $text;
+   return $self->l10n->localize( $key, $args );
 }
 
 sub setup_plugins {
-   # Searches for and then load plugins in the search path
+   # Searches for and then loads plugins in the search path
    my ($class, $config) = @_;
 
-   my $exclude = delete $config->{ exclude_pattern } || q(\A \z);
-   my @paths   = @{ delete $config->{ search_paths } || [] };
-   my $finder  = Module::Pluggable::Object->new
-      ( search_path => [ map { m{ \A :: }mx ? __PACKAGE__.$_ : $_ } @paths ],
-        %{ $config } );
-   my @plugins = grep { !m{ $exclude }mx }
-                 sort { length $a <=> length $b } $finder->plugins;
+   my $child_class = delete $config->{child_class    } || $class;
+   my $exclude     = delete $config->{exclude_pattern} || q(\A \z);
+   my @paths       = @{ delete $config->{search_paths} || [] };
+   my $spath       = [ map { m{ \A :: }msx ? __PACKAGE__.$_ : $_ } @paths ];
+   my $finder      = Module::Pluggable::Object->new
+                        ( search_path => $spath, %{ $config } );
+   my @plugins     = grep { not m{ $exclude }msx }
+                     sort { length $a <=> length $b } $finder->plugins;
 
-   $class->load_component( $class, @plugins );
+   $class->_load_component( $child_class, @plugins );
 
    return \@plugins;
 }
 
-sub uri_for {
-   # Code lifted from contextual_uri_for_action
-   my ($self, $c, $action_path, @rest) = @_;
-   my ($action, @captures, $chained_action, $error, $uri);
+sub supports {
+   my ($self, @spec) = @_; my $cursor = eval { $self->get_features } || {};
 
-   # Get the action for the given action path
-   return unless ($action = $self->get_action( $c, $action_path ));
+   @spec == 1 and exists $cursor->{ $spec[ 0 ] } and return TRUE;
 
-   my $attrs = $action->attributes;
-
-   if (not $attrs->{Chained} or $attrs->{CaptureArgs}) {
-      $error = 'Not a chained endpoint [_1]';
-      $self->log_warn( $self->loc( $c, $error, $action->reverse ) );
-      return;
+   # Traverse the feature list
+   for (@spec) {
+      ref $cursor eq HASH or return FALSE; $cursor = $cursor->{ $_ };
    }
 
-   my $chained_path = $attrs->{Chained}->[ 0 ]; my @chain = ();
+   ref $cursor or return $cursor; ref $cursor eq ARRAY or return FALSE;
 
-   # Pull out all actions for the chain
-   while ($chained_path ne $SEP) {
-      $chained_action = $self->_guess_chained_action( $c, $chained_path );
-      unshift @chain, $chained_action;
-      $chained_path = $chained_action->attributes->{Chained}->[ 0 ];
-   }
+   # Check that all the keys required for a feature are in here
+   for (@{ $cursor }) { exists $self->{ $_ } or return FALSE }
 
-   my $params = scalar @rest && ref $rest[ -1 ] eq q(HASH) ? pop @rest : $NUL;
-   my @args   = @rest;
-
-   # Now start from the root of the chain, populate captures
-   for my $num_caps (map { $_->attributes->{CaptureArgs}->[ 0 ] } @chain) {
-      if ($num_caps > scalar @args) {
-         $error = 'Insufficient args for [_1]';
-         $self->log_warn( $self->loc( $c, $error, $action->reverse ) );
-         return;
-      }
-
-      push @captures, splice @args, 0, $num_caps;
-   }
-
-   my $first_arg = $captures[ 0 ] || $args[ 0 ] || $NUL;
-
-   push @args, { %{ $params } } if ($params);
-
-   unless ($uri = $c->uri_for( $action, \@captures, @args )) {
-      $self->log_warn( $self->loc( $c, 'No uri for [_1]', $action->reverse ) );
-      return;
-   }
-
-   return $uri unless ($uri =~ m{ $SEP $SEP $first_arg \z }mx);
-
-   # Fix up result in this edge case
-   $uri =~ s{ $SEP $SEP $first_arg \z }{$SEP$first_arg}mx;
-   return bless \$uri, ref $c->req->base;
+   return TRUE;
 }
 
 # Private methods
 
-sub _guess_chained_action {
-   # Returns the action for a given chained midpoint
-   my ($self, $c, $path) = @_; my $chained_action;
+sub _arg_list {
+   my $self = shift; return arg_list @_;
+}
 
-   if ($Catalyst::VERSION < 5.8) {
-      for my $d_type (@{ $c->dispatcher->dispatch_types }) {
-         last if ($chained_action = $d_type->{actions}->{ $path });
+sub _build_l10n {
+   my $self = shift;
+
+   my $cfg  = $self->config; my $attrs = arg_list $cfg->{l10n_attrs};
+
+   __merge_attrs( $attrs, $self, [ qw(debug lock log tempdir) ] );
+
+   defined $cfg->{localedir} and $attrs->{localedir} ||= $cfg->{localedir};
+
+   return CatalystX::Usul::L10N->new( $attrs );
+}
+
+sub _build_lock {
+   # There is only one lock object. Instantiate on first use
+   my $self = shift;
+
+   my $lock; $lock = __PACKAGE__->get_inherited( q(lock) ) and return $lock;
+
+   my $attrs = arg_list $self->config->{lock_attrs};
+
+   __merge_attrs( $attrs, $self, [ qw(debug log tempdir) ] );
+
+   return __PACKAGE__->set_inherited( q(lock), IPC::SRLock->new( $attrs ) );
+}
+
+sub _build_prefix {
+   my $self = shift; return $self->config->{prefix} || my_prefix $self->suid;
+}
+
+sub _build_secret {
+   my $self = shift; return $self->config->{secret} || $self->prefix;
+}
+
+sub _load_component {
+   my ($self, $child, @parents) = @_;
+
+   ## no critic
+   for my $parent (reverse @parents) {
+      $self->ensure_class_loaded( $parent );
+      {  no strict q(refs);
+
+         $child eq $parent or $child->isa( $parent )
+            or unshift @{ "${child}::ISA" }, $parent;
       }
    }
-   else {
-      my $d_type = $c->dispatcher->dispatch_type( q(Chained) );
 
-      # Oops, there goes the encapsulation again
-      $chained_action = $d_type->{_actions}->{ $path } if ($d_type);
-   }
-
-   return $chained_action if ($chained_action);
-
-   my $error = 'Action path [_1] not in a chained endpoint';
-
-   $self->throw( $self->loc( $c, $error, $path ) );
+   exists $Class::C3::MRO{ $child } or eval "package $child; import Class::C3;";
+   ## critic
    return;
 }
 
-sub _lock_obj {
-   my ($self, $args) = @_; my $lock;
+# Private subroutines
 
-   # There is only one lock object
-   return $lock if ($lock = __PACKAGE__->get_inherited( q(lock) ));
-
-   $args            ||= {};
-   $args->{debug  } ||= $self->debug;
-   $args->{log    } ||= $self->log;
-   $args->{tempdir} ||= $self->tempdir;
-
-   return __PACKAGE__->set_inherited( q(lock), IPC::SRLock->new( $args ) );
+sub __merge_attrs {
+   return merge_attributes $_[ 0 ], $_[ 1 ], $ATTRS, $_[ 2 ];
 }
 
 1;
@@ -251,11 +199,11 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-0.3.$Revision: 625 $
+This document describes CatalystX::Usul version 0.4.$Revision: 1133 $
 
 =head1 Synopsis
 
-   use base qw(CatalystX::Usul);
+   use parent qw(CatalystX::Usul);
 
 =head1 Description
 
@@ -272,26 +220,26 @@ including the underlying operating system accounts
 =item Thin controllers
 
 Most controllers make a single call to the model and so comprise of
-only a few lines of code. The model stashes data used by the view to
-render the page
+only a few lines of code. The interface model stashes data used by the
+view to render the page
 
 =item No further view programing required
 
-A single L<Template::Toolkit> template is used to render all pages as
-either HTML or XHTML. The template forms one component of the "skin",
-the other components are: a Javascript file containing the use cases
-for the Javascript libraries, a primary CSS file with support for
-alternative CSS files, and a set of image files
+A single L<template tookit|Template::Toolkit> instance is used to
+render all pages as either HTML or XHTML. The template forms one
+component of the "skin", the other components are: a Javascript file
+containing the use cases for the Javascript libraries, a primary CSS
+file with support for alternative CSS files, and a set of image files
 
 Designers can create new skins with different layout, presentation and
 behaviour for the whole application. They can do this for the example
-application, L<App::Munchies>, whilst the programmers write the "real"
+application, L<Munchies|App::Munchies>, whilst the programmers write the "real"
 application in parallel with the designers work
 
-=item Agile development methodology
+=item Flexable development methodology
 
 These base classes are used by an example application,
-L<App::Munchies>, which can be deployed to staging and production
+L<Munchies|App::Munchies>, which can be deployed to staging and production
 servers at the beginning of the project. Setting up the example
 application allows issues regarding the software technology to be
 resolved whilst the "real" application is being written. The example
@@ -308,20 +256,27 @@ initialised
 
 =head1 Subroutines/Methods
 
-This module provides methods common to C<CatalystX::Usul::Controller>
-and C<CatalystX::Usul::Model> which both inherit from this class. This
-means that you should probably inherit from one of them instead
+This module provides methods common to
+C<controllers|CatalystX::Usul::Controller> and
+C<models|CatalystX::Usul::Model> which both inherit from this
+class. This means that you should probably inherit from one of them
+instead
 
 =head2 new
 
-   $self = CatalystX::Usul->new( $app, $config );
+   $self = CatalystX::Usul->new( $app, $attrs );
 
-This class inherits from L<Catalyst::Component> and
-L<CatalystX::Usul::Base>. The Catalyst application context is C<$app>
-and C<$config> is a hash ref whose contents are copied to the created
-object. Defines the following attributes:
+Constructor. Inherits from the L<base|CatalystX::Usul::Base> and the
+L<encoding|CatalystX::Usul::Encoding> classes. The
+L<Catalyst|Catalyst> application context is C<$app> and C<$attrs> is a
+hash ref containing the object attributes. Defines the following
+attributes:
 
 =over 3
+
+=item config
+
+Hash of attributes read from the config file
 
 =item debug
 
@@ -329,17 +284,15 @@ The application context debug is used to set this. Defaults to false
 
 =item encoding
 
-The config supplies the encoding for the C<query_array>,
-C<query_value> and log methods. Defaults to I<UTF-8>
+Which character encoding to use, defaults to C<UTF-8>
 
 =item lock
 
-An L<IPC::SRLock> object which is used to single thread the application
-where required. This is a singleton object
+The lock object. This is readonly and instantiates on first use
 
 =item log
 
-The application context log. Defaults to a L<Class::Null> object
+The application context log. Defaults to a L<null|Class::Null> object
 
 =item prefix
 
@@ -357,18 +310,24 @@ the I<prefix> attribute value
 Supplied by the config hash, it is the name of the setuid root
 program in the I<bin> directory. Defaults to the null string
 
-=item tabstop
-
-Supplied by the config hash, it is the number of spaces to expand the tab
-character to in the call to L<markdown|Text::Markdown/markdown> made by
-L</localize>. Defaults to 3
-
 =item tempdir
 
-Supplied by the config hash, it is the location of any temporary files
-created by the application. Defaults to the L<File::Spec> tempdir
+Location of any temporary files created by the application. Defaults
+to the L<system|File::Spec> tempdir
 
 =back
+
+=head2 BUILDARGS
+
+Preprocesses the are passed to the constructor
+
+=head2 build_attributes
+
+   $self->build_attributes( [ qw(a list of attributes names) ], $force );
+
+For each attribute in the list, if it is undefined or C<$force> is true,
+this method calls the builder method C<_build_attribute_name> and sets the
+attribute with the result
 
 =head2 build_subcomponents
 
@@ -377,68 +336,56 @@ created by the application. Defaults to the L<File::Spec> tempdir
 Class method that allows us to define components that inherit from the base
 class at runtime
 
-=head2 get_action
-
-   $action = $self->get_action( $c, $action_path );
-
-Provide defaults for the L<get_action|Catalyst/get_action>
-method. Return the action object if one exists, otherwise log a warning
-and return undef
-
 =head2 loc
 
-=head2 localize
+   $local_text = $self->loc( $args, $key, $params );
 
-   $local_text = $self->localize( $c, $message, @args );
-
-Localizes the message. Optionally calls C<Text::Markdown> on the text
+Localizes the message. Calls L<CatalystX::Usul::L10N/localize>
 
 =head2 setup_plugins
 
-   @plugins = $self->setup_plugins( $class, $config_ref );
+   @plugins = __PACKAGE__->setup_plugins( $config_ref );
 
-Load the given list of plugins and have the supplies class inherit from them.
+Load the given list of plugins and have the supplied class inherit from them.
 Returns an array ref of available plugins
 
-=head2 uri_for
+=head2 supports
 
-   $uri = $self->uri_for( $c, $action_path, @args );
+   $bool = $self->supports( @spec );
 
-Turns the action path into an action object by calling L</get_action>.
-Calculates the number of capture args by introspecting the dispatcher
-splits them of from passed args and then calls
-L<uri_for|Catalyst/uri_for>
+Returns true if the hash returned by our I<get_features> attribute
+contains all the elements of the required specification
 
-=head2 _guess_chained_action
+=head2 _build_lock
 
-   $action = $self->_guess_chained_action( $c, $action_path );
-
-Returns the action object for the given chained midpoint action path. Called
-by L</uri_for>. Irons out the differences between Catalyst versions
-
-=head2 _lock_obj
-
-   $self->_lock_obj( $args );
-
-Provides defaults for and returns a new L<IPC::SRLock> object. The keys of
-the C<$args> hash are:
+A L<lock|IPC::SRLock> object which is used to single thread the
+application where required. This is a singleton object.  Provides
+defaults for and returns a new L<set/reset|IPC::SRLock> lock
+object. The keys of the C<$attrs> hash are:
 
 =over 3
 
 =item debug
 
-Debug status. Defaults to C<< $usul_obj->debug >>
+Debug status. Defaults to C<< $self->debug >>
 
 =item log
 
-Logging object. Defaults to C<< $usul_obj->log >>
+Logging object. Defaults to C<< $self->log >>
 
 =item tempdir
 
 Directory used to store the lock file and lock table if the C<fcntl> backend
-is used. Defaults to C<< $usul_obj->tempdir >>
+is used. Defaults to C<< $self->tempdir >>
 
 =back
+
+=head2 _load_component
+
+   $self->_load_component( $child, @parents );
+
+Ensures that each component is loaded then fixes @ISA for the child so that
+it inherits from the parents
 
 =head1 Diagnostics
 
@@ -449,19 +396,26 @@ debug level
 
 =over 3
 
-=item L<Catalyst::Component>
-
 =item L<CatalystX::Usul::Base>
 
-=item L<Class::Null>
+=item L<CatalystX::Usul::Constants>
+
+=item L<CatalystX::Usul::File>
+
+=item L<CatalystX::Usul::Functions>
+
+=item L<CatalystX::Usul::L10N>
+
+=item L<CatalystX::Usul::Log>
 
 =item L<IPC::SRLock>
 
 =item L<Module::Pluggable::Object>
 
-=item L<Text::Markdown>
-
 =back
+
+To make the Captchas work L<GD::SecurityImage> needs to be installed which
+has a documented dependency on C<libgd> which should be installed first
 
 =head1 Incompatibilities
 
@@ -483,10 +437,11 @@ Larry Wall - For the Perl programming language
 
 =head1 License and Copyright
 
-Copyright (c) 2009 Peter Flanigan. All rights reserved
+Copyright (c) 2012 Peter Flanigan. All rights reserved
 
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself. See L<perlartistic>
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. See the L<Perl Artistic
+License|perlartistic>
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT WARRANTY; without even the implied warranty of

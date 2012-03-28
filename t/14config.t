@@ -1,104 +1,111 @@
-# @(#)$Id: 14config.t 582 2009-06-12 11:04:32Z pjf $
+# @(#)$Id: 14config.t 1116 2012-03-11 23:05:42Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 582 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1116 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
-use lib catdir( $Bin, updir, q(lib) );
+use lib catdir( $Bin, updir, q(lib) ), catdir( $Bin, q(lib) );
 
+use English qw(-no_match_vars);
+use Module::Build;
 use Test::More;
 
 BEGIN {
-   if ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
-       || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx) {
-      plan skip_all => q(CPAN Testing stopped);
-   }
+   my $current = eval { Module::Build->current };
 
-   plan tests => 13;
+   $current and $current->notes->{stop_tests}
+            and plan skip_all => $current->notes->{stop_tests};
 }
 
-{
-   package MyApp;
+use Catalyst::Test q(MyApp);
 
-   use Catalyst qw(ConfigComponents);
+my (undef, $context) = ctx_request( '' );
 
-   __PACKAGE__->config
-      ( "Model::Config"          => {
-           base_class            => q(CatalystX::Usul::Model::Config),
-           schema_attributes     => {
-              storage_attributes => { class => q(XML::Simple) } } },
-        "Model::Config::Levels"  => {
-           base_class            => q(CatalystX::Usul::Model::Config::Levels),
-           schema_attributes     => {
-              storage_attributes => { class => q(XML::Simple) } } } );
-
-   __PACKAGE__->setup;
-}
-
-$ENV{REMOTE_ADDR} = '127.0.0.1';
-$ENV{SERVER_NAME} = 'localhost';
-$ENV{SERVER_PORT} = '80';
-
-my $context = MyApp->prepare;
-
-$context->stash( lang => q(en), messages => {}, newtag => q(..New..) );
+$context->stash( lang => q(de), newtag  => q(..New..) );
 
 my $model = $context->model( q(Config) );
 
 isa_ok( $model, 'MyApp::Model::Config' );
 
-my $cfg = $model->load_files( qw(t/default.xml t/default_en.xml) );
+my $cfg = $model->load( q(default) );
 
-ok( $cfg->{ '_cvs_default' } =~ m{ @\(\#\)\$Id: }mx,
+ok( $cfg->{ '_vcs_default' } =~ m{ @\(\#\)\$Id: }mx,
     'Has reference element 1' );
-ok( $cfg->{ '_cvs_lang_default' } =~ m{ @\(\#\)\$Id: }mx,
-    'Has reference element 2' );
-ok( ref $cfg->{levels}->{entrance}->{acl} eq q(ARRAY), 'Detects arrays' );
+ok( ref $cfg->{namespace}->{entrance}->{acl} eq q(ARRAY), 'Detects arrays' );
 
-eval { $model->create_or_update }; my $e = $model->catch;
+eval { $model->create_or_update }; my $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e->as_string eq 'No file path specified',
-    'Detects misssin file parameter' );
+ok( $e->as_string =~ m{ Result \s+ source \s+ not \s+ specified }msx,
+    'Result source not specified' );
 
-my $args = {}; $args->{file} = q(t/default.xml);
+$model->keys_attr( q(an_element_name) );
 
-eval { $model->create( $args ) }; $e = $model->catch;
+eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e->as_string eq 'No element name specified',
-    'Detects misssin name parameter' );
+ok( $e->as_string =~ m{ Result \s+ source \s+ an_element_name \s+ unknown }msx,
+    'Result source an_element_name unknown' );
+
+$model->keys_attr( q(globals) );
+
+eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
+
+ok( $e->as_string =~ m{ File \s+ name \s+ not \s+ specified }msx,
+    'File path not specified' );
+
+my $file = q(default);
+
+eval { $model->create_or_update( $file ) };
+
+$e = $EVAL_ERROR; $EVAL_ERROR = undef;
+
+ok( $e->as_string =~ m{ No \s+ element \s+ name \s+ specified }msx,
+    'No element name specified' );
 
 $model = $context->model( q(Config::Levels) );
 
 isa_ok( $model, 'MyApp::Model::Config::Levels' );
 
-$args->{name} = q(dummy);
+my $args = {}; my $name;
 
-eval { $model->create( $args ) }; $e = $model->catch;
+eval { $name = $model->create_or_update( $file, q(dummy) ) };
 
-ok ( !$e, 'Creates dummy level' );
+$e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-$cfg = $model->load_files( qw(t/default.xml t/default_en.xml) );
+ok( !$e, 'Creates dummy level' );
+ok( $name eq q(dummy), 'Returns element name on create' );
 
-ok( $cfg->{levels}->{dummy}->{acl}->[ 0 ] eq q(any), 'Dummy level defaults' );
+$cfg = $model->load( qw(default) );
 
-eval { $model->create( $args ) }; $e = $model->catch;
+my $acl = $cfg->{namespace}->{dummy}->{acl}->[0];
 
-ok( $e->as_string eq 'File [_1] element [_2] already exists',
+ok( $acl && $acl eq q(any), 'Dummy namespace defaults' );
+
+eval { $model->create_or_update( $file, q(dummy) ) };
+
+$e = $EVAL_ERROR; $EVAL_ERROR = undef;
+
+ok( $e =~ m{ element \s+ dummy \s+ already \s+ exists }msx,
     'Detects existing record' );
 
-eval { $model->delete( $args ) }; $e = $model->catch;
+eval { $model->delete( $file, $name ) };
 
-ok ( !$e, 'Deletes dummy level' );
+$e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-eval { $model->delete( $args ) }; $e = $model->catch;
+ok( !$e, 'Deletes dummy namespace' );
 
-ok( $e->as_string eq 'File [_1] element [_2] not updated',
+eval { $model->delete( $file, $name ) };
+
+$e = $EVAL_ERROR; $EVAL_ERROR = undef;
+
+ok( $e =~ m{ element \s+ dummy \s+ does \s+ not \s+ exist }msx,
     'Detects non existance on delete' );
 
-my @res = $model->search( q(t/default.xml), { acl => q(@support) } );
+my @res = $model->search( $file, { acl => q(@support) } );
 
-ok( $res[ 0 ] && $res[ 0 ]->{name} eq q(admin), 'Can search' );
+ok( $res[0] && $res[0]->{name} eq q(admin), 'Can search' );
+
+done_testing;
 
 # Local Variables:
 # mode: perl

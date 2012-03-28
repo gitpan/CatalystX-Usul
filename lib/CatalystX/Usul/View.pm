@@ -1,174 +1,177 @@
-# @(#)$Id: View.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: View.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::View;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(Catalyst::View CatalystX::Usul);
 
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(exception is_arrayref is_hashref throw);
 use Encode;
 use HTML::FormWidgets;
+use Scalar::Util qw(blessed);
+use Template;
+use TryCatch;
 
 __PACKAGE__->config( form_sources    => [ qw(sdata hidden) ],
+                     js_object       => q(behaviour),
                      serialize_attrs => {} );
 
 __PACKAGE__->mk_accessors( qw(content_types deserialize_attrs
-                              dynamic_templates form_sources
-                              serialize_attrs) );
+                              form_sources js_object serialize_attrs
+                              template_dir) );
+
+sub COMPONENT {
+   my ($class, $app, @rest) = @_;
+
+   my $new  = $class->next::method( $app, @rest );
+   my $usul = CatalystX::Usul->new( $app, {} );
+
+   for (grep { not defined $new->{ $_ } } keys %{ $usul }) {
+      $new->{ $_ } = $usul->{ $_ };
+   }
+
+   return $new;
+}
 
 sub bad_request {
-   my ($self, $c, $verb, $msg) = @_;
+   my ($self, $c, $verb, $msg, $status) = @_; $status ||= 400;
 
    $c->res->body( $msg );
    $c->res->content_type( q(text/plain) );
-   $c->res->status( 400 );
-   return 0;
-}
-
-sub build_widgets {
-   my ($self, $c, $sources, $config) = @_; my $s = $c->stash; my $data = [];
-
-   $sources ||= []; $config ||= {};
-
-   for my $part (map { $s->{ $_ } } grep { $s->{ $_ } } @{ $sources }) {
-      if (ref $part eq q(ARRAY) and $part->[ 0 ]) {
-         push @{ $data }, $_ for (@{ $part });
-      }
-      else { push @{ $data }, $part }
-   }
-
-   $config->{assets      } = $s->{assets};
-   $config->{base        } = $c->req->base;
-   $config->{content_type} = $s->{content_type};
-   $config->{fields      } = $s->{fields} || {};
-   $config->{form        } = $s->{form};
-   $config->{hide        } = $s->{hidden}->{items};
-   $config->{messages    } = $s->{messages};
-   $config->{pwidth      } = $s->{pwidth};
-   $config->{root        } = $c->config->{root};
-   $config->{static      } = $s->{static};
-   $config->{swidth      } = $s->{width} if ($s->{width});
-   $config->{templatedir } = $self->dynamic_templates;
-   $config->{url         } = $c->req->path;
-
-   HTML::FormWidgets->build( $config, $data );
-   return $data;
+   $c->res->status( $status );
+   return FALSE;
 }
 
 sub deserialize {
-   my ($self, $s, $req, $process) = @_; my ($body, $data, $e);
+   my ($self, $s, $req, $process) = @_;
 
-   if ($body = $req->body) {
-      $data = eval { $process->( $self->deserialize_attrs || {}, $body ) };
+   my $body = $req->body; $s->{leader} = blessed $self;
 
-      if ($e = $self->catch) {
-         $self->log_error( $e->as_string );
-         return;
-      }
+   if ($body) {
+      try        { return $process->( $self->deserialize_attrs || {}, $body ) }
+      catch ($e) { $self->log_error_message( (exception $e), $s ) }
    }
-   else { $self->log_debug( 'Nothing to deserialize' ) if ($self->debug) }
+   else {
+      $self->debug and $self->log_debug_message( 'Nothing to deserialize', $s );
+   }
 
-   return $data;
+   return;
 }
 
 sub get_verb {
-   my ($self, $s, $req) = @_; my $verb = lc $req->method;
+   my ($self, $c) = @_; my $req = $c->req; my $verb = lc $req->method;
 
    if ($verb eq q(post)) {
-      $verb = delete $req->params->{_method} if ($req->param( q(_method) ));
+      $req->param( q(_method) ) and $verb = delete $req->params->{_method};
    }
 
    return $verb;
 }
 
 sub not_implemented {
-   my ($self, $c, $verb, $msg) = @_;
-
-   $c->res->body( $msg );
-   $c->res->content_type( q(text/plain) );
-   $c->res->status( 405 );
-   return 0;
-}
-
-sub prepare_data {
-   my ($self, $c) = @_; my $s = $c->stash; my $form;
-
-   my $srcs = $self->form_sources;
-   my $data = $self->build_widgets( $c, $srcs, { skip_groups => 1 } );
-
-   if ($data and $form = $data->[ 0 ]) {
-      if ($form->{items}->[ 0 ] and $form->{items}->[ 0 ]->{content}) {
-         my %s = map { $_ => $s->{ $_ } } keys %{ $s };
-
-         $form->{items}->[ 0 ]->{content}
-            =~ s{ \[% \s+ (.+) \s+ %\] }{$s{ $1 }}gmx;
-      }
-
-      shift @{ $data };
-   }
-   else { $form = { items => [] } }
-
-
-   if ($data and $data->[ 0 ]) {
-      push @{ $form->{items} }, @{ $_->{items} || [] } for (@{ $data });
-   }
-
-   $form->{count} = scalar @{ $form->{items} };
-
-   for my $id (0 .. $form->{count}) {
-      my $item = $form->{items}->[ $id ];
-
-      $item->{id} = $id unless (defined $item->{id});
-   }
-
-   return $form;
+   my ($self, @rest) = @_; return $self->bad_request( @rest, 405 );
 }
 
 sub process {
-   my ($self, $c) = @_; my ($attrs, $body, $e, $enc, $types);
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   my $s = $c->stash; my $type = $s->{content_type};
+   my $attrs = $self->serialize_attrs || {}; my $body;
 
-   if ($types = $self->content_types) {
-      if ($type) {
-         if (exists $types->{ $type }) { $attrs = $types->{ $type } }
-         else { $body = $self->loc( $c, 'Content type [_1] unknown', $type ) }
-      }
-      else { $body = $self->loc( $c, 'Content type not specified' ) }
+   my $type  = $attrs->{content_type} = $s->{content_type};
 
-      return $self->_unsupported_media_type( $c, $body."\r\n" ) if ($body);
-   }
-   else { $attrs = $self->serialize_attrs }
+   try        { $body  = $self->serialize( $attrs, $self->_prepare_data( $c )) }
+   catch ($e) { $body  = "Serializer ${type} failed\r\n***ERROR***\r\n";
+                $self->bad_request( $c, $body.(exception $e) ); return TRUE }
 
-   $body = eval { $self->serialize( $attrs, $self->prepare_data( $c ) ) };
-
-   if ($e = $self->catch) {
-      $body  = $self->loc( $c, 'Serializer [_1] failed', $type );
-      $body .= "\r\n***ERROR***\r\n".$e->as_string;
-      $self->bad_request( $c, $body );
-      return 1;
-   }
-
-   if ($enc = $s->{encoding}) { # Encode the body of the page
+   if (my $enc = $s->{encoding}) { # Encode the body of the page
       $body = encode( $enc, $body ); $type .= q(; charset=).$enc;
    }
 
    $c->res->header( Vary => q(Content-Type) );
    $c->res->content_type( $type );
    $c->res->body( $body );
-   return 1;
+   return TRUE;
 }
 
 # Private methods
 
-sub _unsupported_media_type {
-   my ($self, $c, $body) = @_;
+sub _build_widgets {
+   my ($self, $c, $args) = @_; my $s = $c->stash;
 
-   $c->res->body( $body );
-   $c->res->content_type( q(text/plain) );
-   $c->res->status( 415 );
-   return 1;
+   my $attrs = { %{ $args || {} } };
+   my @attrs = ( qw(assets content_type fields hidden
+                    literal_js optional_js pwidth width) );
+
+   $attrs->{ $_         } = $s->{ $_ } for (@attrs);
+   $attrs->{base        } = $c->req->base;
+   $attrs->{js_object   } = $self->js_object;
+   $attrs->{l10n        } = sub { $self->loc( $s, @_ ) };
+   $attrs->{root        } = $c->config->{root};
+   $attrs->{template_dir} = $self->template_dir;
+
+   HTML::FormWidgets->build( $attrs );
+   return;
+}
+
+sub _prepare_data {
+   my ($self, $c) = @_; my $s = $c->stash;
+
+   $s->{EOT} = $s->{is_xml} ? q( />) : q(>);
+
+   my $tt   = Template->new( {} ) or throw $Template::ERROR;
+   my $data = $self->_read_form_sources( $c ) || [];
+
+   for my $source (@{ $data }) {
+      my $id = 0;
+
+      for my $item (grep { $_->{content} } @{ $source->{items} }) {
+         my $content = $item->{content};
+
+         if (is_hashref $content and exists $content->{text}) {
+            $item->{content}->{text}
+               = __tt_process( $tt, $s, \$content->{text} );
+         }
+         else { $item->{content} = __tt_process( $tt, $s, \$content ) }
+
+         defined $item->{id} or $item->{id} = $id; $id++;
+      }
+
+      $source->{count} = scalar @{ $source->{items} };
+   }
+
+   $data->[ 1 ] or return $data->[ 0 ];
+
+   for my $source (map { $data->[ $_ ] } 1 .. $#{ $data }) {
+      push @{ $data->[ 0 ]->{items} || [] }, @{ $source->{items} || [] };
+   }
+
+   return $data->[ 0 ];
+}
+
+sub _read_form_sources {
+   my ($self, $c) = @_; my $s = $c->stash;
+
+   my $sources = $self->form_sources || []; my $data = [];
+
+   for my $part (map { $s->{ $_ } } grep { $s->{ $_ } } @{ $sources }) {
+      unless (is_arrayref $part and $part->[ 0 ]) { push @{ $data }, $part }
+      else { push @{ $data }, $_ for (@{ $part }) }
+   }
+
+   return $data;
+}
+
+# Private subroutines
+
+sub __tt_process {
+   my ($tt, $s, $in) = @_; my $out;
+
+   $tt->process( $in, $s, \$out ) or throw $tt->error;
+
+   return $out;
 }
 
 1;
@@ -183,12 +186,12 @@ CatalystX::Usul::View - Base class for views
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
    package CatalystX::Usul::View;
-   use parent qw(Catalyst::View CatalystX::Usul::Base);
+   use parent qw(Catalyst::View CatalystX::Usul);
 
    package CatalystX::Usul::View::HTML;
    use parent qw(CatalystX::Usul::View);
@@ -205,15 +208,16 @@ Provide common methods for subclasses
 
 =head1 Subroutines/Methods
 
+=head2 COMPONENT
+
+The constructor stores a copy of the application instance for future
+reference. It does this to remain compatible with L<Catalyst::Controller>
+whose constructor is no longer called
+
 =head2 bad_request
 
 Sets the response body to the provided error message and the response
 status to 400
-
-=head2 build_widgets
-
-Calls C<build> in L<HTML::FormWidgets> which transforms the widgets
-definitions into fragments of HTML or XHTML as required
 
 =head2 deserialize
 
@@ -237,16 +241,28 @@ determined from the request content type
 Sets the response body to the provided error message and the response
 status to 405
 
-=head2 prepare_data
-
-Called by L</process> this method is responsible for
-selecting those elements from the stash that are passed to
-the C</build_widgets> method
-
 =head2 process
 
 Serializes the response using L<XML::Simple> and encodes the body using
 L<Encode> if required
+
+=head1 Private Methods
+
+=head2 _build_widgets
+
+Calls C<build> in L<HTML::FormWidgets> which transforms the widgets
+definitions into fragments of HTML or XHTML as required
+
+=head2 _prepare_data
+
+Called by L</process> this method is responsible for
+selecting those elements from the stash that are passed to
+the serializer method
+
+=head2 _read_form_sources
+
+Returns an array ref widget references in the stash. Can be passed to
+L</_build_widgets> or its output can be sent directly to the serializer
 
 =head1 Diagnostics
 
@@ -262,7 +278,7 @@ None
 
 =item L<Catalyst::View>
 
-=item L<CatalystX::Usul::Base>
+=item L<CatalystX::Usul>
 
 =item L<Encode>
 

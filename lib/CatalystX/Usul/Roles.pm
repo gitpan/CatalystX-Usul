@@ -1,28 +1,39 @@
-# @(#)$Id: Roles.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Roles.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Roles;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
-__PACKAGE__->mk_accessors( qw(user_domain _cache _id2name _user2role) );
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(is_member throw);
+
+__PACKAGE__->mk_accessors( qw(cache users) );
+
+sub new {
+   my ($class, $app, $attrs) = @_;
+
+   $attrs->{cache} ||= {};
+
+   return $class->next::method( $app, $attrs );
+}
 
 sub get_member_list {
-   my ($self, $role) = @_; my (%found, @members) = ((), ()); my $role_ref;
+   my ($self, $role) = @_; my (%found, @members) = ((), ());
 
-   return unless ($role_ref = $self->_get_role( $role ));
+   my $role_ref = $self->_get_role( $role ) or return;
 
    if ($role_ref->{users}) {
       for (@{ $role_ref->{users} }) {
-         push @members, $_ unless ($found{ $_ }); $found{ $_ } = 1;
+         $found{ $_ } or push @members, $_; $found{ $_ } = TRUE;
       }
    }
 
-   if (defined $self->user_domain and $role_ref->{id}) {
-      for ($self->user_domain->get_users_by_rid( $role_ref->{id} )) {
-         push @members, $_ unless ($found{ $_ }); $found{ $_ } = 1;
+   if (defined $self->users and $role_ref->{id}) {
+      for ($self->users->get_users_by_rid( $role_ref->{id} )) {
+         $found{ $_ } or push @members, $_; $found{ $_ } = TRUE;
       }
    }
 
@@ -30,52 +41,53 @@ sub get_member_list {
 }
 
 sub get_name {
-   my ($self, $rid) = @_;
+   my ($self, $rid) = @_; defined $rid or return;
 
-   return unless (defined $rid);
+   my (undef, $id2name) = $self->_load; defined $id2name or return;
 
-   my (undef, $id2name) = $self->_load;
-
-   return exists $id2name->{ $rid } ? $id2name->{ $rid } : q();
+   return exists $id2name->{ $rid } ? $id2name->{ $rid } : NUL;
 }
 
 sub get_rid {
-   my ($self, $role) = @_; my $role_ref;
+   my ($self, $role) = @_;
 
-   return unless ($role_ref = $self->_get_role( $role ));
+   my $role_ref = $self->_get_role( $role ) or return;
+
    return defined $role_ref->{id} ? $role_ref->{id} : undef;
 }
 
 sub get_roles {
-   my ($self, $user, $rid) = @_; my ($role, @roles, @tmp, %tmp);
+   my ($self, $user, $rid) = @_; $user or throw 'User not specified';
 
-   $self->throw( 'No user specified' ) unless ($user);
-
-   my ($cache, $id2name, $user2role) = $self->_load;
+   my ($cache, $id2name, $user2role) = $self->_load; my @roles;
 
    # Get either all roles or a specific users roles
    if (lc $user eq q(all)) { @roles = keys %{ $cache } }
-   else {
+   elsif (defined $user2role) {
       @roles = exists $user2role->{ $user } ? @{ $user2role->{ $user } } : ();
    }
+   else {
+      @roles = grep  { is_member $user, $cache->{ $_ }->{users} }
+               keys %{ $cache };
+   }
 
-   @tmp = sort { lc $a cmp lc $b } @roles;
+   my @tmp = sort { lc $a cmp lc $b } @roles;
 
    # If checking a specific user then add its primary role name
-   unless (q(all) eq lc $user) {
-      if (not defined $rid and defined $self->user_domain) {
-         $rid = $self->user_domain->get_primary_rid( $user );
+   if (lc $user ne q(all)) {
+      if (not defined $rid and defined $self->users) {
+         $rid = $self->users->get_primary_rid( $user );
       }
 
-      if (defined $rid && exists $id2name->{ $rid }) {
+      if (defined $rid and defined $id2name and exists $id2name->{ $rid }) {
          unshift @tmp, $id2name->{ $rid };
       }
    }
 
    # Deduplicate list of roles
-   @roles = (); %tmp = ();
+   my %tmp = (); @roles = ();
 
-   for (@tmp) { unless ($tmp{ $_ }) { push @roles, $_; $tmp{ $_ } = 1 } }
+   for (@tmp) { unless ($tmp{ $_ }) { push @roles, $_; $tmp{ $_ } = TRUE } }
 
    return @roles;
 }
@@ -83,25 +95,29 @@ sub get_roles {
 sub is_member_of_role {
    my ($self, $role, $user) = @_;
 
-   return unless ($user and $self->is_role( $role ));
+   ($user and $self->is_role( $role )) or return;
 
-   return $self->is_member( $user, $self->get_member_list( $role ) );
+   return is_member $user, $self->get_member_list( $role );
 }
 
 sub is_role {
-   my ($self, $role) = @_; return $self->_get_role( $role ) ? 1 : 0;
+   return $_[ 0 ]->_get_role( $_[ 1 ] ) ? TRUE : FALSE;
 }
 
 # Private methods
 
+sub _cache_results {
+   my ($self, $key) = @_; my $cache = { %{ $self->cache } };
+
+   $self->lock->reset( k => $key );
+
+   return ($cache->{roles}, $cache->{id2name}, $cache->{user2role});
+}
+
 sub _get_role {
-   my ($self, $role) = @_;
+   my ($self, $role) = @_; $role or return; my ($cache) = $self->_load;
 
-   return unless ($role);
-
-   my ($cache) = $self->_load;
-
-   return exists $cache->{ $role } ? $cache->{ $role } : q();
+   return exists $cache->{ $role } ? $cache->{ $role } : NUL;
 }
 
 1;
@@ -116,7 +132,7 @@ CatalystX::Usul::Roles - Manage the roles and their members
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -131,6 +147,10 @@ Implements the base class for role data stores. Each factory subclass
 should inherit from this and implement the required list of methods
 
 =head1 Subroutines/Methods
+
+=head2 new
+
+Constructor.
 
 =head2 add_roles_to_user
 

@@ -1,33 +1,27 @@
-# @(#)$Id: Identity.pm 576 2009-06-09 23:23:46Z pjf $
+# @(#)$Id: Identity.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Model::Identity;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 576 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
-use CatalystX::Usul::Model::Roles;
-use CatalystX::Usul::Model::Users;
-use Class::C3;
+use MRO::Compat;
 use Scalar::Util qw(weaken);
 
 __PACKAGE__->mk_accessors( qw(auth_comp role_class roles user_class
                               users _auth_realms _default_realm ) );
 
-sub new {
-   my ($self, $app, @rest) = @_;
+sub COMPONENT {
+   my ($class, $app, $attrs) = @_;
 
-   my $new = $self->next::method( $app, @rest );
+   my $new = $class->next::method( $app, $attrs );
 
    $new->auth_realms  ( $app, $new->auth_comp );
    $new->default_realm( $app, $new->auth_comp );
 
    return $new;
-}
-
-sub aliases {
-   return shift->users->aliases;
 }
 
 sub auth_realms {
@@ -46,26 +40,21 @@ sub auth_realms {
 sub build_per_context_instance {
    my ($self, $c, @rest) = @_;
 
-   my $new = $self->next::method( $c, @rest );
-
-   $new->roles( $c->model( $new->role_class ) );
-   $new->users( $c->model( $new->user_class ) );
+   my $new   = $self->next::method( $c, @rest );
+   my $roles = $new->roles( $c->model( $new->role_class ) );
+   my $users = $new->users( $c->model( $new->user_class ) );
 
    $new->roles->auth_realms( $new->auth_realms );
    $new->users->auth_realms( $new->auth_realms );
 
-   $new->roles->users( $new->users ); weaken( $new->roles->{users} );
-   $new->users->roles( $new->roles ); weaken( $new->users->{roles} );
+   $new->roles->users( $users ); weaken( $new->roles->{users} );
+   $new->users->roles( $roles ); weaken( $new->users->{roles} );
 
-   $new->roles->role_domain->user_domain( $new->users->user_domain );
-   $new->users->user_domain->role_domain( $new->roles->role_domain );
+   $new->roles->domain_model->users( $new->users->domain_model );
+   $new->users->domain_model->roles( $new->roles->domain_model );
 
-   weaken( $new->roles->role_domain->{user_domain} );
-   weaken( $new->users->user_domain->{role_domain} );
-
-   $new->users->profiles->roles( $new->roles );
-
-   weaken( $new->users->profiles->{roles} );
+   weaken( $new->roles->domain_model->{users} );
+   weaken( $new->users->domain_model->{roles} );
 
    return $new;
 }
@@ -73,20 +62,32 @@ sub build_per_context_instance {
 sub default_realm {
    my ($self, $app, $component) = @_;
 
-   return $self->_default_realm if     ($self->_default_realm);
-   return                       unless ($app and $component);
+   $self->_default_realm and return $self->_default_realm;
+   ($app and $component) or return;
 
-   $self->_default_realm( $app->config->{ $component }->{default_realm} );
+   my $realm = $app->config->{ $component }->{default_realm};
 
-   return $self->_default_realm;
+   return $self->_default_realm( $realm );
 }
 
 sub find_user {
    my ($self, @rest) = @_; return $self->users->find_user( @rest );
 }
 
-sub profiles {
-   return shift->users->profiles;
+sub get_identity_model_name {
+   my ($self, $default, $realm) = @_;
+
+   $realm ||= $self->default_realm; my $model_name;
+
+   exists $self->auth_realms->{ $realm } or $realm = $self->default_realm;
+
+   unless ($realm and $model_name = $self->auth_realms->{ $realm }) {
+      my $msg = 'Defaulting identity model [_1]';
+
+      $self->log_warning( $self->loc( $msg, $model_name = $default ) );
+   }
+
+   return ($model_name, $realm);
 }
 
 1;
@@ -101,7 +102,7 @@ CatalystX::Usul::Model::Identity - Identity model with multiple backend stores
 
 =head1 Version
 
-0.3.$Revision: 576 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -120,19 +121,15 @@ and account activation
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 COMPONENT
 
 Constructor creates instances of the subclasses. The I<roles> and I<users>
 subclasses a loaded at runtime since the backend store is a config option
 
-=head2 aliases
-
-Returns instance of I<MailAliases> class
-
 =head2 auth_realms
 
 Returns a hash ref whose keys are the realm names and whose values are
-the model classes
+the model class names
 
 =head2 build_per_context_instance
 
@@ -148,9 +145,11 @@ Returns the name of the default realm
 Calls and returns the value from the C<find_user> method on the I<users>
 subclass
 
-=head2 profiles
+=head2 get_identity_model_name
 
-Returns instance of I<UserProfiles> class
+Looks the supplied realm name up in the L</auth_realms> and returns the
+model class name. The realm name defaults to the I<default_realm>
+attribute
 
 =head1 Diagnostics
 
@@ -165,14 +164,6 @@ None
 =over 3
 
 =item L<CatalystX::Usul::Model>
-
-=item L<CatalystX::Usul::Model::MailAliases>
-
-=item L<CatalystX::Usul::Model::Roles>
-
-=item L<CatalystX::Usul::Model::UserProfiles>
-
-=item L<CatalystX::Usul::Model::Users>
 
 =item L<Scalar::Util>
 

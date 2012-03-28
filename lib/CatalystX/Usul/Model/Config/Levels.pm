@@ -1,55 +1,54 @@
-# @(#)$Id: Levels.pm 591 2009-06-13 13:34:41Z pjf $
+# @(#)$Id: Levels.pm 891 2010-09-30 01:47:24Z pjf $
 
 package CatalystX::Usul::Model::Config::Levels;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 591 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 891 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
-use Class::C3;
+use MRO::Compat;
 
 __PACKAGE__->config
-   ( create_msg_key    => 'Namespace [_1] created',
-     delete_msg_key    => 'Namespace [_1] deleted',
-     file              => q(default),
-     keys_attr         => q(level),
-     schema_attributes => {
-        attributes     => [ qw(acl state text tip) ],
-        defaults       => { acl => [ q(any) ], state => 0, text => q() },
-        element        => q(levels),
-        lang_dep       => { qw(text 1 tip 1) }, },
-     update_msg_key    => 'Namespace [_1] updated', );
+   ( create_msg_key => 'Namespace [_1] created',
+     delete_msg_key => 'Namespace [_1] deleted',
+     file           => q(default),
+     keys_attr      => q(namespace),
+     update_msg_key => 'Namespace [_1] updated', );
 
 __PACKAGE__->mk_accessors( qw(file) );
 
-sub delete {
-   my ($self, $args) = @_;
+sub create_or_update {
+   my ($self, $ns, $name) = @_;
 
-   $self->next::method( $args );
-   delete $self->context->stash->{levels}->{ $args->{name} };
+   return $self->next::method( $ns, { name => $name } );
+}
+
+sub delete {
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash;
+
+   $self->next::method( $ns, $name );
+   delete $s->{ $self->keys_attr }->{ $name };
    return;
 }
 
-sub get_list {
+sub list {
    my ($self, $name) = @_; return $self->next::method( $self->file, $name );
 }
 
 sub set_state {
-   my ($self, $args) = @_;
+   my ($self, $ns, $name) = @_;
 
-   my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
    my $state  = $self->query_value( q(state) ) || 0;
 
-   $args->{fields} = { state => $state };
-   $self->update( $args );
+   $self->update( $ns, { name => $name, state => $state } );
    $self->clear_result;
 
-   my $user     = $self->context->stash->{user};
-   my $msg      = 'Namespace [_1] state set to [_2] by [_3]';
-   my @msg_args = ( $args->{name}, $states{ $state }, $user );
+   my $user   = $self->context->stash->{user};
+   my $msg    = 'Namespace [_1] state set to [_2] by [_3]';
+   my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
 
-   $self->add_result_msg( $msg, @msg_args );
+   $self->add_result_msg( $msg, $name, $states{ $state }, $user );
    return;
 }
 
@@ -61,11 +60,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Model::Config::Levels - Class definition for the levels configuration element
+CatalystX::Usul::Model::Config::Levels - Class definition for the namespace configuration element
 
 =head1 Version
 
-0.3.$Revision: 591 $
+0.4.$Revision: 891 $
 
 =head1 Synopsis
 
@@ -73,7 +72,7 @@ CatalystX::Usul::Model::Config::Levels - Class definition for the levels configu
 
 =head1 Description
 
-Defines the <levels> configuration element
+Defines the <namespace> configuration element
 
 Defines three language independent attributes: I<acl>, I<name> and  I<state>
 
@@ -81,19 +80,23 @@ Defines two language dependent attributes: I<text> and  I<tip>
 
 =head1 Subroutines/Methods
 
+=head2 create_or_update
+
+Creates or updates the specified I<namespace> element
+
 =head2 delete
 
-Deletes the specified I<levels> element from the configuration
+Deletes the specified I<namespace> element from the configuration
 
-=head2 get_list
+=head2 list
 
-Returns an object that contains a list of the defined levels and the fields
-of the specified level
+Returns an object that contains a list of the defined namespaces and the fields
+of the specified namespace
 
 =head2 set_state
 
 Toggles the I<state> attribute which has the effect of opening (false) or
-closing (true) the level to the application
+closing (true) the namespace to the application
 
 =head1 Diagnostics
 

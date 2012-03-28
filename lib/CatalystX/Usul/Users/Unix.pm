@@ -1,492 +1,340 @@
-# @(#)$Id: Unix.pm 577 2009-06-10 00:15:54Z pjf $
+# @(#)$Id: Unix.pm 1097 2012-01-28 23:31:29Z pjf $
 
 package CatalystX::Usul::Users::Unix;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.3.%d', q$Rev: 577 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Users CatalystX::Usul::Utils);
+use version; our $VERSION = qv( sprintf '0.4.%d', q$Rev: 1097 $ =~ /\d+/gmx );
+use parent qw(CatalystX::Usul::Users CatalystX::Usul::IPC);
 
-use CatalystX::Usul::MailAliases;
-use Class::C3;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions qw(exception throw untaint_path);
 use English qw(-no_match_vars);
-use File::Copy;
-use Lingua::EN::NameParse;
-use Unix::PasswdFile;
+use File::UnixAuth;
+use MRO::Compat;
+use TryCatch;
 
-my $NUL       = q();
-my %FEATURES  = ( fields  => { homedir => 1, shells => 1 },
+my %FEATURES  = ( fields  => { homedir => TRUE, shells => TRUE },
                   roles   => [ q(roles) ],
-                  session => 1, );
+                  session => TRUE, );
 my %FIELD_MAP =
    ( active           => q(active),        crypted_password => q(password),
      email_address    => q(email_address), first_name       => q(first_name),
      homedir          => q(homedir),       home_phone       => q(home_phone),
-     uid              => q(id),            last_name        => q(last_name),
-     location         => q(location),      pgid             => q(pgid),
-     project          => q(project),       shell            => q(shell),
+     last_name        => q(last_name),     location         => q(location),
+     pgid             => q(pgid),          project          => q(project),
+     shell            => q(shell),         uid              => q(id),
      username         => q(username),      work_phone       => q(work_phone),
    );
 
-__PACKAGE__->config( base_id     => 100,
-                     def_perms   => oct q(0755),
-                     common_home => q(/home/common),
-                     passwd_file => q(/etc/passwd),
-                     mail_domain => q(localhost),
-                     shadow_file => q(/etc/shadow),
-                     uid_inc     => 1,
-                     _ptime      => 0,
-                     _stime      => 0 );
-
-__PACKAGE__->mk_accessors( qw(base_id binsdir
-                              common_home def_perms passwd_file
-                              passwd_type ppath profdir mail_domain
-                              shadow_file spath uid_inc _ptime _stime) );
+__PACKAGE__->mk_accessors( qw(binsdir common_home def_perms
+                              passwd_file passwd_obj ppath
+                              profdir shadow_file shadow_obj spath
+                              _ptime _stime) );
 
 sub new {
-   my ($self, $app, $config) = @_;
+   my ($class, $app, $attrs) = @_; my $ac = $app->config || {};
 
-   my $new     = $self->next::method( $app, $config );
-   my $profdir = $self->catdir( $app->config->{ctrldir}, q(profiles) );
+   $attrs->{binsdir    } ||= $ac->{binsdir};
+   $attrs->{common_home} ||= $class->catdir( NUL, qw(home common) );
+   $attrs->{def_perms  } ||= oct q(0755);
+   $attrs->{passwd_file} ||= $class->catdir( NUL, qw(etc passwd) );
+   $attrs->{passwd_type} ||= q(SHA-512);
+   $attrs->{profdir    } ||= $class->catdir( $ac->{ctrldir}, q(profiles) );
+   $attrs->{shadow_file} ||= $class->catdir( NUL, qw(etc shadow) );
+   $attrs->{_ptime     }   = 0;
+   $attrs->{_stime     }   = 0;
 
-   $new->binsdir( $new->config->{binsdir}                           );
-   $new->ppath  ( $new->_get_passwd_file( $new->passwd_file )       );
-   $new->profdir( $new->config->{profdir} || $profdir               );
-   $new->spath  ( $new->_get_shadow_file( $new->shadow_file )       );
+   my $new = $class->next::method( $app, $attrs );
+
+   $new->ppath( $new->_build_ppath( $new->passwd_file ) );
+   $new->spath( $new->_build_spath( $new->shadow_file ) );
+
+   $new->passwd_obj( $new->_build_passwd_obj );
+   $new->shadow_obj( $new->_build_shadow_obj );
 
    return $new;
 }
 
 # Interface methods
 
-sub activate_account {
-   my ($self, $key) = @_;
-
-   $self->throw( 'Activation not supported' );
-   return;
+sub assert_user {
+   my ($self, @rest) = @_; return $self->_assert_user( @rest );
 }
 
 sub change_password {
-   my ($self, $user, $old, $new) = @_; my $cmd;
+   my ($self, @rest) = @_;
 
    # TODO: Write to temp file to hide command line
-   $cmd  = $self->suid.' -n -c update_password -- '.$user.' "';
-   $cmd .= $old.'" "'.$new.'" ';
-   $self->run_cmd( $cmd );
-   return;
+   my $out = $self->_run_as_root( q(update_password), @rest );
+
+   $self->_reset_mod_times;
+   return $out;
 }
 
 sub create {
-   my ($self, $flds) = @_; my ($cmd, $e, $tempfile, $user);
+   my ($self, $fields) = @_; $fields ||= {}; my ($out, $tmp);
 
-   $tempfile = $self->tempfile;
+   my $tempfile = $self->tempfile; my $user = $fields->{username};
 
-   eval { XMLout( $flds,
-                  NoAttr        => 1,
-                  SuppressEmpty => 1,
-                  OutputFile    => $tempfile->pathname,
-                  RootName      => q(config) ) };
+   $self->_write_params( $tempfile->pathname, $fields );
+   $out = $self->_run_as_root( q(create_account), $tempfile->pathname );
+   $self->_reset_mod_times;
 
-   $self->throw( $e ) if ($e = $self->catch);
-
-   $cmd  = $self->suid.' -n -c create_account -- '.$tempfile->pathname;
-   $self->run_cmd( $cmd, { err => q(out) } );
-   $user = $flds->{username};
-
-   if ($self->is_user( $user ) and $flds->{populate}) {
-      $cmd  = $self->suid.' -n -c populate_account -- '.$tempfile->pathname;
-      $self->run_cmd( $cmd, { err => q(out) } );
+   if ($self->is_user( $user ) and $fields->{populate}) {
+      $out .= "\n";
+      $out .= $self->_run_as_root( q(populate_account), $tempfile->pathname );
    }
 
    # Add entry to the mail aliases file
-   if ($self->is_user( $user ) and $flds->{email_address}) {
-      $self->aliase_domain->create( $flds );
+   if ($self->is_user( $user ) and $fields->{email_address}) {
+      $out .= "\n";
+      (undef, $tmp) = $self->aliases->create( { %{ $fields }, name => $user } );
+      $out .= $tmp;
    }
 
-   return;
+   return $out;
 }
 
 sub delete {
-   my ($self, $user) = @_; my $e;
+   my ($self, $user) = @_;
 
-   eval { $self->alias_domain->delete( $user ) };
+   try        { $self->aliases->delete( { name => $user } ) }
+   catch ($e) { $self->log_error( exception $e ) }
 
-   my $cmd = $self->suid.' -n -c delete_account -- '.$user;
-   $self->run_cmd( $cmd, { err => q(out) } );
-   return;
+   my $out = $self->_run_as_root( q(delete_account), $user );
+
+   $self->_reset_mod_times;
+   return $out;
+}
+
+sub disable_account {
+   my ($self, $user) = @_;
+
+   my $out = $self->_run_as_root( q(set_password), $user,
+                                  NUL, q(*DISABLED*), TRUE );
+
+   $self->_reset_mod_times;
+   return $out;
 }
 
 sub get_features {
    return \%FEATURES;
 }
 
+sub get_field_map {
+   return \%FIELD_MAP;
+}
+
 sub get_primary_rid {
-   my ($self, $user) = @_;
+   my ($self, $user) = @_; my $mcu = $self->_get_user_ref( $user );
 
-   return unless ($user);
-
-   my ($cache) = $self->_load;
-
-   return exists $cache->{ $user } ? $cache->{ $user }->{pgid} : undef;
+   return $mcu ? $mcu->{pgid} : undef;
 }
 
 sub get_user {
-   my ($self, $user, $verbose) = @_; my ($cache) = $self->_load; my $new;
+   my ($self, $user, $verbose) = @_;
 
-   $new->{ $_ } = $self->field_defaults->{ $_ } for (keys %FIELD_MAP);
+   my $new = bless { common_home => $self->common_home }, ref $self || $self;
+   my $map = $self->get_field_map;
 
-   bless $new, ref $self || $self;
+   $new->{ $_ } = $self->field_defaults->{ $_ } for (keys %{ $map });
 
-   return $new unless ($user && exists $cache->{ $user });
+   my $mcu = $self->_get_user_ref( $user ) or return $new;
 
-   for (keys %FIELD_MAP) {
-      if ($verbose and $_ eq q(project)) {
-         my $val = $self->_get_project( $cache->{ $user }->{homedir} );
-
-         $cache->{ $user }->{project} = $val if (defined $val);
-      }
-
-      $new->{ $_ } = $cache->{ $user }->{ $FIELD_MAP{ $_ } };
+   for (keys %{ $map }) {
+      $verbose and $map->{ $_ } eq q(project)
+         and $mcu->{project} = $self->_get_project( $mcu->{homedir} );
+      $new->{ $_ } = $mcu->{ $map->{ $_ } };
    }
 
    return $new;
 }
 
 sub get_users_by_rid {
-   my ($self, $rid) = @_;
-
-   return () unless (defined $rid);
+   my ($self, $rid) = @_; defined $rid or return ();
 
    my (undef, $rid2users) = $self->_load;
 
    return exists $rid2users->{ $rid } ? @{ $rid2users->{ $rid } } : ();
 }
 
-sub list {
-   my ($self, $pattern) = @_; my (%found, @users); my ($cache) = $self->_load;
-
-   $pattern ||= q( .+ );
-
-   for (sort keys %{ $cache }) {
-      if (not $found{ $_ } and $_ =~ m{ $pattern }mx) {
-         push @users , $_; $found{ $_ } = 1;
-      }
-   }
-
-   return \@users;
-}
-
 sub set_password {
-   my ($self, $user, $passwd, $flag) = @_; my $cmd;
+   my ($self, $user, @rest) = @_;
 
-   $cmd  = $self->suid.' -n -c set_password -- '.$user;
-   $cmd .= ' "" "'.$passwd.'" '.$flag;
-   $self->run_cmd( $cmd );
-   return;
+   my $out = $self->_run_as_root( q(set_password), $user, NUL, @rest );
+
+   $self->_reset_mod_times;
+   return $out;
 }
 
 sub update {
-   my ($self, $flds) = @_; my ($cmd, $e, $tempfile);
+   my ($self, $fields) = @_; my $tempfile = $self->tempfile;
 
-   $tempfile = $self->tempfile;
+   $self->_write_params( $tempfile->pathname, $fields );
 
-   eval { XMLout( $flds,
-                  NoAttr        => 1,
-                  SuppressEmpty => 1,
-                  OutputFile    => $tempfile->pathname,
-                  RootName      => q(config) ) };
+   my $out = $self->_run_as_root( q(update_account), $tempfile->pathname );
 
-   $self->throw( $e ) if ($e = $self->catch);
-
-   $cmd  = $self->suid.' -n -c update_account -- '.$tempfile->pathname;
-   $self->run_cmd( $cmd, { err => q(out) } );
-   return;
-}
-
-sub update_password {
-   my ($self, @rest) = @_; my ($force, $user) = @rest; my $passwd_obj;
-
-   $self->throw( 'No user specified' ) unless ($user);
-
-   my ($cache) = $self->_load; my $mcu = $cache->{ $user };
-
-   unless ($mcu) {
-      $self->throw( error => 'User [_1] unknown', args => [ $user ] );
-   }
-
-   $mcu->{password} = $self->encrypt_password( @rest );
-
-   if ($self->spath && -f $self->spath) {
-      $mcu->{pwlast} = $force ? 0 : int time / 86_400;
-      $self->_update_shadow( q(update), $user );
-      return;
-   }
-
-   $self->lock->set( k => $self->ppath );
-   $passwd_obj = $self->_get_passwd_obj;
-   $passwd_obj->user( $user,
-                      $mcu->{password},
-                      $mcu->{id      },
-                      $mcu->{pgid    },
-                      $self->_get_gecos( $mcu ),
-                      $mcu->{homedir },
-                      $mcu->{shell   } );
-   $passwd_obj->commit( backup => '.bak' );
-   $self->lock->reset( k => $self->ppath );
-   return;
+   $self->_reset_mod_times;
+   return $out;
 }
 
 sub user_report {
    my ($self, $args) = @_; my $cmd;
 
-   $cmd  = $self->suid.' -c account_report ';
-   $cmd .= $args->{debug} ? '-D ' : '-n ';
-   $cmd .= '-- "'.$args->{path}.'" '.($args->{type} ? $args->{type} : q(text));
+   $cmd  = $self->suid.' -c account_report';
+   $cmd .= $args->{debug} ? ' -D' : ' -n';
+   $cmd .= ' -- "'.$args->{path}.'" '.($args->{type} ? $args->{type} : q(text));
 
-   return $self->run_cmd( $cmd, { async => 1,
+   return $self->run_cmd( $cmd, { async => TRUE,
                                   debug => $args->{debug},
                                   err   => q(out),
                                   out   => $self->tempname } )->out;
 }
 
-sub validate_password {
-   my ($self, $user, $password) = @_; my ($cmd, $e);
-   my $temp = $self->tempfile;
-
-   eval { $temp->print( $password ) };
-
-   if ($e = $self->catch) {
-      $self->log_error( 'Cannot write '.$temp->pathname."\n" );
-      return 0;
-   }
-
-   $cmd  = $self->suid.' -n -c authenticate -- "'.$user.'" "stdin" 0<';
-   $cmd .= $temp->pathname;
-
-   eval { $self->run_cmd( $cmd, { err => q(out) } ) };
-
-   return 1 unless ($e = $self->catch);
-
-   $self->log_debug( $e->as_string( 2 ) ) if ($self->debug);
-
-   return 0;
-}
-
 # Private methods
 
-sub _get_gecos {
-   my ($self, $params) = @_;
+sub _build_passwd_obj {
+   my $self = shift;
 
-   my $gecos = $params->{first_name}.q( ).$params->{last_name};
+   $self->ppath or throw 'Passwd file path not specified';
 
-   if ($params->{location} || $params->{work_phone} || $params->{home_phone}) {
-      $gecos .= q(,).($params->{location  } || q(?));
-      $gecos .= q(,).($params->{work_phone} || q(?));
-      $gecos .= q(,).($params->{home_phone} || q(?));
-   }
-
-   return $gecos;
+   return File::UnixAuth->new( ioc_obj     => $self, path => $self->ppath,
+                               source_name => q(passwd) );
 }
 
-sub _get_passwd_file {
-   my ($self, $path) = @_; $path ||= $self->passwd_file;
+sub _build_ppath {
+   my ($self, $path) = @_;
 
-   if ($path =~ m{ \A ([[:print:]]+) \z }mx) { $path = $1  } # now untainted
-
-   $self->throw( 'No file path specified' ) unless ($path);
-
-   unless (-f $path) {
-      $self->throw( error => 'File [_1] not found', args => [ $path ] );
-   }
+   $path = untaint_path( $path || $self->passwd_file );
+   $path or throw 'File path not specified';
+   -f $path or throw error => 'File [_1] not found', args => [ $path ];
 
    return $path;
 }
 
-sub _get_passwd_obj {
-   my $self       = shift;
-   my $mode       = $EFFECTIVE_USER_ID == 0 ? q(rw) : q(r);
-   my $passwd_obj = Unix::PasswdFile->new( $self->ppath,
-                                           locking => q(none),
-                                           mode    => $mode );
+sub _build_shadow_obj {
+   my $self = shift; $self->spath or return Class::Null->new;
 
-   $self->throw( 'Cannot create password file object' ) unless ($passwd_obj);
+   return File::UnixAuth->new( ioc_obj     => $self, path => $self->spath,
+                               source_name => q(shadow) );
+}
 
-   return $passwd_obj;
+sub _build_spath {
+   my ($self, $path) = @_;
+
+   $path = untaint_path( $path || $self->shadow_file );
+   $path or throw 'Shadow file path not specified';
+
+   return -f $path ? $path : undef;
 }
 
 sub _get_project {
-   my ($self, $home) = @_;
+   my ($self, $home) = @_; $home or return;
 
-   return unless ($home);
+   my $path = $self->io( $self->catfile( $home, q(.project) ) );
 
-   my $path = $self->catfile( $home, '.project' );
+   return NUL unless ($path->is_file and not $path->empty);
 
-   return $NUL unless (-s $path);
-
-   return $self->io( $path )->chomp->lock->getline;
-}
-
-sub _get_shadow_file {
-   my ($self, $path) = @_; $path ||= $self->shadow_file;
-
-   if ($path =~ m{ \A ([[:print:]]+) \z }mx) { $path = $1  } # now untainted
-
-   $self->throw( 'No file path specified' ) unless ($path);
-
-   unless (-f $path) {
-      $self->throw( error => 'File [_1] not found', args => [ $path ] );
-   }
-
-   return $path;
+   return $path->chomp->lock->getline;
 }
 
 sub _load {
-   my $self = shift;
-   my ($cache, $e, $email, $file, @flds, $fullname, $home, $io, $line, $locn);
-   my ($mcu, $mtime, %names, $passwd_obj, $rid2users, $uid2name);
-   my ($updt, $user, $work);
+   my $self = shift; my $key = __PACKAGE__.q(::_load);
 
-   $self->lock->set( k => $self->ppath );
-   $mtime = $self->status_for( $self->ppath )->{mtime};
-   $updt  = $mtime == $self->_ptime ? 0 : 1;
+   $self->lock->set( k => $key );
+
+   $self->_should_update or return $self->_cache_results( $key );
+
+   try {
+      # Empty the cache contents
+      delete $self->cache->{ $_ } for (keys %{ $self->cache });
+
+      my $source = $self->passwd_obj->source;
+      my $data   = $self->passwd_obj->load->{passwd};
+
+      for my $user (keys %{ $data }) {
+         my $mcu = $self->cache->{users}->{ $user } = $data->{ $user };
+
+         $mcu->{username     } = $user;
+         $mcu->{email_address} = $self->make_email_address( $user );
+         $self->cache->{rid2users}->{ $mcu->{pgid} } ||= [];
+         push @{ $self->cache->{rid2users}->{ $mcu->{pgid} } }, $user;
+         $self->cache->{uid2name}->{ $mcu->{id} } = $user;
+      }
+
+      $source = $self->shadow_obj->source;
+      $data   = $self->spath && -r $self->spath
+              ? $self->shadow_obj->load->{shadow} : {};
+
+      for my $user (keys %{ $self->cache->{users} }) {
+         my $user_data = $data->{ $user };
+         my $mcu       = $self->cache->{users}->{ $user };
+
+         for (@{ $source->attributes }) {
+            $mcu->{ $_ } = defined $user_data && defined $user_data->{ $_ }
+                         ? $user_data->{ $_ } : $source->defaults->{ $_ };
+         }
+
+         $mcu->{active  } = $mcu->{password} =~ m{ [*!] }mx ? FALSE : TRUE;
+      }
+   }
+   catch ($e) { $self->lock->reset( k => $key ); throw $e }
+
+   return $self->_cache_results( $key );
+}
+
+sub _reset_mod_times {
+   my $self = shift; $self->_ptime( 0 ); $self->_stime( 0 ); return;
+}
+
+sub _run_as_root {
+   my ($self, $method, @args) = @_;
+
+   my $cmd = [ $self->suid, ($self->debug ? q(-D) : q(-n)), q(-c),
+               $method, q(--), map { "'".$_."'" } @args ];
+   my $out = $self->run_cmd( $cmd, { err => q(out) } )->out;
+
+   $self->debug and $self->log->debug( $out );
+
+   return $out;
+}
+
+sub _should_update {
+   my $self  = shift;
+   my $mtime = $self->status_for( $self->ppath )->{mtime};
+   my $should_update = $mtime == $self->_ptime ? FALSE : TRUE;
+
    $self->_ptime( $mtime );
 
-   if ($self->spath && -r $self->spath) {
+   if ($self->spath and -r $self->spath) {
       $mtime = $self->status_for( $self->spath )->{mtime};
-      $updt  = $mtime == $self->_stime ? $updt : 1;
+      $should_update = $mtime == $self->_stime ? $should_update : TRUE;
       $self->_stime( $mtime );
    }
 
-   unless ($updt) {
-      $cache     = { %{ $self->_cache     } };
-      $rid2users = { %{ $self->_rid2users } };
-      $uid2name  = { %{ $self->_uid2name  } };
-      $self->lock->reset( k => $self->ppath );
-      return ($cache, $rid2users, $uid2name);
-   }
-
-   $self->_cache( {} ); $self->_rid2users( {} ); $self->_uid2name( {} );
-   $passwd_obj = $self->_get_passwd_obj;
-
-   my %args = ( auto_clean => 1, force_case => 1, lc_prefix => 1 );
-   my $name_parse_ref = Lingua::EN::NameParse->new( %args );
-
-   for $user ($passwd_obj->users) {
-      @flds = $passwd_obj->user( $user );
-      ($fullname, $locn, $work, $home) = split m{ , }mx, $flds[3], 4;
-
-      if ($fullname && !$name_parse_ref->parse( $fullname )) {
-         %names = $name_parse_ref->components;
-      }
-      else { %names = ( given_name_1 => $user, surname_1 => q(), ) }
-
-      # TODO: Should pull this from aliases_model keyed by $user
-      $email  = $names{given_name_1} || $user;
-      $email .= $names{surname_1} ? q(.).$names{surname_1} : q();
-      $email .= q(@).$self->mail_domain;
-
-      $mcu = $self->_cache->{ $user } = {};
-      $mcu->{email_address} = $email;
-      $mcu->{first_name   } = $names{given_name_1} || $user;
-      $mcu->{homedir      } = $flds[4] || $NUL;
-      $mcu->{home_phone   } = $home    || $NUL;
-      $mcu->{id           } = defined $flds[1] ? $flds[1] : -1;
-      $mcu->{last_name    } = $names{surname_1};
-      $mcu->{location     } = $locn    || $NUL;
-      $mcu->{password     } = $flds[0] || $NUL;
-      $mcu->{pgid         } = defined $flds[2] ? $flds[2] : -1;
-      $mcu->{project      } = $NUL;
-      $mcu->{pwafter      } = 99_999;
-      $mcu->{pwdisable    } = 0;
-      $mcu->{pwlast       } = 13_267;
-      $mcu->{pwnext       } = 0;
-      $mcu->{pwwarn       } = 7;
-      $mcu->{pwexpires    } = 0;
-      $mcu->{shell        } = $flds[5] || $NUL;
-      $mcu->{username     } = $user;
-      $mcu->{work_phone   } = $work    || $NUL;
-      $mcu->{active       } = $mcu->{password} =~ m{ [*!] }mx ? 0 : 1;
-
-      $self->passwd_type( q(md5) ) if ($mcu->{password} =~ m{ \A \$ 1 \$ }msx);
-
-      push @{ $self->_rid2users->{ $mcu->{pgid} } }, $user;
-      $self->_uid2name->{ $mcu->{id} } = $user;
-   }
-
-   unless ($self->spath && -r $self->spath){
-      $cache     = { %{ $self->_cache     } };
-      $rid2users = { %{ $self->_rid2users } };
-      $uid2name  = { %{ $self->_uid2name  } };
-      $self->lock->reset( k => $self->ppath );
-      return ($cache, $rid2users, $uid2name);
-   }
-
-   $file = eval { $self->io( $self->spath )->slurp };
-
-   if ($e = $self->catch) {
-      $self->log->error( 'Cannot read '.$self->spath );
-      $cache     = { %{ $self->_cache     } };
-      $rid2users = { %{ $self->_rid2users } };
-      $uid2name  = { %{ $self->_uid2name  } };
-      $self->lock->reset( k => $self->ppath );
-      return ($cache, $rid2users, $uid2name);
-   }
-
-   for $line (split m{ \n }mx, $file) {
-      @flds             = split m{ : }mx, $line;
-      $mcu              = $self->_cache->{ $flds[0] };
-      $mcu->{password } = $flds[1] || q(*);
-      $mcu->{pwlast   } = defined $flds[2] ? $flds[2] : 13_267;
-      $mcu->{pwnext   } = defined $flds[3] ? $flds[3] : 0;
-      $mcu->{pwafter  } = defined $flds[4] ? $flds[4] : 99_999;
-      $mcu->{pwwarn   } = defined $flds[5] ? $flds[5] : 7;
-      $mcu->{pwexpires} = defined $flds[6] ? $flds[6] : 0;
-      $mcu->{pwdisable} = defined $flds[7] ? $flds[7] : 0;
-      $mcu->{active   } = $mcu->{password} =~ m{ [*!] }mx ? 0 : 1;
-
-      $self->passwd_type( q(md5) ) if ($mcu->{password} =~ m{ \A \$ 1 \$ }msx);
-   }
-
-   $cache     = { %{ $self->_cache     } };
-   $rid2users = { %{ $self->_rid2users } };
-   $uid2name  = { %{ $self->_uid2name  } };
-   $self->lock->reset( k => $self->ppath );
-   return ($cache, $rid2users, $uid2name);
+   return $self->cache->{dirty} ? TRUE : $should_update;
 }
 
-sub _update_shadow {
-   my ($self, $cmd, $user) = @_; my ($cache, $e, $file, $io, $line, $mcu);
+sub _validate_password {
+   my ($self, $user, $password) = @_; my $temp = $self->tempfile;
 
-   ($cache) = $self->_load; $mcu = $cache->{ $user };
-   $self->lock->set( k => $self->spath );
+   try        { $temp->print( $password ) }
+   catch ($e) { $self->log_error( 'Path '.$temp->pathname." cannot write\n" );
+                return FALSE }
 
-   eval {
-      copy( $self->spath, $self->spath.'.bak' ) if (-s $self->spath);
-      $file = $self->io( $self->spath )->slurp;
-      $io   = $self->io( $self->spath.'.tmp' )->perms( oct q(0600) );
+   my $cmd = $self->suid.' -n -c authenticate -- "'.$user.'" "stdin"';
 
-      for $line (split m{ \n }mx, $file) {
-         if ($line =~ m{ \A $user : }mx) {
-            next if ($cmd eq 'delete');
+   try { $self->run_cmd( $cmd, { err => q(out), in => $temp->pathname } ) }
+   catch ($e) { $self->debug and $self->log_debug( $e ); return FALSE }
 
-            $line  = $user.q(:).$mcu->{password}.q(:).$mcu->{pwlast}.q(:);
-            $line .= $mcu->{pwnext}.q(:).$mcu->{pwafter}.q(:);
-            $line .= $mcu->{pwwarn}.q(:).$mcu->{pwexpires}.q(:);
-            $line .= $mcu->{pwdisable};
-         }
+   return TRUE;
+}
 
-         $io->println( $line );
-      }
+sub _write_params {
+   my ($self, $path, $fields) = @_;
 
-      $io->close;
-      move( $self->spath.'.tmp', $self->spath) if (-s $self->spath.'.tmp');
-   };
-
-   if ($e = $self->catch) {
-      $self->lock->reset( k => $self->spath ); $self->throw( $e );
-   }
-
-   $self->lock->reset( k => $self->spath );
+   $self->file_dataclass_schema->dump( { data => $fields, path => $path } );
    return;
 }
 
@@ -502,7 +350,7 @@ CatalystX::Usul::Users::Unix - User data store for the Unix OS
 
 =head1 Version
 
-0.3.$Revision: 577 $
+0.4.$Revision: 1097 $
 
 =head1 Synopsis
 
@@ -510,7 +358,7 @@ CatalystX::Usul::Users::Unix - User data store for the Unix OS
 
    my $class = CatalystX::Usul::Users::Unix;
 
-   my $user_obj = $class->new( $app, $config );
+   my $user_obj = $class->new( $attrs, $app );
 
 =head1 Description
 
@@ -529,14 +377,14 @@ I<ppath> the path to the passwd file, I<profdir> the path to the directory
 which contains boilerplate "dot" file for populating the home directory,
 and I<spath> the path to the shadow password file
 
-=head2 get_features
-
-Returns a hashref of features supported by this store. Can be checked using
-L<supports|CatalystX::Usul::Model>
-
 =head2 activate_account
 
 Activation is not currently supported by this store
+
+=head2 assert_user
+
+Returns a domain model user object for the specified user or
+throws an exception if the user does not exist
 
 =head2 change_password
 
@@ -556,6 +404,19 @@ the new account
 
 Calls the setuserid wrapper to delete the users mail alias and then delete
 the account
+
+=head2 disable_account
+
+Sets the password to C<*DISABLED*> disabling the account
+
+=head2 get_features
+
+Returns a hashref of features supported by this store. Can be checked using
+L<supports|CatalystX::Usul::Model>
+
+=head2 get_field_map
+
+Returns a reference to the package scoped variable C<%FIELD_MAP>
 
 =head2 get_primary_rid
 
@@ -586,18 +447,12 @@ Calls the setuserid wrapper to set the users password to a given value
 
 Calls the setuserid wrapper to update the user account information
 
-=head2 update_password
-
-Updates the users password only if the new one has not been used
-before or there is an administrative override. Updates the
-F<shadow> file file if it is used, or the F<passwd> file otherwise
-
 =head2 user_report
 
 Calls the setuserid wrapper to create a report about the user accounts
 in this store
 
-=head2 validate_password
+=head2 _validate_password
 
 Called by L<check_password|CatalystX::Usul::Users/check_password> in the
 parent class. This method execute the external setuid root wrapper
@@ -616,8 +471,6 @@ None
 =over 3
 
 =item L<CatalystX::Usul::Model::Identity::Users>
-
-=item L<Lingua::EN::NameParse>
 
 =item L<Unix::PasswdFile>
 
