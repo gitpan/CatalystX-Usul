@@ -1,9 +1,9 @@
-# @(#)$Id: Build.PL 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Build.PL 1142 2012-03-29 00:27:54Z pjf $
 
 use strict;
 use warnings;
 use inc::Bob; # Module::Build subclass
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1142 $ =~ /\d+/gmx );
 
 Bob->new( {
    module     => q(CatalystX::Usul),
@@ -50,7 +50,7 @@ Bob->new( {
       'Encode'                                     => 2.12,
       'Encode::Guess'                              => 2.00,
       'Exception::Class'                           => 1.23,
-      'File::DataClass'                            => q(0.7.343),
+      'File::DataClass'                            => q(0.8.0),
       'File::Find'                                 => 1.10,
       'File::HomeDir'                              => 0.89,
       'File::Path'                                 => 2.07,
@@ -60,7 +60,7 @@ Bob->new( {
       'Git::Class'                                 => 0.03,
       'Hash::Merge'                                => 0.08,
       'HTML::FillInForm'                           => 2.00,
-      'HTML::FormWidgets'                          => q(0.11.0),
+      'HTML::FormWidgets'                          => q(0.12.0),
       'HTTP::Date'                                 => 5.831,
       'HTTP::DetectUserAgent'                      => 0.02,
       'HTTP::Headers::Util'                        => 1.13,
@@ -70,7 +70,7 @@ Bob->new( {
       'IO::Interactive'                            => q(0.0.3),
       'IPC::Cmd'                                   => 0.42,
       'IPC::Open3'                                 => 1.02,
-      'IPC::SRLock'                                => q(0.6.0),
+      'IPC::SRLock'                                => q(0.7.0),
       'IPC::SysV'                                  => 1.04,
       'JSON'                                       => 2.12,
       'Lingua::EN::NameParse'                      => 1.24,

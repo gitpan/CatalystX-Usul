@@ -1,11 +1,11 @@
-# @(#)$Id: Usul.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Usul.pm 1145 2012-03-30 07:21:31Z pjf $
 
 package CatalystX::Usul;
 
 use strict;
 use warnings;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmsx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1145 $ =~ /\d+/gmsx );
 use parent qw(CatalystX::Usul::Base CatalystX::Usul::File CatalystX::Usul::Log);
 
 use CatalystX::Usul::Constants;
@@ -199,7 +199,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-This document describes CatalystX::Usul version 0.5.$Revision: 1139 $
+This document describes CatalystX::Usul version 0.5.$Revision: 1145 $
 
 =head1 Synopsis
 
@@ -453,3 +453,4 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
 # mode: perl
 # tab-width: 3
 # End:
+

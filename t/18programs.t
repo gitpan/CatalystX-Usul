@@ -1,8 +1,8 @@
-# @(#)$Id: 18programs.t 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: 18programs.t 1144 2012-03-29 21:52:22Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1144 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -15,8 +15,6 @@ BEGIN {
 
    $current and $current->notes->{stop_tests}
             and plan skip_all => $current->notes->{stop_tests};
-
-   plan tests => 2;
 }
 
 use_ok q(CatalystX::Usul::Programs);
@@ -28,9 +26,11 @@ my $prog = CatalystX::Usul::Programs->new( {
 
 my $meta = $prog->get_meta( q(META.yml) );
 
-ok( $meta->name eq q(CatalystX-Usul), q(meta file class) );
+ok $meta->name eq q(CatalystX-Usul), 'meta file class';
 
 unlink $prog->logfile;
+
+done_testing;
 
 # Local Variables:
 # mode: perl

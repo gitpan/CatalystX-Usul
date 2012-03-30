@@ -1,5 +1,8 @@
 Revision history for CatalystX::Usul
 
+0.5.1145 2012-03-30
+         - Updated inc::Bob to 1.2
+
 0.5.1139 2012-03-29
          - Upped min Perl ver to 5.10
 

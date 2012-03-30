@@ -1,8 +1,8 @@
-# @(#)$Id: 23time.t 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: 23time.t 1144 2012-03-29 21:52:22Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1144 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -26,14 +26,20 @@ use CatalystX::Usul::Time qw(str2date_time str2time time2str);
 
 ok( time2str( undef, 0 ) eq q(1970-01-01 01:00:00), q(stamp) );
 
-ok( q().str2date_time( q(11/9/2007 14:12) )
-    eq q(2007-09-11T13:12:00), q(str2date_time) );
+my $dt = q().str2date_time( q(11/9/2007 14:12) );
+
+ok( $dt eq q(2007-09-11T13:12:00), q(str2date_time) );
+
+$dt ne q(2007-09-11T13:12:00) and warn "str2date_time is ${dt}\n";
 
 ok( str2time( q(2007-07-30 01:05:32), q(BST) )
     eq q(1185753932), q(str2time/1) );
 
-ok( str2time( q(30/7/2007 01:05:32), q(BST) )
-    eq q(1185753932), q(str2time/2) );
+my $tm = str2time( q(30/7/2007 01:05:32), q(BST) );
+
+ok( $tm eq q(1185753932), q(str2time/2) );
+
+$tm ne q(1185753932) and warn "str2time/2 is ${tm}\n";
 
 ok( str2time( q(30/7/2007), q(BST) ) eq q(1185750000),
     q(str2time/3) );

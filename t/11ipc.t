@@ -1,8 +1,8 @@
-# @(#)$Id: 11ipc.t 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: 11ipc.t 1144 2012-03-29 21:52:22Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1144 $ =~ /\d+/gmx );
 use File::Spec::Functions qw( catdir catfile tmpdir updir );
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -17,42 +17,47 @@ BEGIN {
 
    $current and $current->notes->{stop_tests}
             and plan skip_all => $current->notes->{stop_tests};
-
-   plan tests => 8;
 }
 
 use_ok q(CatalystX::Usul::Programs);
 
-my $ref = CatalystX::Usul::Programs->new( {
+my $perl = $^X;
+my $ref  = CatalystX::Usul::Programs->new( {
    config  => { appldir   => File::Spec->curdir,
                 localedir => catdir( qw(t locale) ) },
    homedir => q(t), n => 1 } );
+my $cmd  = "${perl} -e 'print \"Hello World\"'";
 
-ok( $ref->run_cmd( q(echo "Hello World") )->out eq q(Hello World),
-    q(run_cmd system) );
+ok $ref->run_cmd( $cmd )->out eq q(Hello World), 'run_cmd system';
 
-eval { $ref->run_cmd( q(false) ) };
+$cmd = "${perl} -e 'exit 1'";
 
-ok( $EVAL_ERROR, q(run_cmd system unexpected rv) );
+eval { $ref->run_cmd( $cmd ) }; my $error = $EVAL_ERROR;
 
-ok( $ref->run_cmd( q(false), { expected_rv => 1 } ),
-    q(run_cmd system expected rv) );
+ok $error, 'run_cmd system unexpected rv';
 
-ok( $ref->run_cmd( [ q(echo), "Hello World" ] )->out eq q(Hello World),
-    q(run_cmd IPC::Run) );
+ok ref $error eq $ref->exception_class, 'exception is right class';
 
-eval { $ref->run_cmd( [ q(false) ] ) };
+ok $ref->run_cmd( $cmd, { expected_rv => 1 } ), 'run_cmd system expected rv';
 
-ok( $EVAL_ERROR, q(run_cmd IPC::Run unexpected rv) );
+$cmd = [ $perl, '-e', 'print "Hello World"' ];
 
-ok( $ref->run_cmd( [ q(false) ], { expected_rv => 1 } ),
-    q(run_cmd IPC::Run expected rv) );
+ok $ref->run_cmd( $cmd )->out eq "Hello World", 'run_cmd IPC::Run';
+
+eval { $ref->run_cmd( [ $perl, '-e', 'exit 1' ] ) };
+
+ok $EVAL_ERROR, 'run_cmd IPC::Run unexpected rv';
+
+ok $ref->run_cmd( [ $perl, '-e', 'exit 1' ], { expected_rv => 1 } ),
+   'run_cmd IPC::Run expected rv';
 
 my $path = catfile( $ref->tempdir, basename( $PROGRAM_NAME, q(.t) ).q(.log) );
 
-ok( -f $path, q(log_file) );
+ok -f $path, 'log_file';
 
 unlink $path;
+
+done_testing;
 
 # Local Variables:
 # mode: perl
