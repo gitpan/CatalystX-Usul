@@ -1,8 +1,8 @@
-# @(#)$Id: 11ipc.t 1144 2012-03-29 21:52:22Z pjf $
+# @(#)$Id: 11ipc.t 1147 2012-03-30 14:07:07Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1144 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1147 $ =~ /\d+/gmx );
 use File::Spec::Functions qw( catdir catfile tmpdir updir );
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -50,6 +50,10 @@ ok $EVAL_ERROR, 'run_cmd IPC::Run unexpected rv';
 
 ok $ref->run_cmd( [ $perl, '-e', 'exit 1' ], { expected_rv => 1 } ),
    'run_cmd IPC::Run expected rv';
+
+eval { $ref->run_cmd( "unknown_command_xa23sd3" ) }; $error = $EVAL_ERROR;
+
+ok $error =~ m{ unknown_command }mx, 'unknown command';
 
 my $path = catfile( $ref->tempdir, basename( $PROGRAM_NAME, q(.t) ).q(.log) );
 

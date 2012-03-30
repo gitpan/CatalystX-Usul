@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1144 2012-03-29 21:52:22Z pjf $
+# @(#)$Id: IPC.pm 1147 2012-03-30 14:07:07Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1144 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1147 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -364,12 +364,12 @@ sub _run_cmd_using_system {
 
    $args->{debug} and $self->log_debug( "Running $cmd" );
 
-   {  local ($CHILD_ERROR, $ERRNO, $WAITEDPID);
+   {  local ($CHILD_ERROR, $ERRNO, $WAITEDPID); local $ERROR = FALSE;
 
       try        { local $SIG{CHLD} = \&__handler; $rv = system $cmd }
       catch ($e) { throw $e }
 
-      if ($rv == -1) {
+      if ($ERROR and $rv == -1) {
          $error = 'Program [_1] failed to start: [_2]';
          throw error => $error, args  => [ $prog, $ERRNO ], rv => -1;
       }
@@ -470,9 +470,11 @@ sub __cmd_matches_pattern {
 }
 
 sub __handler {
-   my $pid = waitpid -1, WNOHANG();
+   my $child;
 
-   $pid != -1 and WIFEXITED( $CHILD_ERROR ) and $WAITEDPID = $pid;
+   while (($child = waitpid( -1, WNOHANG )) > 0) {
+      WIFEXITED( $CHILD_ERROR ) or $ERROR = $CHILD_ERROR;
+   }
 
    $SIG{CHLD} = \&__handler; # in case of unreliable signals
    return;
@@ -529,7 +531,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1144 $
+0.5.$Revision: 1147 $
 
 =head1 Synopsis
 
