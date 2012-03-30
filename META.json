@@ -150,7 +150,7 @@
    "provides" : {
       "CatalystX::Usul" : {
          "file" : "lib/CatalystX/Usul.pm",
-         "version" : "v0.5.1148"
+         "version" : "v0.5.1150"
       },
       "CatalystX::Usul::Action" : {
          "file" : "lib/CatalystX/Usul/Action.pm",
@@ -258,7 +258,7 @@
       },
       "CatalystX::Usul::IPC" : {
          "file" : "lib/CatalystX/Usul/IPC.pm",
-         "version" : "v0.5.1147"
+         "version" : "v0.5.1150"
       },
       "CatalystX::Usul::IPC::Response" : {
          "file" : "lib/CatalystX/Usul/IPC/Response.pm",
@@ -503,5 +503,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.5.1148"
+   "version" : "0.5.1150"
 }

@@ -1,5 +1,8 @@
 Revision history for CatalystX::Usul
 
+0.5.1150 2012-03-30
+         - Try again to work around Solaris siganl handling in CX::U:IPC
+
 0.5.1148 2012-03-30
          - Enhanced SIG handling in CX::U:IPC. Added another test
 

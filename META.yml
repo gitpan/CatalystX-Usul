@@ -24,7 +24,7 @@ no_index:
 provides:
   CatalystX::Usul:
     file: lib/CatalystX/Usul.pm
-    version: v0.5.1148
+    version: v0.5.1150
   CatalystX::Usul::Action:
     file: lib/CatalystX/Usul/Action.pm
     version: v0.5.1139
@@ -105,7 +105,7 @@ provides:
     version: v0.5.1139
   CatalystX::Usul::IPC:
     file: lib/CatalystX/Usul/IPC.pm
-    version: v0.5.1147
+    version: v0.5.1150
   CatalystX::Usul::IPC::Response:
     file: lib/CatalystX/Usul/IPC/Response.pm
     version: v0.5.1139
@@ -392,4 +392,4 @@ resources:
   bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=CatalystX-Usul
   homepage: http://www.roxsoft.co.uk
   license: http://dev.perl.org/licenses/
-version: 0.5.1148
+version: 0.5.1150

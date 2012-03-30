@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1147 2012-03-30 14:07:07Z pjf $
+# @(#)$Id: IPC.pm 1150 2012-03-30 20:06:36Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1147 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1150 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -369,9 +369,11 @@ sub _run_cmd_using_system {
       try        { local $SIG{CHLD} = \&__handler; $rv = system $cmd }
       catch ($e) { throw $e }
 
-      if ($ERROR and $rv == -1) {
-         $error = 'Program [_1] failed to start: [_2]';
-         throw error => $error, args  => [ $prog, $ERRNO ], rv => -1;
+      $rv == -1 and not $ERROR and $rv = 0;
+
+      if ($rv == -1) {
+         $error = 'Program [_1] failed to start: [_2]'; $rv = $ERROR >> 8;
+         throw error => $error, args  => [ $prog, $ERRNO ], rv => $rv;
       }
    }
 
@@ -531,7 +533,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1147 $
+0.5.$Revision: 1150 $
 
 =head1 Synopsis
 
