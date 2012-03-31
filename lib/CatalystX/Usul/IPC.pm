@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1150 2012-03-30 20:06:36Z pjf $
+# @(#)$Id: IPC.pm 1151 2012-03-31 12:58:44Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1150 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1151 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -364,16 +364,19 @@ sub _run_cmd_using_system {
 
    $args->{debug} and $self->log_debug( "Running $cmd" );
 
-   {  local ($CHILD_ERROR, $ERRNO, $WAITEDPID); local $ERROR = FALSE;
+   {  local ($CHILD_ERROR, $ERRNO, $EVAL_ERROR);
+      local $WAITEDPID = 0; local $ERROR = OK;
 
-      try        { local $SIG{CHLD} = \&__handler; $rv = system $cmd }
-      catch ($e) { throw $e }
+      eval { local $SIG{CHLD} = \&__handler; $rv = system $cmd };
 
-      $rv == -1 and not $ERROR and $rv = 0;
+      $EVAL_ERROR and throw $EVAL_ERROR;
+
+      warn "return value $rv waitedpid $WAITEDPID error value $ERROR\n";
+      $rv == -1 and $WAITEDPID > 0 and $rv = $ERROR;
 
       if ($rv == -1) {
-         $error = 'Program [_1] failed to start: [_2]'; $rv = $ERROR >> 8;
-         throw error => $error, args  => [ $prog, $ERRNO ], rv => $rv;
+         $error = 'Program [_1] failed to start: [_2]';
+         throw error => $error, args  => [ $prog, $ERRNO ], rv => -1;
       }
    }
 
@@ -472,10 +475,13 @@ sub __cmd_matches_pattern {
 }
 
 sub __handler {
-   my $child;
+   local $ERRNO;
 
-   while (($child = waitpid( -1, WNOHANG )) > 0) {
-      WIFEXITED( $CHILD_ERROR ) or $ERROR = $CHILD_ERROR;
+   while ((my $child_pid = waitpid -1, WNOHANG) > 0) {
+      warn "child pid $child_pid child error $CHILD_ERROR\n";
+      if (WIFEXITED( $CHILD_ERROR ) and $child_pid > $WAITEDPID) {
+         $WAITEDPID = $child_pid; $ERROR = $CHILD_ERROR;
+      }
    }
 
    $SIG{CHLD} = \&__handler; # in case of unreliable signals
@@ -533,7 +539,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1150 $
+0.5.$Revision: 1151 $
 
 =head1 Synopsis
 

@@ -2,7 +2,7 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    This document describes CatalystX::Usul version 0.5.$Revision: 1150 $
+    This document describes CatalystX::Usul version 0.5.$Revision: 1151 $
 
 Synopsis
        use parent qw(CatalystX::Usul);
