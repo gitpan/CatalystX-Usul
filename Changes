@@ -1,5 +1,10 @@
 Revision history for CatalystX::Usul
 
+0.5.1155 2012-04-01
+         - Trying to fix 11ipc.t unknown_command error
+         - Solaris siganl handling in CX::U:IPC is fixed
+         - Added missing time zones to 23time.t
+
 0.5.1151 2012-03-31
          - Try again to work around Solaris siganl handling in CX::U:IPC
 

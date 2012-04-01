@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1151 2012-03-31 12:58:44Z pjf $
+# @(#)$Id: IPC.pm 1154 2012-04-01 12:11:52Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1151 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1154 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -75,7 +75,7 @@ sub popen {
       }
       catch ($error) { $e = $error }
 
-      not $e and $e = $ERROR and $e .= " - whilst executing $cmd";
+      not $e and $e = $ERROR and $e .= " - whilst executing ${cmd}";
    }
 
    if ($e) { $err->close; $out->close; throw $e }
@@ -149,9 +149,7 @@ sub process_table {
 }
 
 sub run_cmd {
-   my ($self, $cmd, @rest) = @_;
-
-   $cmd or throw 'Command not specified';
+   my ($self, $cmd, @rest) = @_; $cmd or throw 'Command not specified';
 
    if (is_arrayref $cmd) {
       if (can_load( modules => { 'IPC::Run' => q(0.84) } )) {
@@ -167,10 +165,10 @@ sub run_cmd {
 sub signal_process {
    my ($self, $flag, $sig, $pids) = @_; my $opts = [];
 
-   $sig  and push @{ $opts }, q(-o), "sig=$sig";
+   $sig  and push @{ $opts }, q(-o), "sig=${sig}";
    $flag and push @{ $opts }, q(-o), q(flag=one);
 
-   return $self->run_cmd( [ $self->suid, qw(-n -c signal_process),
+   return $self->run_cmd( [ $self->suid, qw(-nc signal_process),
                             @{ $opts }, q(--), @{ $pids || [] } ] );
 }
 
@@ -217,7 +215,7 @@ sub _list_pids_by_file_system {
 
    my $args = { err => q(null), expected_rv => 1 };
    # TODO: Make fuser OS dependent
-   my $data = $self->run_cmd( "fuser $fsystem", $args )->out || NUL;
+   my $data = $self->run_cmd( "fuser ${fsystem}", $args )->out || NUL;
 
    $data =~ s{ [^0-9\s] }{}gmx; $data =~ s{ \s+ }{ }gmx;
 
@@ -313,7 +311,7 @@ sub _run_cmd_using_ipc_run {
    elsif ($err eq q(null))   { push @cmd_args, q(2>).$null      }
    elsif ($err ne q(stderr)) { push @cmd_args, q(2>), \$buf_err }
 
-   $args->{debug} and $self->log_debug( "Running $cmd_str" );
+   $args->{debug} and $self->log_debug( "Running ${cmd_str}" );
 
    try        { $rv = __ipc_run_harness( $cmd_ref, @cmd_args ) }
    catch ($e) { throw $e }
@@ -343,10 +341,10 @@ sub _run_cmd_using_ipc_run {
 }
 
 sub _run_cmd_using_system {
-   my ($self, $cmd, @rest) = @_; my ($e, $error, $rv);
+   my ($self, $cmd, @rest) = @_; my ($error, $rv);
 
    my $args = $self->_run_cmd_system_args( @rest );
-   my $prog = $self->basename( (split SPC, $cmd)[0] );
+   my $prog = $self->basename( (split SPC, $cmd)[ 0 ] );
    my $null = File::Spec->devnull;
    my $err  = $args->{err};
    my $out  = $args->{out};
@@ -362,7 +360,7 @@ sub _run_cmd_using_system {
 
    $cmd .= ' & echo $! 1>'.$args->{pid_ref}->pathname if ($args->{async});
 
-   $args->{debug} and $self->log_debug( "Running $cmd" );
+   $args->{debug} and $self->log_debug( "Running ${cmd}" );
 
    {  local ($CHILD_ERROR, $ERRNO, $EVAL_ERROR);
       local $WAITEDPID = 0; local $ERROR = OK;
@@ -372,6 +370,9 @@ sub _run_cmd_using_system {
       $EVAL_ERROR and throw $EVAL_ERROR;
 
       warn "return value $rv waitedpid $WAITEDPID error value $ERROR\n";
+#     On some systems the child handler reaps the child process so the system
+#     call returns -1 and sets $ERRNO to No child processes. This line and
+#     the child handler code fix the problem
       $rv == -1 and $WAITEDPID > 0 and $rv = $ERROR;
 
       if ($rv == -1) {
@@ -500,8 +501,8 @@ sub __partition_command {
       else { push @{ $aref }, $item }
    }
 
-   if ($aref->[0]) {
-      if ($command[0]) { push @command, $aref }
+   if ($aref->[ 0 ]) {
+      if ($command[ 0 ]) { push @command, $aref }
       else { @command = @{ $aref } }
    }
 
@@ -539,7 +540,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1151 $
+0.5.$Revision: 1154 $
 
 =head1 Synopsis
 

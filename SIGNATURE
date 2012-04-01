@@ -15,15 +15,15 @@ not run its Makefile.PL or Build.PL.
 Hash: SHA1
 
 SHA1 53b628cd23762b250b40785361256a1dc69cad69 Build.PL
-SHA1 2e14bf4c9fdaba9d85832e6a7edb9ac4669ce4a8 Changes
+SHA1 191e260c2abbdb91bcce289c9b026313f64d68f1 Changes
 SHA1 0890c7d901c3958ec8476f1edc1c11ae676990fb LICENSE
 SHA1 a398e00aea72fda12294e01ab741627190540518 MANIFEST
-SHA1 f55a512588c756358c83bf9afef950671569c912 META.json
-SHA1 91d9536610373ba39525c7c63a8ccf8a6b1ca189 META.yml
-SHA1 9f75d1cbe747f8b0270c6b787a030bdbefbd000c README
+SHA1 255347ca26d5895775fbdcdfa58ee2a008aa35a8 META.json
+SHA1 9193a69c9d9d78304f9e2c49cfb480f8c6f4cd82 META.yml
+SHA1 f32de3fb097f62ad503ecfa613fb88ee7bf21718 README
 SHA1 66280fa4a4d080f55b4adee02bc65df082144843 inc/Bob.pm
-SHA1 56f9ce9839b8e7fdf75721bacd4213754a1b9bd4 inc/CPANTesting.pm
-SHA1 da1d6c004d323e50a28aa06f2b3e80bf0f8e4c73 lib/CatalystX/Usul.pm
+SHA1 a6dbee8477f32e899958df8f0451cb184ac22966 inc/CPANTesting.pm
+SHA1 ed4f1f734118f539aaaaf559b304d6ed77231352 lib/CatalystX/Usul.pm
 SHA1 80b21365a799ad57ab54c34e07c32565daeccedb lib/CatalystX/Usul/Action.pm
 SHA1 dbf6ec4313bc18c48440c6e29f1e649158ee262e lib/CatalystX/Usul/Admin.pm
 SHA1 6a79406f36b465c5e86733073364181800536269 lib/CatalystX/Usul/Authentication.pm
@@ -50,7 +50,7 @@ SHA1 12851d4b24032449c41a2b34962bdca87d8219d4 lib/CatalystX/Usul/Exception.pm
 SHA1 b00b431fd3669e838f673fb310a3098cf376dd0d lib/CatalystX/Usul/File.pm
 SHA1 83c6d507fa227ab7d33e0147783761eb190baec9 lib/CatalystX/Usul/FileSystem.pm
 SHA1 157c8e542d411d1f206bc51867d4715cba4c87b3 lib/CatalystX/Usul/Functions.pm
-SHA1 61fa5c1e4a0892b56ef30578370925313971e48d lib/CatalystX/Usul/IPC.pm
+SHA1 7b713601698c450ecf9944d16ce4dfd5512b9471 lib/CatalystX/Usul/IPC.pm
 SHA1 5f156783e228e865b3d06b62cb3bb5aed255b31f lib/CatalystX/Usul/IPC/Response.pm
 SHA1 823f183cce59df5b08661bca7db50981085eed67 lib/CatalystX/Usul/InflateSymbols.pm
 SHA1 0d34810f71621a9aa92b1cc6738bf523c57a6a7b lib/CatalystX/Usul/L10N.pm
@@ -84,7 +84,7 @@ SHA1 28ac4e08d5ac50c83ebff5bda55e9243db258386 lib/CatalystX/Usul/Plugin/Controll
 SHA1 3815be54d45f68fcfcb4979a87794ced2563559b lib/CatalystX/Usul/Plugin/Controller/PersistentState.pm
 SHA1 5eb17a845fe788fa883f097bf5778aeda8b9037d lib/CatalystX/Usul/Plugin/Controller/TokenValidation.pm
 SHA1 f4ef1bc182fdd913298e31766a9f1b96a8f1d1e1 lib/CatalystX/Usul/Plugin/Model/StashHelper.pm
-SHA1 d8d9a1dfb6ef35bd79b76ef4727fe9d3200e54f8 lib/CatalystX/Usul/Programs.pm
+SHA1 d2fb8de2c29b3ceb57181bf39a523e3749b30e1d lib/CatalystX/Usul/Programs.pm
 SHA1 07de51fc595557c7efdd268d4e5c7ca0c8238a81 lib/CatalystX/Usul/ProjectDocs.pm
 SHA1 45c110f635cccec6c9baa15b83eaada008637f25 lib/CatalystX/Usul/Roles.pm
 SHA1 2eb6e39f7ee1bed2bb779ab29ec3040071065b22 lib/CatalystX/Usul/Roles/DBIC.pm
@@ -94,7 +94,7 @@ SHA1 0633c4a6aac4333566f33a9ceb4a827d844a693a lib/CatalystX/Usul/Schema.pm
 SHA1 2183e4c252c2f3f01b495ac6d4719e2c49da45e3 lib/CatalystX/Usul/Shells.pm
 SHA1 33e25a2735991b3b9e17e2bc77418f826fec29ce lib/CatalystX/Usul/Table.pm
 SHA1 4eab028b4c94bb6cbeae08c8371d658207a57bfb lib/CatalystX/Usul/TapeBackup.pm
-SHA1 2cd30ea7fc8c0aa7a368c43b5ebc73015d18897e lib/CatalystX/Usul/Time.pm
+SHA1 d0d9e0d712eaa6dbedd3765ec95845b8fcb80549 lib/CatalystX/Usul/Time.pm
 SHA1 5b24ee6c98d9486482ba46356bb3b2a75fa0a8d3 lib/CatalystX/Usul/TraitFor/Engine/DumpInfo.pm
 SHA1 34776b5ce2a49f7de6efb318518dc6f3b7132a22 lib/CatalystX/Usul/TraitFor/ListSessions.pm
 SHA1 ac30e7c3c26702211fd84ae62137f0b7211fae57 lib/CatalystX/Usul/TraitFor/LogRequest.pm
@@ -116,14 +116,14 @@ SHA1 3391a254e212c81a5ac8550300c6b490b5e6b360 t/04critic.t
 SHA1 8c897acf5a51ce18fe0836baf60f6fc6a8ed6a4d t/05kwalitee.t
 SHA1 0bb4fdf73bf8b89db64eefbf86930e0a52ebb135 t/06yaml.t
 SHA1 54b6a88a3928f6bd305d5409d408041cbec36fc8 t/10functions.t
-SHA1 2a8fb0a79457f2faf14c24bc5d51f829e6d97dad t/11ipc.t
+SHA1 389775f3da8c5984cd0a12f197ec8549d63429e4 t/11ipc.t
 SHA1 31a32d39cff53634e8f606e7fb98060bab7328f1 t/12schema.t
 SHA1 5c47d0d5ce57221da2815ccb496cf4da4a2a15a7 t/14config.t
 SHA1 c80112771e626681a1682efce96c1ddc55642d7d t/18programs.t
 SHA1 2b164bcd742d589658203359bcd5f8ffdbb7d45c t/20controller.t
 SHA1 e320164d6e0d1ef3ee7adf2d4c79679555f0b5ea t/21l10n.t
 SHA1 eed7d8014f1439a6d42a70483803cdcd2a523b6d t/22file.t
-SHA1 79f7eaf3f6b1785c11364df99f3d7c654a181e5e t/23time.t
+SHA1 b9148a3c367c6ec6bcbae3b60fa0f224f2997165 t/23time.t
 SHA1 654d5f6b713fe670a2b282fda729941f81774c22 t/critic.rc
 SHA1 ad94b4796743063883c9315e575f043b5df98023 t/default.xml
 SHA1 e6cd52b6db20787939885b6da97987db7a55ad81 t/default_en.xml
@@ -135,11 +135,11 @@ SHA1 9a0c4ec392bd326ab3c350592fb77f8384a7b924 t/test.xml
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.10 (GNU/Linux)
 
-iQEcBAEBAgAGBQJPdv+iAAoJEK492j4Im1BpBOMIAJ8eoUg8JezlcInwCpWzsTPJ
-TlvcQFbYTEBShFTRTnj+h9f5tkSLOqmY/UxhLINvtBxTaBBc6N/PKK4r5pWgfYJh
-Gj3nVVhFcxrdv+ZaQH+03bP+zk3v6yZFVbOn8DuFYvhyay3VxkZltDZ3N0THoqtT
-8N2MARnxkGcWkSsEK/IgWoBo+H81KX/mwVJ7iNHjEd2+PXJLr976DY0Yc256JWAj
-zfboVocsuh/TDr9rglEvUGslTPypgrQ/hFZrtbb/R0uu2m6L0xS/KIy1tUWvW/Qq
-3WZmrI3UE9qDPJiu71peFuToCjPqy+IYRF8bm1AoZKP35LvmjhrGLUPHVk6ky6g=
-=7UJH
+iQEcBAEBAgAGBQJPeEZmAAoJEK492j4Im1BprMUH/RQNFhHy9h4u01jXBZaBg1Lx
+8XaRG/JiYbh4fSgNc6PCLA9E+fGT87GawoGpj61N6szxIK9lDv167dgBYQX5kXU6
+WEX4stnlRsTt2v4npXoF/h2WhZwchgW6yfXxl8SGMk8qNBxgG2YQNy72qst2JEXx
+ra+JTyG6b2FlRCsV/MTfTsGmjUvrq0/yzGmJED+xxZZPVRU2NVso61X9PKtR87kG
+G09eE7SXniM0caerqW7wmRZ9mVm0S6FaXbs5yw2Y66vJtGNKBw+aZ45uOWvpDIvN
+FDxIB1MwC9zga22RUwTqPfNe4o/bZsRtgnA36Ho29ZoPEc/AS92HKEwzI3I+4Bk=
+=0Q/A
 -----END PGP SIGNATURE-----

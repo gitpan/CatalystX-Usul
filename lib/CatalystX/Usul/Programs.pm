@@ -1,11 +1,11 @@
-# @(#)$Id: Programs.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Programs.pm 1154 2012-04-01 12:11:52Z pjf $
 
 package CatalystX::Usul::Programs;
 
 use strict;
 use warnings;
 use attributes ();
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1154 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::IPC);
 
 use CatalystX::Usul::Constants;
@@ -94,8 +94,8 @@ sub BUILDARGS {
                                           @{ $CONFIG{extensions} } );
 
    $class->_load_config    ( $attrs, $args );
-   $class->_inflate_symbols( $attrs ); # Expand pathnames
-   $class->_set_defaults   ( $attrs );
+   $class->_inflate_symbols( $attrs, $args ); # Expand pathnames
+   $class->_set_defaults   ( $attrs, $args );
 
    return $attrs;
 }
@@ -113,7 +113,8 @@ sub BUILD {
    $self->_set_attr( q(L), q(language) );
    $self->_set_attr( q(q), q(quiet)    );
 
-   $self->build_attributes( [ qw(debug log lock l10n os) ], TRUE );
+   $self->build_attributes( [ qw(log) ] );
+   $self->build_attributes( [ qw(debug lock l10n os) ], TRUE );
 
    return;
 }
@@ -624,13 +625,14 @@ sub _get_homedir {
 }
 
 sub _inflate_symbols {
-   my ($self, $attr) = @_; my $cfg = $attr->{config};
+   my ($self, $attr, $args) = @_; my $cfg = $attr->{config};
 
    my $inflator = CatalystX::Usul::InflateSymbols->new( $attr );
 
    $inflator->visit_all; $inflator->inflate_symbols( $cfg->{default_dirs} );
 
-   my $dir = -d $cfg->{tempdir} ? $cfg->{tempdir} : File::Spec->tmpdir;
+   my $dir = $cfg->{tempdir} && -d $cfg->{tempdir} ? $cfg->{tempdir}
+           : File::Spec->tmpdir;
 
       $cfg->{tempdir} = untaint_path $dir;
    -d $cfg->{logsdir} or $cfg->{logsdir} = $cfg->{tempdir};
@@ -729,7 +731,7 @@ sub _set_attr {
 }
 
 sub _set_defaults {
-   my ($class, $attr) = @_;
+   my ($class, $attr, $args) = @_;
 
    my $conf = $attr->{config}; my $prog = delete $attr->{program};
 
@@ -737,6 +739,7 @@ sub _set_defaults {
    $attr->{l10n    } = {};
    $attr->{language} = NUL;
    $attr->{lock    } = {};
+   $attr->{log     } = $args->{log};
    $attr->{method  } = NUL;
    $attr->{os      } = {};
    $attr->{parms   } = {};
@@ -834,7 +837,7 @@ CatalystX::Usul::Programs - Provide support for command line programs
 
 =head1 Version
 
-This document describes CatalystX::Usul::Programs version 0.5.$Revision: 1139 $
+This document describes CatalystX::Usul::Programs version 0.5.$Revision: 1154 $
 
 =head1 Synopsis
 

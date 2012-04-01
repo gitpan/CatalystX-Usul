@@ -1,8 +1,8 @@
-# @(#)$Id: 11ipc.t 1147 2012-03-30 14:07:07Z pjf $
+# @(#)$Id: 11ipc.t 1154 2012-04-01 12:11:52Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1147 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1154 $ =~ /\d+/gmx );
 use File::Spec::Functions qw( catdir catfile tmpdir updir );
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -21,11 +21,25 @@ BEGIN {
 
 use_ok q(CatalystX::Usul::Programs);
 
+{  package Logger;
+
+   sub new {
+      return bless {}, q(Logger);
+   }
+
+   sub debug {
+      my $self = shift; warn ''.(join ' ', @_)."\n";
+   }
+}
+
 my $perl = $^X;
 my $ref  = CatalystX::Usul::Programs->new( {
    config  => { appldir   => File::Spec->curdir,
-                localedir => catdir( qw(t locale) ) },
-   homedir => q(t), n => 1 } );
+                localedir => catdir( qw(t locale) ),
+                tempdir   => q(t), },
+   homedir => q(t),
+   log     => Logger->new,
+   n       => 1, } );
 my $cmd  = "${perl} -e 'print \"Hello World\"'";
 
 ok $ref->run_cmd( $cmd )->out eq q(Hello World), 'run_cmd system';
@@ -51,15 +65,13 @@ ok $EVAL_ERROR, 'run_cmd IPC::Run unexpected rv';
 ok $ref->run_cmd( [ $perl, '-e', 'exit 1' ], { expected_rv => 1 } ),
    'run_cmd IPC::Run expected rv';
 
-eval { $ref->run_cmd( "unknown_command_xa23sd3" ) }; $error = $EVAL_ERROR;
+eval { $ref->run_cmd( "unknown_command_xa23sd3", { debug => 1 } ) };
 
-ok $error =~ m{ unknown_command }mx, 'unknown command';
+$error = $EVAL_ERROR; ok $error =~ m{ unknown_command }mx, 'unknown command';
 
 my $path = catfile( $ref->tempdir, basename( $PROGRAM_NAME, q(.t) ).q(.log) );
 
-ok -f $path, 'log_file';
-
-unlink $path;
+-f $path and unlink $path;
 
 done_testing;
 

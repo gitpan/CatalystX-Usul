@@ -1,10 +1,10 @@
-# @(#)$Id: Time.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Time.pm 1154 2012-04-01 12:11:52Z pjf $
 
 package CatalystX::Usul::Time;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1154 $ =~ /\d+/gmx );
 
 use Date::Format  ();
 use DateTime::Format::Epoch;
@@ -244,13 +244,13 @@ sub str2time ($;$) {
    return $result + $frac;
 }
 
-sub time2str (;$$) {
-   my ($format, $time) = @_;
+sub time2str (;$$$) {
+   my ($format, $time, $zone) = @_;
 
    defined $format or $format = '%Y-%m-%d %H:%M:%S';
    defined $time   or $time   = time;
 
-   return Date::Format::Generic->time2str( $format, $time );
+   return Date::Format::Generic->time2str( $format, $time, $zone );
 }
 
 1;
@@ -265,7 +265,7 @@ CatalystX::Usul::Time - Class methods for date and time manipulation
 
 =head1 Version
 
-$Revision: 1139 $
+$Revision: 1154 $
 
 =head1 Synopsis
 
@@ -286,13 +286,13 @@ of a second
 
 =head2 str2date_time
 
-   $date_time = str2date_time( $dstr, $zone );
+   $date_time = str2date_time( $dstr, [$zone] );
 
 Parse a date time string and return a DateTime object. Timezone optional
 
 =head2 str2time
 
-   $time = str2time( $dstr, $zone );
+   $time = str2time( $dstr, [$zone] );
 
 Parse a date time string and return the number of seconds elapsed
 since the epoch. This subroutine is copyright (c) 1995 Graham
@@ -301,7 +301,7 @@ ninth day in November. Timezone optional
 
 =head2 time2str
 
-   $time_string = time2str( $format, $time );
+   $time_string = time2str( [$format], [$time], [$zone] );
 
 Returns a formatted string representation of the given time (supplied
 in seconds elapsed since the epoch). Defaults to ISO format (%Y-%m-%d
