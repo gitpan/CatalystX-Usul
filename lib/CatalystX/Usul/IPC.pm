@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1154 2012-04-01 12:11:52Z pjf $
+# @(#)$Id: IPC.pm 1156 2012-04-01 20:10:58Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1154 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1156 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -290,7 +290,7 @@ sub _run_cmd_system_args {
 }
 
 sub _run_cmd_using_ipc_run {
-   my ($self, $cmd, @rest) = @_; my ($buf_err, $buf_out, $error, $rv);
+   my ($self, $cmd, @rest) = @_; my ($buf_err, $buf_out, $error, $msg, $rv);
 
    my $args     = $self->_run_cmd_ipc_run_args( @rest );
    my $cmd_ref  = __partition_command( $cmd );
@@ -316,6 +316,8 @@ sub _run_cmd_using_ipc_run {
    try        { $rv = __ipc_run_harness( $cmd_ref, @cmd_args ) }
    catch ($e) { throw $e }
 
+   $args->{debug} and $self->log_debug( "Run harness returned ${rv}\n" );
+
    my $res = CatalystX::Usul::IPC::Response->new();
 
    $res->sig( $rv & 127 ); $res->core( $rv & 128 ); $rv = $res->rv( $rv >> 8 );
@@ -333,7 +335,8 @@ sub _run_cmd_using_ipc_run {
    else { $error = NUL }
 
    if ($rv > $args->{expected_rv}) {
-      $args->{debug} and $error .= ". Return value ${rv}";
+      $msg = "Return value ${rv} error ${error}";
+      $args->{debug} and $self->log_debug( $msg );
       throw error => $error, rv => $rv;
    }
 
@@ -341,7 +344,7 @@ sub _run_cmd_using_ipc_run {
 }
 
 sub _run_cmd_using_system {
-   my ($self, $cmd, @rest) = @_; my ($error, $rv);
+   my ($self, $cmd, @rest) = @_; my ($error, $msg, $rv);
 
    my $args = $self->_run_cmd_system_args( @rest );
    my $prog = $self->basename( (split SPC, $cmd)[ 0 ] );
@@ -369,7 +372,9 @@ sub _run_cmd_using_system {
 
       $EVAL_ERROR and throw $EVAL_ERROR;
 
-      warn "return value $rv waitedpid $WAITEDPID error value $ERROR\n";
+      $msg = "System returned ${rv} waitedpid ${WAITEDPID} error ${ERROR}\n";
+
+      $args->{debug} and $self->log_debug( $msg );
 #     On some systems the child handler reaps the child process so the system
 #     call returns -1 and sets $ERRNO to No child processes. This line and
 #     the child handler code fix the problem
@@ -413,7 +418,8 @@ sub _run_cmd_using_system {
    else { $error = NUL }
 
    if ($rv > $args->{expected_rv}) {
-      $args->{debug} and $error .= ". Return value ${rv}";
+      $msg = "Return value ${rv} error ${error}";
+      $args->{debug} and $self->log_debug( $msg );
       throw error => $error, rv => $rv;
    }
 
@@ -476,10 +482,9 @@ sub __cmd_matches_pattern {
 }
 
 sub __handler {
-   local $ERRNO;
+   local $ERRNO; # so that waitpid does not step on existing value
 
    while ((my $child_pid = waitpid -1, WNOHANG) > 0) {
-      warn "child pid $child_pid child error $CHILD_ERROR\n";
       if (WIFEXITED( $CHILD_ERROR ) and $child_pid > $WAITEDPID) {
          $WAITEDPID = $child_pid; $ERROR = $CHILD_ERROR;
       }
@@ -540,7 +545,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1154 $
+0.5.$Revision: 1156 $
 
 =head1 Synopsis
 

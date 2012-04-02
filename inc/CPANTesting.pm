@@ -1,4 +1,4 @@
-# @(#)$Id: CPANTesting.pm 1154 2012-04-01 12:11:52Z pjf $
+# @(#)$Id: CPANTesting.pm 1156 2012-04-01 20:10:58Z pjf $
 
 package CPANTesting;
 
@@ -16,7 +16,7 @@ sub broken_toolchain {
 sub exceptions {
 #   $uname =~ m{ higgsboson    }mx and return 'Stopped dcollins';
 #   $uname =~ m{ profvince.com }mx and return 'Stopped vpit';
-   $uname =~ m{ slack64       }mx and return 'Stopped bingos';
+   $uname =~ m{ slack64       }mx and return 'Stopped Bingos slack64';
    return 0;
 }
 

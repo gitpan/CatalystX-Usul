@@ -1,16 +1,16 @@
-# @(#)$Id: Captcha.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Captcha.pm 1159 2012-04-02 11:29:34Z pjf $
 
 package CatalystX::Usul::Captcha;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1159 $ =~ /\d+/gmx );
 
 use English qw(-no_match_vars);
 use Class::Null;
 use HTTP::Date;
 
-eval { use GD::SecurityImage };
+eval { require GD::SecurityImage; GD::SecurityImage->import; };
 
 my $captcha_class = $EVAL_ERROR ? q(Class::Null) : q(GD::SecurityImage);
 
@@ -75,7 +75,7 @@ CatalystX::Usul::Captcha - Role to implement captchas
 
 =head1 Version
 
-0.5.$Revision: 1139 $
+0.5.$Revision: 1159 $
 
 =head1 Synopsis
 

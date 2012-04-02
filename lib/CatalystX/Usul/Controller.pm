@@ -1,10 +1,10 @@
-# @(#)$Id: Controller.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Controller.pm 1157 2012-04-01 22:42:34Z pjf $
 
 package CatalystX::Usul::Controller;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1157 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Controller CatalystX::Usul);
 
 use Config;
@@ -34,15 +34,14 @@ __PACKAGE__->mk_accessors( qw(action_source config_class fs_class
 sub COMPONENT {
    my ($class, $app, $config) = @_; __setup_plugins( $app );
 
-   my $comp = $class->next::method( $app, $config );
+   my $new  = $class->next::method( $app, $config );
    my $usul = CatalystX::Usul->new( $app, {} );
 
-   # TODO: Maybe use Class::Mixin
-   for (grep { not defined $comp->{ $_ } } keys %{ $usul }) {
-      $comp->{ $_ } = $usul->{ $_ };
+   for (grep { not defined $new->{ $_ } } keys %{ $usul }) {
+      $new->{ $_ } = $usul->{ $_ };
    }
 
-   return $comp;
+   return $new;
 }
 
 sub auto {
@@ -574,7 +573,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version 0.5.$Rev: 1139 $
+This document describes CatalystX::Usul::Controller version 0.5.$Rev: 1157 $
 
 =head1 Synopsis
 

@@ -1,5 +1,10 @@
 Revision history for CatalystX::Usul
 
+0.5.1160 2012-04-02
+         - Fixed condition import of GD::SecurityImage
+         - Commented out failing test in 11ipc.t
+         - Enhanced debug output from CX::U:IPC and 11ipc.t
+
 0.5.1155 2012-04-01
          - Trying to fix 11ipc.t unknown_command error
          - Solaris siganl handling in CX::U:IPC is fixed

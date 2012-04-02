@@ -15,25 +15,25 @@ not run its Makefile.PL or Build.PL.
 Hash: SHA1
 
 SHA1 53b628cd23762b250b40785361256a1dc69cad69 Build.PL
-SHA1 191e260c2abbdb91bcce289c9b026313f64d68f1 Changes
+SHA1 bfd2e1249e2744a614b8bd1c73e9ec945bcb035a Changes
 SHA1 0890c7d901c3958ec8476f1edc1c11ae676990fb LICENSE
 SHA1 a398e00aea72fda12294e01ab741627190540518 MANIFEST
-SHA1 255347ca26d5895775fbdcdfa58ee2a008aa35a8 META.json
-SHA1 9193a69c9d9d78304f9e2c49cfb480f8c6f4cd82 META.yml
-SHA1 f32de3fb097f62ad503ecfa613fb88ee7bf21718 README
+SHA1 5b2087f502d05c915f58f2fa79eb9ca7459d199c META.json
+SHA1 3610b2cd88f7e4af5d2c05b4a98f21e0729b7456 META.yml
+SHA1 343993d2042d54cf2a80a3f691082d49d4a6823e README
 SHA1 66280fa4a4d080f55b4adee02bc65df082144843 inc/Bob.pm
-SHA1 a6dbee8477f32e899958df8f0451cb184ac22966 inc/CPANTesting.pm
-SHA1 ed4f1f734118f539aaaaf559b304d6ed77231352 lib/CatalystX/Usul.pm
+SHA1 0cbbf2c416b8e4f2b6559882fa3ba6ab5ad84243 inc/CPANTesting.pm
+SHA1 fcbf7780cf62f8f20def4fa87aad876c7e4d3ede lib/CatalystX/Usul.pm
 SHA1 80b21365a799ad57ab54c34e07c32565daeccedb lib/CatalystX/Usul/Action.pm
 SHA1 dbf6ec4313bc18c48440c6e29f1e649158ee262e lib/CatalystX/Usul/Admin.pm
 SHA1 6a79406f36b465c5e86733073364181800536269 lib/CatalystX/Usul/Authentication.pm
 SHA1 630c1f67e425c3a756daae403d861b89da88c2d8 lib/CatalystX/Usul/Base.pm
 SHA1 46d7d6f68b26d30ccb8010d042997c1054d3bcae lib/CatalystX/Usul/Build.pm
 SHA1 88d2dde22df8579f405df67e9fb9bf04bcbfbec4 lib/CatalystX/Usul/CLI.pm
-SHA1 34322def1aba45092c10077399254a9198b40629 lib/CatalystX/Usul/Captcha.pm
+SHA1 eb30c799d7cfcb84ca9ea9922de7deb54998ef2c lib/CatalystX/Usul/Captcha.pm
 SHA1 e41fd119a8365784e15e38a1a4cf8de24b5ba39a lib/CatalystX/Usul/Config.pm
 SHA1 b1db9e13ede270721da29825a0b30f48fd888510 lib/CatalystX/Usul/Constants.pm
-SHA1 12d1fc3fb9c6444fe80893adecc9912aca814560 lib/CatalystX/Usul/Controller.pm
+SHA1 ede1692b48b8aca3d930ff6efabbc0216d3fd7eb lib/CatalystX/Usul/Controller.pm
 SHA1 5dfd0110a0c8ba3a1ae2ac7c9381e4aec05f7cc8 lib/CatalystX/Usul/Controller/Admin.pm
 SHA1 149c1f532020ed5d3462e9c1946a10afd668381a lib/CatalystX/Usul/Controller/Admin/Backup.pm
 SHA1 bebf17f456d48a5bf8e2b50334c5b89de2f886ff lib/CatalystX/Usul/Controller/Admin/Config.pm
@@ -50,7 +50,7 @@ SHA1 12851d4b24032449c41a2b34962bdca87d8219d4 lib/CatalystX/Usul/Exception.pm
 SHA1 b00b431fd3669e838f673fb310a3098cf376dd0d lib/CatalystX/Usul/File.pm
 SHA1 83c6d507fa227ab7d33e0147783761eb190baec9 lib/CatalystX/Usul/FileSystem.pm
 SHA1 157c8e542d411d1f206bc51867d4715cba4c87b3 lib/CatalystX/Usul/Functions.pm
-SHA1 7b713601698c450ecf9944d16ce4dfd5512b9471 lib/CatalystX/Usul/IPC.pm
+SHA1 63ffbe81820ae9a41ea64541ce8e69c7d7685795 lib/CatalystX/Usul/IPC.pm
 SHA1 5f156783e228e865b3d06b62cb3bb5aed255b31f lib/CatalystX/Usul/IPC/Response.pm
 SHA1 823f183cce59df5b08661bca7db50981085eed67 lib/CatalystX/Usul/InflateSymbols.pm
 SHA1 0d34810f71621a9aa92b1cc6738bf523c57a6a7b lib/CatalystX/Usul/L10N.pm
@@ -116,11 +116,11 @@ SHA1 3391a254e212c81a5ac8550300c6b490b5e6b360 t/04critic.t
 SHA1 8c897acf5a51ce18fe0836baf60f6fc6a8ed6a4d t/05kwalitee.t
 SHA1 0bb4fdf73bf8b89db64eefbf86930e0a52ebb135 t/06yaml.t
 SHA1 54b6a88a3928f6bd305d5409d408041cbec36fc8 t/10functions.t
-SHA1 389775f3da8c5984cd0a12f197ec8549d63429e4 t/11ipc.t
+SHA1 9aaaa3989e505cc7cb2ce71aac41d137a313aa7a t/11ipc.t
 SHA1 31a32d39cff53634e8f606e7fb98060bab7328f1 t/12schema.t
 SHA1 5c47d0d5ce57221da2815ccb496cf4da4a2a15a7 t/14config.t
 SHA1 c80112771e626681a1682efce96c1ddc55642d7d t/18programs.t
-SHA1 2b164bcd742d589658203359bcd5f8ffdbb7d45c t/20controller.t
+SHA1 56f26b77398e3a27be38becd118361cd392c0582 t/20controller.t
 SHA1 e320164d6e0d1ef3ee7adf2d4c79679555f0b5ea t/21l10n.t
 SHA1 eed7d8014f1439a6d42a70483803cdcd2a523b6d t/22file.t
 SHA1 b9148a3c367c6ec6bcbae3b60fa0f224f2997165 t/23time.t
@@ -135,11 +135,11 @@ SHA1 9a0c4ec392bd326ab3c350592fb77f8384a7b924 t/test.xml
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.10 (GNU/Linux)
 
-iQEcBAEBAgAGBQJPeEZmAAoJEK492j4Im1BprMUH/RQNFhHy9h4u01jXBZaBg1Lx
-8XaRG/JiYbh4fSgNc6PCLA9E+fGT87GawoGpj61N6szxIK9lDv167dgBYQX5kXU6
-WEX4stnlRsTt2v4npXoF/h2WhZwchgW6yfXxl8SGMk8qNBxgG2YQNy72qst2JEXx
-ra+JTyG6b2FlRCsV/MTfTsGmjUvrq0/yzGmJED+xxZZPVRU2NVso61X9PKtR87kG
-G09eE7SXniM0caerqW7wmRZ9mVm0S6FaXbs5yw2Y66vJtGNKBw+aZ45uOWvpDIvN
-FDxIB1MwC9zga22RUwTqPfNe4o/bZsRtgnA36Ho29ZoPEc/AS92HKEwzI3I+4Bk=
-=0Q/A
+iQEcBAEBAgAGBQJPeY58AAoJEK492j4Im1Bp9PkH/Rqj3H2vayb6n6EPlwNGDtfy
+V7GFb+uJSrgEy67IFPu6Ed2f4gtKcXMh71DcNZykuPLflPdilm/JiuQ73aic+app
+4EmQqJ3xw8ibnnOZQ7fevlII/LK7ITTIniVoDR3oKEMBfqihCbD2FlrdrvmyojJZ
+C0Ig75+blgG2BNtM6ZwfHTxzsZS2S/G0it99nTpvpbQs/gXgN3BjlMfQkKCkJuCl
+VUXJt0I68pltu2Sj2FfVGSPQx+ALsbWPpI0/7166p3F/sH/QjJAVKMeiqlQmVMjk
+QRhdK8NGaIJg3/AS3TLAz1YPRzQKxn0zIyNmCF4DXgr76ZO1l9LncXT0Qc/LxNs=
+=hJq+
 -----END PGP SIGNATURE-----

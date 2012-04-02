@@ -1,8 +1,8 @@
-# @(#)$Id: 20controller.t 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: 20controller.t 1157 2012-04-01 22:42:34Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1157 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) ), catdir( $Bin, q(lib) );
@@ -23,12 +23,12 @@ my (undef, $context) = ctx_request( '' );
 
 my $controller = $context->controller( q(Root) );
 
-isa_ok( $controller, q(MyApp::Controller::Root) );
+isa_ok $controller, q(MyApp::Controller::Root);
 
 done_testing;
 
-unlink q(/tmp/ipc_srlock.lck);
-unlink q(/tmp/ipc_srlock.shm);
+unlink catfile( qw(t ipc_srlock.lck) );
+unlink catfile( qw(t ipc_srlock.shm) );
 
 # Local Variables:
 # mode: perl
