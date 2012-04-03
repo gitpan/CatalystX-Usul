@@ -1,9 +1,9 @@
-# @(#)$Id: Build.PL 1142 2012-03-29 00:27:54Z pjf $
+# @(#)$Id: Build.PL 1162 2012-04-02 12:45:24Z pjf $
 
 use strict;
 use warnings;
 use inc::Bob; # Module::Build subclass
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1142 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1162 $ =~ /\d+/gmx );
 
 Bob->new( {
    module     => q(CatalystX::Usul),
@@ -105,6 +105,7 @@ Bob->new( {
       'Time::Elapsed'                              => 0.10,
       'Time::Zone'                                 => 2.22,
       'TryCatch'                                   => 1.002000,
+      'XML::NamespaceSupport'                      => 1.09,
       'XML::Simple'                                => 2.14,
       'YAML::Syck'                                 => 1.05, },
    recommends                   => {

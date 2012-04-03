@@ -1,5 +1,9 @@
 Revision history for CatalystX::Usul
 
+0.5.1164 2012-04-03
+         - Added XML::NamespaceSupport as a dependency as Config::Any
+           does not list it
+
 0.5.1160 2012-04-02
          - Fixed condition import of GD::SecurityImage
          - Commented out failing test in 11ipc.t

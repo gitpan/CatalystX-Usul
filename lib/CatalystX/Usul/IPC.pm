@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1156 2012-04-01 20:10:58Z pjf $
+# @(#)$Id: IPC.pm 1161 2012-04-02 12:12:55Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1156 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1161 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -335,6 +335,7 @@ sub _run_cmd_using_ipc_run {
    else { $error = NUL }
 
    if ($rv > $args->{expected_rv}) {
+      $error ||= 'Unknown error';
       $msg = "Return value ${rv} error ${error}";
       $args->{debug} and $self->log_debug( $msg );
       throw error => $error, rv => $rv;
@@ -418,6 +419,7 @@ sub _run_cmd_using_system {
    else { $error = NUL }
 
    if ($rv > $args->{expected_rv}) {
+      $error ||= 'Unknown error';
       $msg = "Return value ${rv} error ${error}";
       $args->{debug} and $self->log_debug( $msg );
       throw error => $error, rv => $rv;
@@ -545,7 +547,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1156 $
+0.5.$Revision: 1161 $
 
 =head1 Synopsis
 

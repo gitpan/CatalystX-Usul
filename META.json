@@ -137,6 +137,7 @@
             "Time::Elapsed" : "0.1",
             "Time::Zone" : "2.22",
             "TryCatch" : "1.002",
+            "XML::NamespaceSupport" : "1.09",
             "XML::Simple" : "2.14",
             "YAML::Syck" : "1.05",
             "attributes" : "0.09",
@@ -150,7 +151,7 @@
    "provides" : {
       "CatalystX::Usul" : {
          "file" : "lib/CatalystX/Usul.pm",
-         "version" : "v0.5.1160"
+         "version" : "v0.5.1164"
       },
       "CatalystX::Usul::Action" : {
          "file" : "lib/CatalystX/Usul/Action.pm",
@@ -258,7 +259,7 @@
       },
       "CatalystX::Usul::IPC" : {
          "file" : "lib/CatalystX/Usul/IPC.pm",
-         "version" : "v0.5.1156"
+         "version" : "v0.5.1161"
       },
       "CatalystX::Usul::IPC::Response" : {
          "file" : "lib/CatalystX/Usul/IPC/Response.pm",
@@ -503,5 +504,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.5.1160"
+   "version" : "0.5.1164"
 }
