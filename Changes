@@ -1,6 +1,11 @@
 Revision history for CatalystX::Usul
 
-0.6.1167 2012-04-04
+0.6.1168 2012-04-04
+         - Turning CPAN testing off because
+           08289c92-7e3f-11e1-9d6f-f6dbfa7543f5. Thats 24hrs after peregrins
+           fuck up and smokers are still reporting bollocks
+
+0.6.1168 2012-04-04
          - Fixed undefined warnings in Controller, View::HTML
            and CX::U::P::C::ModelHelper
          - Added a test of the controller begin method to 20controller.t

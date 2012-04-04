@@ -151,7 +151,7 @@
    "provides" : {
       "CatalystX::Usul" : {
          "file" : "lib/CatalystX/Usul.pm",
-         "version" : "v0.6.1167"
+         "version" : "v0.6.1168"
       },
       "CatalystX::Usul::Action" : {
          "file" : "lib/CatalystX/Usul/Action.pm",
@@ -504,5 +504,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.6.1167"
+   "version" : "0.6.1168"
 }
