@@ -1,13 +1,12 @@
-# @(#)$Id: Controller.pm 1157 2012-04-01 22:42:34Z pjf $
+# @(#)$Id: Controller.pm 1166 2012-04-03 12:37:30Z pjf $
 
 package CatalystX::Usul::Controller;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1157 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1166 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Controller CatalystX::Usul);
 
-use Config;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions
    qw(app_prefix arg_list exception is_arrayref throw);
@@ -112,11 +111,12 @@ sub begin {
    $self->_stash_browser_state( $c );
    # Set the language to sane supported value
    $s->{lang} = __get_language( $c );
-   # Read the config files from cache
-   $self->_stash_per_request_config( $c );
    # Debug output mimics system debug but turned on within the application
    $s->{debug} and not $c->debug
                and $self->log_debug( $req->method.SPC.$req->path );
+   # Load the config files from cache
+   my $model; $model = $c->model( $self->config_class )
+      and $model->load_per_request_config;
 
    my $ns   = $c->action->namespace || NUL;
    my $name = $c->action->name      || NUL;
@@ -357,36 +357,6 @@ sub _stash_browser_state {
    return;
 }
 
-sub _stash_per_request_config {
-   # Read the XML config from the cached copy in the data model
-   my ($self, $c) = @_; my $s = $c->stash; my $ns;
-
-   # Merge the hashes from each file in order. Phase allows for multiple
-   # installations of the same version for different purposes
-   my $files = [ q(os_).$Config{osname}, q(phase).($c->config->{phase} || 0),
-                 q(default), ];
-
-   # Add a controller specific file to the list
-   $ns = $c->action->namespace and push @{ $files }, $ns;
-
-   my $model  = $c->model( $self->config_class ) or return;
-   my $config = $model->load( @{ $files } );
-
-   # Copy the config to the stash
-   while (my ($key, $value) = each %{ $config }) {
-      $s->{ $key } = $value;
-   }
-
-   # Raise the "level" of the globals in the stash
-   my $globals = delete $s->{globals};
-
-   while (my ($key, $value) = each %{ $globals }) {
-      $s->{ $key } = $value->{value};
-   }
-
-   return;
-}
-
 sub _stash_user_attributes {
    # Set user identity from the session state. Session state will be retained
    # for ninety days. User lasts for max_sess_time or two hours
@@ -515,7 +485,7 @@ sub __list_acceptable_languages {
    my $req = shift;
 
    return (map    { (split m{ ; }mx, $_)[ 0 ] }
-           split m{ , }mx, lc $req->headers->{ q(accept-language) } || NUL);
+           split m{ , }mx, lc( $req->headers->{ q(accept-language) } || NUL ));
 }
 
 sub __preferred_content_type {
@@ -573,7 +543,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version 0.5.$Rev: 1157 $
+This document describes CatalystX::Usul::Controller version 0.6.$Rev: 1166 $
 
 =head1 Synopsis
 
@@ -736,20 +706,6 @@ up a W3C validated page for Exploiter to render as garbage
 
 Recover information stored in the browser state cookie. Uses the
 L<CatalystX::Usul::Plugin::Controller::Cookies> module if it's loaded
-
-=head2 _stash_per_request_config
-
-   $self->_stash_per_request_config( $c );
-
-Uses the config model to load the config data for the current
-request. The data is split across six files; one for OS dependant
-data, one for this phase (live, test, development etc.), default data
-and language dependant default data, data for the current controller
-and it's language dependant data. This information is cached by the
-config model
-
-Data in the I<globals> attribute is raised to the top level of the
-stash and the I<globals> attribute deleted
 
 =head2 _stash_user_attributes
 

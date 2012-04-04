@@ -1,10 +1,10 @@
-# @(#)$Id: Root.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Root.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::Controller::Root;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Controller);
 
 use CatalystX::Usul::Constants;
@@ -205,7 +205,7 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-0.1$Revision: 1139 $
+0.1$Revision: 1165 $
 
 =head1 Synopsis
 

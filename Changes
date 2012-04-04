@@ -1,5 +1,11 @@
 Revision history for CatalystX::Usul
 
+0.6.1167 2012-04-04
+         - Fixed undefined warnings in Controller, View::HTML
+           and CX::U::P::C::ModelHelper
+         - Added a test of the controller begin method to 20controller.t
+         - Refactored controller begin per request config loading
+
 0.5.1164 2012-04-03
          - Added XML::NamespaceSupport as a dependency as Config::Any
            does not list it

@@ -1,10 +1,10 @@
-# @(#)$Id: Rooms.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Rooms.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::Model::Config::Rooms;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model::Config);
 
 use MRO::Compat;
@@ -57,7 +57,7 @@ CatalystX::Usul::Model::Config::Rooms - Class definition for the action configur
 
 =head1 Version
 
-0.5.$Revision: 1139 $
+0.6.$Revision: 1165 $
 
 =head1 Synopsis
 

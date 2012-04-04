@@ -1,10 +1,10 @@
-# @(#)$Id: HTML.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: HTML.pm 1166 2012-04-03 12:37:30Z pjf $
 
 package CatalystX::Usul::View::HTML;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1166 $ =~ /\d+/gmx );
 use parent qw(Catalyst::View::TT CatalystX::Usul::View);
 
 use CatalystX::Usul::Constants;
@@ -142,7 +142,7 @@ sub deserialize {
 sub get_verb {
    my ($self, $c) = @_; my $s = $c->stash; my $req = $c->req; my $verb;
 
-   if ($verb = lc $req->params->{_method}) {
+   if ($verb = lc( $req->params->{_method} || NUL)) {
       # To be sure we'll only do this once
       $s->{ '_method'   } = delete $req->params->{ '_method'   };
       $s->{ '_method.x' } = delete $req->params->{ '_method.x' };
@@ -305,7 +305,7 @@ CatalystX::Usul::View::HTML - Render a page of HTML or XHTML
 
 =head1 Version
 
-0.5.$Revision: 1139 $
+0.6.$Revision: 1166 $
 
 =head1 Synopsis
 

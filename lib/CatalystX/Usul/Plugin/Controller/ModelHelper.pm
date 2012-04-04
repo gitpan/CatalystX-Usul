@@ -1,15 +1,17 @@
-# @(#)$Id: ModelHelper.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: ModelHelper.pm 1166 2012-04-03 12:37:30Z pjf $
 
 package CatalystX::Usul::Plugin::Controller::ModelHelper;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1166 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 
 sub add_header {
-   my ($self, $c) = @_; return $c->stash->{nav_model}->add_header;
+   my ($self, $c) = @_; my $model = $c->stash->{nav_model} or return;
+
+   return $model->add_header;
 }
 
 sub check_field {
@@ -159,7 +161,7 @@ CatalystX::Usul::Plugin::Controller::ModelHelper - Convenience methods for commo
 
 =head1 Version
 
-0.5.$Revision: 1139 $
+0.6.$Revision: 1166 $
 
 =head1 Synopsis
 

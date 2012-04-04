@@ -1,10 +1,10 @@
-# @(#)$Id: CLI.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: CLI.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::CLI;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Programs);
 
 use CatalystX::Usul::Constants;
@@ -226,7 +226,7 @@ CatalystX::Usul::CLI - Subroutines accessed from the command line
 
 =head1 Version
 
-0.5.$Revision: 1139 $
+0.6.$Revision: 1165 $
 
 =head1 Synopsis
 

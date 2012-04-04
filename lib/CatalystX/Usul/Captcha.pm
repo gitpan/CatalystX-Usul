@@ -1,10 +1,10 @@
-# @(#)$Id: Captcha.pm 1159 2012-04-02 11:29:34Z pjf $
+# @(#)$Id: Captcha.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::Captcha;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1159 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 
 use English qw(-no_match_vars);
 use Class::Null;
@@ -75,7 +75,7 @@ CatalystX::Usul::Captcha - Role to implement captchas
 
 =head1 Version
 
-0.5.$Revision: 1159 $
+0.6.$Revision: 1165 $
 
 =head1 Synopsis
 

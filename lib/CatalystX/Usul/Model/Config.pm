@@ -1,10 +1,10 @@
-# @(#)$Id: Config.pm 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: Config.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::Model::Config;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Model);
 
 use CatalystX::Usul::Constants;
@@ -12,6 +12,7 @@ use CatalystX::Usul::Functions
     qw(escape_TT is_arrayref is_hashref merge_attributes throw unescape_TT);
 use CatalystX::Usul::Config;
 use CatalystX::Usul::Table;
+use Config;
 use MRO::Compat;
 use Scalar::Util qw(blessed);
 use TryCatch;
@@ -22,16 +23,31 @@ __PACKAGE__->config( ctrldir      => NUL,
                      ns_key       => q(namespace),
                      localedir    => NUL, );
 
-__PACKAGE__->mk_accessors( qw(classes create_msg_key ctrldir default_ns
-                              delete_msg_key fields keys_attr localedir
-                              ns_key table_data typelist update_msg_key) );
+__PACKAGE__->mk_accessors( qw(classes config_paths create_msg_key ctrldir
+                              default_ns delete_msg_key fields keys_attr
+                              localedir ns_key table_data typelist
+                              update_msg_key) );
 
 sub COMPONENT {
    my ($class, $app, $attrs) = @_; my $ac = $app->config;
 
    merge_attributes $attrs, $ac, $class->config, [ qw(ctrldir localedir) ];
 
-   return $class->next::method( $app, $attrs );
+   my $new = $class->next::method( $app, $attrs );
+
+   $attrs  = { %{ $new->domain_attributes || {} },
+               ioc_obj   => $new,
+               localedir => $new->localedir, };
+
+   $new->domain_model( $new->domain_class->new( $attrs ) );
+
+   my @files = ( q(os_).$Config{osname},
+                 q(phase).($ac->{phase} || 0), q(default), );
+
+   $new->config_paths( [ grep { $_->exists }
+                         map  { $new->_get_path( $_ ) } @files ] );
+
+   return $new;
 }
 
 sub build_per_context_instance {
@@ -41,7 +57,7 @@ sub build_per_context_instance {
    my $attrs = { %{ $new->domain_attributes || {} },
                  ioc_obj   => $new,
                  lang      => $c->stash->{lang},
-                 localedir => $self->localedir, };
+                 localedir => $new->localedir, };
 
    $new->domain_model( $new->domain_class->new( $attrs ) );
 
@@ -148,6 +164,30 @@ sub load {
    return $self->domain_model->load( map { $self->_get_path( $_ ) } @files );
 }
 
+sub load_per_request_config {
+   # Read the XML config from the cached copy in the domain model
+   my $self = shift; my $c = $self->context; my $s = $c->stash;
+
+   my @paths   = @{ $self->config_paths };
+   # Add a controller specific file to the list
+   my $ns; $ns = $c->action->namespace and push @paths, $self->_get_path( $ns );
+   my $config  = $self->domain_model->load( @paths );
+
+   # Copy the config to the stash
+   while (my ($key, $value) = each %{ $config }) {
+      $s->{ $key } = $value;
+   }
+
+   # Raise the "level" of the globals in the stash
+   my $globals = delete $s->{globals};
+
+   while (my ($key, $value) = each %{ $globals }) {
+      $s->{ $key } = $value->{value};
+   }
+
+   return;
+}
+
 sub push_attribute {
    my ($self, $ns, $args) = @_; my $count = 0;
 
@@ -244,9 +284,7 @@ sub _get_field_type {
 }
 
 sub _get_path {
-   my ($self, $name) = @_; my $s = $self->context->stash;
-
-   $s->{leader} = blessed $self; $name or throw 'File name not specified';
+   my ($self, $name) = @_; $name or throw 'Config file name not specified';
 
    my $extn = $self->domain_model->storage->extn || NUL;
 
@@ -381,7 +419,7 @@ CatalystX::Usul::Model::Config - Read and write configuration files
 
 =head1 Version
 
-0.5.$Revision: 1139 $
+0.6.$Revision: 1165 $
 
 =head1 Synopsis
 
@@ -446,6 +484,19 @@ Retrieves the named element and a list of elements
    $config = $c->model( q(Config) )->load( @{ $files } );
 
 Loads the required configuration files. Returns a hash ref
+
+=head2 load_per_request_config
+
+   $c->model( q(Config) )->load_per_request_config;
+
+Loads the config data for the current request. The data is split
+across six files; one for OS dependant data, one for this phase (live,
+test, development etc.), default data and language dependant default
+data, data for the current controller and it's language dependant
+data. This information is cached
+
+Data in the I<globals> attribute is raised to the top level of the
+stash and the I<globals> attribute deleted
 
 =head2 push_attribute
 

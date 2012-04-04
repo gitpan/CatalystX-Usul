@@ -1,10 +1,10 @@
-# @(#)$Id: IPC.pm 1161 2012-04-02 12:12:55Z pjf $
+# @(#)$Id: IPC.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::IPC;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1161 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(arg_list is_arrayref strip_leader throw);
@@ -547,7 +547,7 @@ CatalystX::Usul::IPC - List/Create/Delete processes
 
 =head1 Version
 
-0.5.$Revision: 1161 $
+0.6.$Revision: 1165 $
 
 =head1 Synopsis
 

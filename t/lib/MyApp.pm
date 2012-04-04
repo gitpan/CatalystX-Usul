@@ -19,6 +19,8 @@ __PACKAGE__->config
      tempdir                 => q(t),
      "Model::Config"         => {
         parent_classes       => q(CatalystX::Usul::Model::Config) },
+     "Model::Help"           => {
+        parent_classes       => q(CatalystX::Usul::Model::Help) },
      "Model::Config::Levels" => {
         parent_classes       => q(CatalystX::Usul::Model::Config::Levels) },
      'View::HTML'            => {

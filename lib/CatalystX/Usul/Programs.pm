@@ -1,11 +1,11 @@
-# @(#)$Id: Programs.pm 1154 2012-04-01 12:11:52Z pjf $
+# @(#)$Id: Programs.pm 1165 2012-04-03 10:40:39Z pjf $
 
 package CatalystX::Usul::Programs;
 
 use strict;
 use warnings;
 use attributes ();
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1154 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::IPC);
 
 use CatalystX::Usul::Constants;
@@ -837,7 +837,7 @@ CatalystX::Usul::Programs - Provide support for command line programs
 
 =head1 Version
 
-This document describes CatalystX::Usul::Programs version 0.5.$Revision: 1154 $
+This document describes CatalystX::Usul::Programs version 0.6.$Revision: 1165 $
 
 =head1 Synopsis
 

@@ -1,8 +1,8 @@
-# @(#)$Id: 14config.t 1139 2012-03-28 23:49:18Z pjf $
+# @(#)$Id: 14config.t 1165 2012-04-03 10:40:39Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.5.%d', q$Rev: 1139 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) ), catdir( $Bin, q(lib) );
@@ -50,7 +50,7 @@ $model->keys_attr( q(globals) );
 
 eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e->as_string =~ m{ File \s+ name \s+ not \s+ specified }msx,
+ok( $e->as_string =~ m{ Config \s+ file \s+ name \s+ not \s+ specified }msx,
     'File path not specified' );
 
 my $file = q(default);
