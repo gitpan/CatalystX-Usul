@@ -1,16 +1,16 @@
-# @(#)$Id: Cookies.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Cookies.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Plugin::Controller::Cookies;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 
 sub delete_cookie {
    # Delete a key/value pair from the browser state cookie
-   my ($self, $c, $args) = @_;
+   my ($self, $c, $args) = @_; my $s = $c->stash;
 
    my $name   = $args->{name} or return;
    my $key    = $args->{key } or return;
@@ -21,7 +21,7 @@ sub delete_cookie {
       m{ \A $key ~ }mx and next; $pairs and $pairs .= q(+); $pairs .= $_;
    }
 
-   $c->res->cookies->{ $name } = { value => $pairs };
+   $c->res->cookies->{ $name } = { domain => $s->{domain}, value => $pairs };
    return;
 }
 
@@ -70,7 +70,7 @@ sub get_cookie {
 
 sub set_cookie {
    # Set a key/value pair in the browser state cookie
-   my ($self, $c, $args) = @_;
+   my ($self, $c, $args) = @_; my $s = $c->stash;
 
    my $value  = $args->{value};
    my $name   = $args->{name } or return;
@@ -88,7 +88,7 @@ sub set_cookie {
 
    unless ($found) { $pairs and $pairs .= q(+); $pairs .= $key.$value }
 
-   $c->res->cookies->{ $name } = { value => $pairs };
+   $c->res->cookies->{ $name } = { domain => $s->{domain}, value => $pairs };
    return;
 }
 
@@ -118,7 +118,7 @@ CatalystX::Usul::Plugin::Controller::Cookies - Cookie multiplexing methods
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

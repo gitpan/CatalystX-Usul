@@ -1,13 +1,12 @@
-# @(#)$Id: Time.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Time.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Time;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 use Date::Format  ();
-use DateTime::Format::Epoch;
 use Time::HiRes qw(usleep);
 use Time::Local;
 use Time::Zone;
@@ -34,6 +33,9 @@ sub nap ($) {
 
 sub str2date_time ($;$) {
    my ($dstr, $zone) = @_;
+
+   require DateTime::Format::Epoch; # RT #33816
+
    my $dt            = DateTime->new( year => 1970, month => 1, day => 1, );
    my $formatter     = DateTime::Format::Epoch->new
       ( epoch             => $dt,
@@ -265,7 +267,7 @@ CatalystX::Usul::Time - Class methods for date and time manipulation
 
 =head1 Version
 
-$Revision: 1165 $
+$Revision: 1181 $
 
 =head1 Synopsis
 

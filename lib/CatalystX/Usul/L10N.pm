@@ -1,16 +1,16 @@
-# @(#)$Id: L10N.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: L10N.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::L10N;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 use Moose;
 use Class::Null;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(assert is_arrayref);
-use File::DataClass::Constraints;
+use CatalystX::Usul::Functions   qw(assert is_arrayref);
+use File::DataClass::Constraints qw(Directory Lock Path);
 use File::Gettext::Constants;
 use File::Gettext;
 use File::Spec;
@@ -25,16 +25,16 @@ has 'domain_attributes' => is => 'ro', isa => 'HashRef',
 has 'domain_names'      => is => 'ro', isa => 'ArrayRef[Str]',
    default              => sub { [ q(messages) ] };
 
-has 'localedir'         => is => 'ro', isa => 'F_DC_Path',
+has 'localedir'         => is => 'ro', isa => Path,
    default              => sub { DIRECTORIES->[ 0 ] }, coerce => TRUE;
 
-has 'lock'              => is => 'ro', isa => 'F_DC_Lock',
+has 'lock'              => is => 'ro', isa => Lock,
    default              => sub { Class::Null->new };
 
 has 'log'               => is => 'ro', isa => 'Object',
    default              => sub { Class::Null->new };
 
-has 'tempdir'           => is => 'ro', isa => 'F_DC_Directory',
+has 'tempdir'           => is => 'ro', isa => Directory,
    default              => File::Spec->tmpdir, coerce => TRUE;
 
 has 'use_country'       => is => 'ro', isa => 'Bool',
@@ -165,7 +165,7 @@ CatalystX::Usul::L10N - Localize text strings
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

@@ -1,9 +1,9 @@
-# @(#)$Id: Build.PL 1169 2012-04-04 12:03:26Z pjf $
+# @(#)$Id: Build.PL 1181 2012-04-17 19:06:07Z pjf $
 
 use strict;
 use warnings;
 use inc::Bob; # Module::Build subclass
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1169 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 Bob->new( {
    stop_tests => 1,
@@ -51,7 +51,7 @@ Bob->new( {
       'Encode'                                     => 2.12,
       'Encode::Guess'                              => 2.00,
       'Exception::Class'                           => 1.23,
-      'File::DataClass'                            => q(0.8.0),
+      'File::DataClass'                            => q(0.9.0),
       'File::Find'                                 => 1.10,
       'File::HomeDir'                              => 0.89,
       'File::Path'                                 => 2.07,
@@ -63,7 +63,6 @@ Bob->new( {
       'HTML::FillInForm'                           => 2.00,
       'HTML::FormWidgets'                          => q(0.12.0),
       'HTTP::Date'                                 => 5.831,
-      'HTTP::DetectUserAgent'                      => 0.02,
       'HTTP::Headers::Util'                        => 1.13,
       'Imager'                                     => 0.65,
       'IO::Dir'                                    => 1.06,
@@ -72,7 +71,6 @@ Bob->new( {
       'IPC::Cmd'                                   => 0.42,
       'IPC::Open3'                                 => 1.02,
       'IPC::SRLock'                                => q(0.7.0),
-      'IPC::SysV'                                  => 1.04,
       'JSON'                                       => 2.12,
       'Lingua::EN::NameParse'                      => 1.24,
       'Log::Handler'                               => 0.63,
@@ -89,6 +87,7 @@ Bob->new( {
       'MooseX::Role::WithOverloading'              => 0.08,
       'MooseX::Traits::Pluggable'                  => 0.10,
       'POSIX'                                      => 1.09,
+      'Parse::HTTP::UserAgent'                     => 0.33,
       'Path::Class'                                => 0.16,
       'Perl::Version'                              => 1.009,
       'Pod::Eventual'                              => 0.093330,

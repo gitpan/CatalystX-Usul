@@ -1,10 +1,10 @@
-# @(#)$Id: Model.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Model.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Model;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Model CatalystX::Usul CatalystX::Usul::Encoding);
 
 use CatalystX::Usul::Constants;
@@ -168,7 +168,7 @@ sub _setup_plugins {
 sub _validator {
    my $self  = shift;
    my $s     = $self->context->stash;
-   my $attrs = { exception   => $self->exception_class,
+   my $attrs = { exception   => EXCEPTION_CLASS,
                  constraints => $s->{constraints} || {},
                  fields      => $s->{fields     } || {},
                  filters     => $s->{filters    } || {} };
@@ -188,7 +188,7 @@ CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

@@ -1,8 +1,8 @@
-# @(#)$Id: 23time.t 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: 23time.t 1181 2012-04-17 19:06:07Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -19,6 +19,11 @@ BEGIN {
    $current and $current->notes->{stop_tests}
             and plan skip_all => $current->notes->{stop_tests};
 }
+
+use Math::BigInt;
+
+Math::BigInt->config()->{lib} eq q(Math::BigInt::GMP)
+   and plan skip_all => 'Math::BigInt::GMP installed RT#33816';
 
 use CatalystX::Usul::Time qw(str2date_time str2time time2str);
 

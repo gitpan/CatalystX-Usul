@@ -1,10 +1,10 @@
-# @(#)$Id: Functions.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Functions.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Functions;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use Data::Printer alias => q(Dumper), colored => 1, indent => 3;
@@ -15,16 +15,19 @@ use List::Util    qw(first);
 use Path::Class::Dir;
 use Scalar::Util  qw(openhandle);
 
+require Cwd;
+
 my @_functions;
 
 BEGIN {
-   @_functions = ( qw(app_prefix arg_list class2appdir create_token
-                      data_dumper distname elapsed env_prefix escape_TT
-                      exception fold home2appl is_arrayref is_hashref
-                      is_member merge_attributes my_prefix product say
-                      split_on__ squeeze strip_leader sub_name sum throw
-                      trim unescape_TT untaint_identifier untaint_path
-                      untaint_string) );
+   @_functions = ( qw(app_prefix arg_list assert_directory
+                      class2appdir create_token data_dumper distname
+                      elapsed env_prefix escape_TT exception fold
+                      home2appl is_arrayref is_hashref is_member
+                      merge_attributes my_prefix product say
+                      split_on__ squeeze strip_leader sub_name sum
+                      throw trim unescape_TT untaint_identifier
+                      untaint_path untaint_string) );
 }
 
 use Sub::Exporter -setup => {
@@ -40,6 +43,12 @@ sub arg_list (;@) {
    return $_[ 0 ] && ref $_[ 0 ] eq q(HASH) ? { %{ $_[ 0 ] } }
         : $_[ 0 ]                           ? { @_ }
                                             : {};
+}
+
+sub assert_directory ($) {
+   my $y = shift; ($y and $y = Cwd::abs_path( untaint_path( $y ))) or return;
+
+   return -d $y ? $y : undef;
 }
 
 sub class2appdir ($) {
@@ -239,7 +248,7 @@ CatalystX::Usul::Functions - Globally accesible functions
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 
@@ -276,6 +285,13 @@ By default does nothing. Does not evaluate the passed parameters. The
 L<assert constant|CatalystX::Usul::Constants/ASSERT> can be set via
 an inherited class attribute to do something useful with whatever parameters
 are passed to it
+
+=head2 assert_directory
+
+   $untained_path = assert_directory $path_to_directory;
+
+Untaints directory path. Makes it an absolute path and returns it if it
+exists. Returns undef otherwise
 
 =head2 class2appdir
 

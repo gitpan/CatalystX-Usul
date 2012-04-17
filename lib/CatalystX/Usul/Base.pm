@@ -1,10 +1,10 @@
-# @(#)$Id: Base.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Base.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Base;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(Class::Accessor::Grouped);
 
 use CatalystX::Usul::Constants;
@@ -34,10 +34,6 @@ sub ensure_class_loaded {
    return TRUE;
 }
 
-sub exception_class {
-   return EXCEPTION_CLASS;
-}
-
 sub mk_accessors {
    return shift->mk_group_accessors( q(simple), @_ );
 }
@@ -54,7 +50,7 @@ CatalystX::Usul::Base - Base class utility methods
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 
@@ -84,13 +80,6 @@ for inspection
    $self->ensure_class_loaded( $some_class );
 
 Require the requested class, throw an error if it doesn't load
-
-=head2 exception_class
-
-   $self->exception_class;
-
-Return the exception class used to throw errors. Wraps the constant
-C<EXCEPTION_CLASS> in a method so we can use it for inversion of control
 
 =head2 mk_accessors
 

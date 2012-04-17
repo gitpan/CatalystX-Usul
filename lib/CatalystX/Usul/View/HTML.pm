@@ -1,10 +1,10 @@
-# @(#)$Id: HTML.pm 1166 2012-04-03 12:37:30Z pjf $
+# @(#)$Id: HTML.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::View::HTML;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1166 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(Catalyst::View::TT CatalystX::Usul::View);
 
 use CatalystX::Usul::Constants;
@@ -305,7 +305,7 @@ CatalystX::Usul::View::HTML - Render a page of HTML or XHTML
 
 =head1 Version
 
-0.6.$Revision: 1166 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

@@ -1,16 +1,16 @@
-# @(#)$Id: Programs.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Programs.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Programs;
 
 use strict;
 use warnings;
 use attributes ();
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul CatalystX::Usul::IPC);
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(app_prefix class2appdir elapsed
-    env_prefix exception is_arrayref is_member say split_on__ throw
+use CatalystX::Usul::Functions qw(app_prefix assert_directory class2appdir
+    elapsed env_prefix exception is_arrayref is_member say split_on__ throw
     untaint_identifier untaint_path);
 use CatalystX::Usul::InflateSymbols;
 use Class::Inspector;
@@ -113,8 +113,7 @@ sub BUILD {
    $self->_set_attr( q(L), q(language) );
    $self->_set_attr( q(q), q(quiet)    );
 
-   $self->build_attributes( [ qw(log) ] );
-   $self->build_attributes( [ qw(debug lock l10n os) ], TRUE );
+   $self->build_attributes( [ qw(log debug lock l10n os) ], TRUE );
 
    return;
 }
@@ -496,14 +495,6 @@ sub yorn {
 
 # Private methods
 
-sub _assert_directory {
-   my ($self, $path) = @_; $path or return;
-
-   $path = Cwd::abs_path( untaint_path $path ) or return;
-
-   return -d $path ? $path : undef;
-}
-
 sub _build_debug {
    my $self = shift; my $args = $self->args || {};
 
@@ -580,11 +571,11 @@ sub _get_homedir {
    my ($self, $class, $path) = @_; my $cfg = \%CONFIG;
 
    # 0. Pass the directory in
-   $path = $self->_assert_directory( $path ) and return $path;
+   $path = assert_directory $path and return $path;
 
    # 1. Environment variable
    $path = $ENV{ (env_prefix $class).q(_HOME) };
-   $path = $self->_assert_directory( $path ) and return $path;
+   $path = assert_directory $path and return $path;
 
    # 2a. Users home directory - application directory
    my $appdir   = class2appdir $class;
@@ -592,24 +583,24 @@ sub _get_homedir {
 
    $path = $self->catdir( File::HomeDir->my_home, $appdir );
    $path = $self->catdir( $path, qw(default lib), $classdir );
-   $path = $self->_assert_directory( $path ) and return $path;
+   $path = assert_directory $path and return $path;
 
    # 2b. Users home directory - dotfile
    $path = $self->catdir( File::HomeDir->my_home, q(.).$appdir );
    $path = $self->catdir( $path, q(lib), $classdir );
-   $path = $self->_assert_directory( $path ) and return $path;
+   $path = assert_directory $path and return $path;
 
    # 3. Well known path
    my $well_known = $self->catfile( @{ $cfg->{well_known} }, $appdir );
 
    $path = $self->_read_appldir_from( $well_known );
    $path and $path = $self->catdir( $path, q(lib), $classdir );
-   $path = $self->_assert_directory( $path ) and return $path;
+   $path = assert_directory $path and return $path;
 
    # 4. Default install prefix
    $path = $self->catdir( @{ $cfg->{path_prefix} }, $appdir );
    $path = $self->catdir( $path, qw(default lib), $classdir );
-   $path = $self->_assert_directory( $path ) and return $path;
+   $path = assert_directory $path and return $path;
 
    # 5. Config file found in @INC
    my $file = app_prefix $class;
@@ -789,7 +780,7 @@ sub _usage_for {
    return FAILED;
 }
 
-# Private subroutines
+# Private functions
 
 sub __dont_ask {
    return exists $_[ 0 ]->{n} || exists $_[ 0 ]->{h} || exists $_[ 0 ]->{H}
@@ -837,7 +828,7 @@ CatalystX::Usul::Programs - Provide support for command line programs
 
 =head1 Version
 
-This document describes CatalystX::Usul::Programs version 0.6.$Revision: 1165 $
+This document describes CatalystX::Usul::Programs version 0.7.$Revision: 1181 $
 
 =head1 Synopsis
 
@@ -1134,8 +1125,6 @@ argument is C<0|1>. If C<$quit> is true then the option to quit is
 included in the prompt. If the C<$width> argument is defined then the
 string is formatted to the specified width which is C<$width> or
 C<< $self->pwdith >> or 40
-
-=head2 _assert_directory
 
 =head2 _build_debug
 

@@ -1,19 +1,19 @@
-# @(#)$Id: Controller.pm 1166 2012-04-03 12:37:30Z pjf $
+# @(#)$Id: Controller.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Controller;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1166 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Controller CatalystX::Usul);
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions
    qw(app_prefix arg_list exception is_arrayref throw);
-use HTTP::DetectUserAgent;
 use HTTP::Headers::Util qw(split_header_words);
 use List::Util qw(first);
 use MRO::Compat;
+use Parse::HTTP::UserAgent;
 use Scalar::Util qw(blessed);
 use TryCatch;
 
@@ -126,12 +126,12 @@ sub begin {
    $s->{application} = q(unknown) unless ($s->{application});
    $s->{class      } = $self->prefix;
    $s->{dhtml      } = TRUE;
-   $s->{domain     } = $req->uri->host;
+   $s->{domain     } = __get_req_domain( $req->uri->host );
    $s->{encoding   } = $self->encoding;
    $s->{fonts      } = [ split SPC, $cfg->{fonts} || NUL ];
    $s->{hidden     } = {};
    $s->{host_port  } = $req->uri->host_port;
-   $s->{host       } = (split m{ \. }mx, ucfirst $s->{domain})[ 0 ];
+   $s->{host       } = (split m{ \. }mx, ucfirst $req->uri->host)[ 0 ];
    $s->{is_popup   } = q(false);
    $s->{is_xml     } = TRUE if ($s->{content_type} =~ m{ xml }mx);
    $s->{literal_js } = [];
@@ -273,9 +273,10 @@ sub user_agent_ok {
    $cfg->{misery_page} or $cfg->{misery_skin} or return TRUE;
 
    my $header = $c->req->headers->{ q(user-agent) } || NUL;
-   my $ua     = $s->{user_agent} = HTTP::DetectUserAgent->new( $header );
+   my $ua     = $s->{user_agent}
+              = Parse::HTTP::UserAgent->new( $header, { extended => 0 } );
 
-   (not $ua->vendor or $ua->vendor ne EVIL_EMPIRE) and return TRUE;
+   (not $ua->name or $ua->name ne EVIL_EMPIRE) and return TRUE;
 
    if ($cfg->{misery_skin}) {
       $s->{skin  } = $cfg->{misery_skin};
@@ -474,6 +475,14 @@ sub __get_language {
    return $lang || $cfg->{language} || LANG;
 }
 
+sub __get_req_domain {
+   my $host = shift; my @parts = split m{ [\.] }mx, $host;
+
+   shift @parts; my $domain = join q(.), @parts;
+
+   return $domain ? q(.).$domain : NUL;
+}
+
 sub __is_language {
    # Is this one if the languages the application supports
    my ($candidate, $languages) = @_;
@@ -543,7 +552,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version 0.6.$Rev: 1166 $
+This document describes CatalystX::Usul::Controller version 0.7.$Rev: 1181 $
 
 =head1 Synopsis
 

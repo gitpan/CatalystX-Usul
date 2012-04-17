@@ -1,10 +1,10 @@
-# @(#)$Id: UnixAdmin.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: UnixAdmin.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Users::UnixAdmin;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul::Users::Unix);
 
 use CatalystX::Usul::Constants;
@@ -12,7 +12,7 @@ use CatalystX::Usul::Functions qw(throw);
 use CatalystX::Usul::Time;
 use English qw(-no_match_vars);
 use File::Copy;
-use File::Path;
+use File::Path qw(remove_tree);
 use TryCatch;
 
 # Called from suid wrapper program
@@ -73,7 +73,8 @@ sub delete_account {
 
    my $user_obj = $self->assert_user( $user );
 
-   $home_dir = $user_obj->homedir and -d $home_dir and rmtree( $home_dir, {} );
+   $home_dir = $user_obj->homedir and -d $home_dir
+      and remove_tree( $home_dir, {} );
 
    my @roles = $self->roles->get_roles( $user ); shift @roles;
 
@@ -430,7 +431,7 @@ CatalystX::Usul::Users::UnixAdmin - Set uid root methods for account manipulatio
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

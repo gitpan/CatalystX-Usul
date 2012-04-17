@@ -1,10 +1,10 @@
-# @(#)$Id: TokenValidation.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: TokenValidation.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Plugin::Controller::TokenValidation;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(create_token);
@@ -102,7 +102,7 @@ CatalystX::Usul::Plugin::Controller::TokenValidation - CSRF form tokens
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

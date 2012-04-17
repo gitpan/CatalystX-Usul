@@ -1,20 +1,23 @@
-# @(#)$Id: File.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: File.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::File;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(create_token is_arrayref throw);
 use English qw(-no_match_vars);
+use File::DataClass::Constants ();
 use File::DataClass::IO ();
 use File::DataClass::Schema;
 use File::Spec;
 use Scalar::Util qw(blessed);
 
 # requires qw(tempdir);
+
+File::DataClass::Constants->Exception_Class( EXCEPTION_CLASS );
 
 sub abs_path {
    my ($self, $base, $path) = @_; $base ||= NUL; $path or return NUL;
@@ -76,9 +79,7 @@ sub find_source {
 }
 
 sub io {
-   my ($self, @rest) = @_; my $io = File::DataClass::IO->new( @rest );
-
-   $io->exception_class( EXCEPTION_CLASS ); return $io;
+   my $self = shift; return File::DataClass::IO->new( @_ );
 }
 
 sub status_for {
@@ -132,7 +133,7 @@ CatalystX::Usul::File - File and directory IO base class
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 
@@ -203,7 +204,7 @@ Returns the L<directory name|File::Basename/dirname> of the passed path
    $f_dc_schema_obj = $self->file_dataclass_schema( $attrs );
 
 Returns a L<File::DataClass::Schema> object. Object uses our
-C<exception_class>, no caching and no locking
+C<EXCEPTION_CLASS>, no caching and no locking
 
 =head2 find_source
 

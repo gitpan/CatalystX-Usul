@@ -1,10 +1,10 @@
-# @(#)$Id: Constants.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Constants.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Constants;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent  qw(Class::Accessor::Grouped);
 
 my @_constants;
@@ -90,7 +90,7 @@ sub EVIL () {
 }
 
 sub EVIL_EMPIRE () {
-   return q(Microsoft);
+   return q(MSIE);
 }
 
 sub EXCEPTION_CLASS () {
@@ -210,7 +210,7 @@ CatalystX::Usul::Constants - Definitions of constant values
 
 =head1 Version
 
-0.6.$Rev: 1165 $
+0.7.$Rev: 1181 $
 
 =head1 Synopsis
 

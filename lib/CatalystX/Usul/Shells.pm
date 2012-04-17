@@ -1,10 +1,10 @@
-# @(#)$Id: Shells.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Shells.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Shells;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(CatalystX::Usul);
 
 __PACKAGE__->mk_accessors( qw(default path shells) );
@@ -42,7 +42,7 @@ CatalystX::Usul::Shells - Access the available shells list
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

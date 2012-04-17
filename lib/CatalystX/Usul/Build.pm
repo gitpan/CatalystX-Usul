@@ -1,10 +1,10 @@
-# @(#)$Id: Build.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Build.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Build;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(Module::Build);
 use lib;
 
@@ -1357,7 +1357,7 @@ CatalystX::Usul::Build - M::B subclass
 
 =head1 Version
 
-This document describes CatalystX::Usul::Build version 0.6.$Revision: 1165 $
+This document describes CatalystX::Usul::Build version 0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

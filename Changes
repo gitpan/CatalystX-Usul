@@ -1,9 +1,22 @@
 Revision history for CatalystX::Usul
 
+0.7.1181 2012-04-17
+         - F::DC::Constraints now using MX::Types. Updated CX::U:L10N
+         - Eliminated exception_class method from CX::U::Base
+         - CX::U::File now sets F::DC exception class via class method
+         - Updated inc::Bob to 1.3
+         - Removed IPC::SysV from Build.PL as it's unused
+         - Changed domain name of cookies in CX::U::Controller since
+           Firefox adds a leading dot
+         - Moved assert_directory from CX::U::Programs to CX::U::Functions
+         - Reduced POSIX imports in CX::U::IPC to WIFEXITED and WNOHANG
+         - Swapped HTTP::DetectUserAgent for Parse::HTTP::UserAgent
+
 0.6.1168 2012-04-04
          - Turning CPAN testing off because
            08289c92-7e3f-11e1-9d6f-f6dbfa7543f5. Thats 24hrs after peregrins
-           fuck up and smokers are still reporting bollocks
+           Crixa upload and smokers are still failing because cpanmetadb has
+           Sort::Naturally as not found
 
 0.6.1168 2012-04-04
          - Fixed undefined warnings in Controller, View::HTML

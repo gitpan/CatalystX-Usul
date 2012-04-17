@@ -1,10 +1,10 @@
-# @(#)$Id: Action.pm 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: Action.pm 1181 2012-04-17 19:06:07Z pjf $
 
 package CatalystX::Usul::Action;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use parent qw(Catalyst::Action);
 
 use MRO::Compat;
@@ -109,7 +109,7 @@ sub _error {
       for my $e (@{ $c->error }) {
          my $class = blessed $e || NUL;
 
-         if ($class and $e->isa( $controller->exception_class )) {
+         if ($class and $e->isa( EXCEPTION_CLASS )) {
             $s->{debug} and $s->{stacktrace} .= $class."\n".$e->stacktrace."\n";
          }
 
@@ -232,7 +232,7 @@ CatalystX::Usul::Action - A generic action class
 
 =head1 Version
 
-0.6.$Revision: 1165 $
+0.7.$Revision: 1181 $
 
 =head1 Synopsis
 

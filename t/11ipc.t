@@ -1,8 +1,8 @@
-# @(#)$Id: 11ipc.t 1165 2012-04-03 10:40:39Z pjf $
+# @(#)$Id: 11ipc.t 1181 2012-04-17 19:06:07Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.6.%d', q$Rev: 1165 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
 use File::Spec::Functions qw( catdir catfile tmpdir updir );
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -19,7 +19,8 @@ BEGIN {
             and plan skip_all => $current->notes->{stop_tests};
 }
 
-use_ok q(CatalystX::Usul::Programs);
+use CatalystX::Usul::Programs;
+use CatalystX::Usul::Constants qw(EXCEPTION_CLASS);
 
 {  package Logger;
 
@@ -44,7 +45,7 @@ my $prog = CatalystX::Usul::Programs->new( {
    n       => 1, } );
 my $cmd  = "${perl} -e 'print \"Hello World\"'";
 
-ok $prog->run_cmd( $cmd )->out eq q(Hello World), 'run_cmd system';
+is $prog->run_cmd( $cmd )->out, q(Hello World), 'run_cmd system';
 
 $cmd = "${perl} -e 'exit 1'";
 
@@ -52,13 +53,13 @@ eval { $prog->run_cmd( $cmd ) }; my $error = $EVAL_ERROR;
 
 ok $error, 'run_cmd system unexpected rv';
 
-ok ref $error eq $prog->exception_class, 'exception is right class';
+is ref $error, EXCEPTION_CLASS, 'exception is right class';
 
 ok $prog->run_cmd( $cmd, { expected_rv => 1 } ), 'run_cmd system expected rv';
 
 $cmd = [ $perl, '-e', 'print "Hello World"' ];
 
-ok $prog->run_cmd( $cmd )->out eq "Hello World", 'run_cmd IPC::Run';
+is $prog->run_cmd( $cmd )->out, "Hello World", 'run_cmd IPC::Run';
 
 eval { $prog->run_cmd( [ $perl, '-e', 'exit 1' ] ) };
 
