@@ -1,5 +1,8 @@
 Revision history for CatalystX::Usul
 
+0.7.1184 2012-04-21
+         - Turned CPAN testing on. Sort::Naturally is installing again
+
 0.7.1181 2012-04-17
          - F::DC::Constraints now using MX::Types. Updated CX::U:L10N
          - Eliminated exception_class method from CX::U::Base

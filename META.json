@@ -36,7 +36,7 @@
       },
       "runtime" : {
          "recommends" : {
-            "CPAN" : "1.9205",
+            "App::cpanminus" : "1.4004",
             "Crypt::PassGen" : "0.05",
             "GD::SecurityImage" : "1.7",
             "IPC::Run" : "0.84",
@@ -52,9 +52,9 @@
             "Catalyst::Action::RenderView" : "0.16",
             "Catalyst::Model::DBIC::Schema" : "0.48",
             "Catalyst::Plugin::Authentication" : "0.10016",
-            "Catalyst::Plugin::ConfigComponents" : "v0.5.0",
+            "Catalyst::Plugin::ConfigComponents" : "v0.6.0",
             "Catalyst::Plugin::ConfigLoader" : "0.19",
-            "Catalyst::Plugin::InflateMore" : "v0.3.0",
+            "Catalyst::Plugin::InflateMore" : "v0.4.0",
             "Catalyst::Plugin::Log::Handler" : "0.08",
             "Catalyst::Plugin::Session" : "0.31",
             "Catalyst::Plugin::Session::State::Cookie" : "0.17",
@@ -72,7 +72,7 @@
             "Data::Pageset" : "1.03",
             "Data::Printer" : "0.24",
             "Data::Serializer" : "0.46",
-            "Data::Validation" : "v0.6.0",
+            "Data::Validation" : "v0.7.0",
             "Date::Format" : "2.22",
             "DateTime::Format::Epoch" : "0.11",
             "Digest::SHA1" : "2.11",
@@ -91,7 +91,7 @@
             "Getopt::Mixed" : "1.008",
             "Git::Class" : "0.03",
             "HTML::FillInForm" : "2",
-            "HTML::FormWidgets" : "v0.12.0",
+            "HTML::FormWidgets" : "v0.13.0",
             "HTTP::Date" : "5.831",
             "HTTP::Headers::Util" : "1.13",
             "Hash::Merge" : "0.08",
@@ -150,7 +150,7 @@
    "provides" : {
       "CatalystX::Usul" : {
          "file" : "lib/CatalystX/Usul.pm",
-         "version" : "v0.7.1181"
+         "version" : "v0.7.1184"
       },
       "CatalystX::Usul::Action" : {
          "file" : "lib/CatalystX/Usul/Action.pm",
@@ -503,5 +503,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.7.1181"
+   "version" : "0.7.1184"
 }

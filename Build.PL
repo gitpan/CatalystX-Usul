@@ -1,12 +1,11 @@
-# @(#)$Id: Build.PL 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Build.PL 1184 2012-04-21 17:55:27Z pjf $
 
 use strict;
 use warnings;
 use inc::Bob; # Module::Build subclass
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1184 $ =~ /\d+/gmx );
 
 Bob->new( {
-   stop_tests => 1,
    module     => q(CatalystX::Usul),
    home_page  => q(http://www.roxsoft.co.uk),
    requires   => {
@@ -21,9 +20,9 @@ Bob->new( {
       'Catalyst::Action::RenderView'               => 0.16,
       'Catalyst::Model::DBIC::Schema'              => 0.48,
       'Catalyst::Plugin::Authentication'           => 0.10016,
-      'Catalyst::Plugin::ConfigComponents'         => q(0.5.0),
+      'Catalyst::Plugin::ConfigComponents'         => q(0.6.0),
       'Catalyst::Plugin::ConfigLoader'             => 0.19,
-      'Catalyst::Plugin::InflateMore'              => q(0.3.0),
+      'Catalyst::Plugin::InflateMore'              => q(0.4.0),
       'Catalyst::Plugin::Log::Handler'             => 0.08,
       'Catalyst::Plugin::Session'                  => 0.31,
       'Catalyst::Plugin::Session::State::Cookie'   => 0.17,
@@ -40,7 +39,7 @@ Bob->new( {
       'Data::Pageset'                              => 1.03,
       'Data::Printer'                              => 0.24,
       'Data::Serializer'                           => 0.46,
-      'Data::Validation'                           => q(0.6.0),
+      'Data::Validation'                           => q(0.7.0),
       'Date::Format'                               => 2.22,
       'DateTime::Format::Epoch'                    => 0.11,
       'DBIx::Class'                                => 0.08009,
@@ -61,7 +60,7 @@ Bob->new( {
       'Git::Class'                                 => 0.03,
       'Hash::Merge'                                => 0.08,
       'HTML::FillInForm'                           => 2.00,
-      'HTML::FormWidgets'                          => q(0.12.0),
+      'HTML::FormWidgets'                          => q(0.13.0),
       'HTTP::Date'                                 => 5.831,
       'HTTP::Headers::Util'                        => 1.13,
       'Imager'                                     => 0.65,
@@ -110,7 +109,7 @@ Bob->new( {
       'YAML::Syck'                                 => 1.05, },
    recommends                   => {
       'local::lib'              => 1.008004,
-      'CPAN'                    => 1.9205,
+      'App::cpanminus'          => 1.4004,
       'Crypt::PassGen'          => 0.05,
       'GD::SecurityImage'       => 1.70,
       'IPC::Run'                => 0.84,
