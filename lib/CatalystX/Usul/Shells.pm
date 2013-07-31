@@ -1,34 +1,43 @@
-# @(#)$Id: Shells.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Shells.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Shells;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-__PACKAGE__->mk_accessors( qw(default path shells) );
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Constraints qw(File);
+use File::Spec::Functions        qw(catfile);
 
-sub new {
-   my ($class, $app, $attrs) = @_;
+has 'default' => is => 'ro', isa => File, coerce => TRUE,
+   lazy       => TRUE,   builder => '_build_default';
 
-   $attrs->{default} ||= q(/bin/ksh);
-   $attrs->{path   } ||= q(/etc/shells);
+has 'path'    => is => 'ro', isa => File, coerce => TRUE,
+   default    => sub { [ NUL, qw(etc shells) ] };
 
-   return $class->next::method( $app, $attrs );
+has 'shells'  => is => 'ro', isa => ArrayRef, builder => '_build_shells',
+   lazy       => TRUE;
+
+sub _build_default {
+   my $file = $ENV{SHELL}; -f $file and return $file;
+
+   $file = catfile( NUL, qw(bin ksh) ); -f $file and return $file;
+
+   $file = catfile( NUL, qw(bin bash) ); -f $file and return $file;
+
+   return catfile( NUL, qw(bin sh) );
 }
 
-sub retrieve {
+sub _build_shells {
    my $self = shift;
-   my $new  = bless { default => $self->default }, ref $self || $self;
 
-   $new->shells
-      ( [ q(/bin/false),
-          sort grep { $_ and '#' ne substr $_, 0, 1 and not m{ false }mx }
-          $self->io( $self->path )->chomp->getlines ] );
-
-   return $new;
+   return [ catfile( NUL, qw(bin false) ),
+            sort grep { $_ and '#' ne substr $_, 0, 1 and not m{ false }mx }
+            $self->path->chomp->getlines ]
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -42,33 +51,46 @@ CatalystX::Usul::Shells - Access the available shells list
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::Shells
 
-   $model  = CatalystX::Usul::Shells->new( $attrs, $app );
-   $shells = $model->retrieve;
+   $shells_object  = CatalystX::Usul::Shells->new( $attrs );
 
 =head1 Description
 
+Provides access to the operating systems list of available shells. Used by
+the user object for account creation
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item default
+
+File path which defaults to the first available from; the
+environment variable I<SHELL>, F</bin/ksh>, F</bin/bash>, or F</bin/sh>
+
+=item path
+
+File path which defaults to F</etc/shells>
+
+=item shells
+
+Array ref of shells defined in F</etc/shells>, sorted with F</bin/false>
+return first
+
+=back
+
 =head1 Subroutines/Methods
-
-=head2 new
-
-Constructor
-
-=head2 retrieve
-
-Returns the list of available shells by reading the contents of
-F</etc/shells>. Adds I</bin/false> if it is not present
-
-=head1 Diagnostics
 
 None
 
-=head1 Configuration and Environment
+=head1 Diagnostics
 
 None
 
@@ -76,7 +98,9 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul>
+=item L<CatalystX::Usul::Moose>
+
+=item L<CatalystX::Usul::Constraints>
 
 =back
 
@@ -96,7 +120,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

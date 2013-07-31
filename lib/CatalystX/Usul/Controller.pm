@@ -1,65 +1,64 @@
-# @(#)$Id: Controller.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Controller.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Controller;
 
-use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(Catalyst::Controller CatalystX::Usul);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use Class::Null;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions
-   qw(app_prefix arg_list exception is_arrayref throw);
-use HTTP::Headers::Util qw(split_header_words);
-use List::Util qw(first);
-use MRO::Compat;
-use Parse::HTTP::UserAgent;
-use Scalar::Util qw(blessed);
+use CatalystX::Usul::Functions qw( exception is_arrayref is_hashref throw );
+use CatalystX::Usul::Moose;
+use HTTP::Headers::Util        qw( split_header_words );
+use List::Util                 qw( first );
 use TryCatch;
 
-__PACKAGE__->config( action_source    => q(action),
-                     config_class     => q(Config),
-                     fs_class         => q(FileSystem),
-                     global_class     => q(Config::Globals),
-                     help_class       => q(Help),
-                     model_base_class => q(Base),
-                     nav_class        => q(Navigation),
-                     realm_class      => q(IdentitySimple), );
+extends q(Catalyst::Controller);
+with    q(CatalystX::Usul::TraitFor::BuildingUsul);
+with    q(CatalystX::Usul::TraitFor::Controller::Cookies);
+with    q(CatalystX::Usul::TraitFor::Controller::TokenValidation);
 
-__PACKAGE__->mk_accessors( qw(action_source config_class fs_class
-                              global_class help_class model_base_class
-                              nav_class realm_class) );
+has 'action_source'    => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(action);
 
-sub COMPONENT {
-   my ($class, $app, $config) = @_; __setup_plugins( $app );
+has 'config_class'     => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(Config);
 
-   my $new  = $class->next::method( $app, $config );
-   my $usul = CatalystX::Usul->new( $app, {} );
+has 'fs_class'         => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(FileSystem);
 
-   for (grep { not defined $new->{ $_ } } keys %{ $usul }) {
-      $new->{ $_ } = $usul->{ $_ };
-   }
+has 'global_class'     => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(Config::Globals);
 
-   return $new;
-}
+has 'help_class'       => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(Help);
 
-sub auto {
-   # Allow access to authorised users. Redirect the unwanted elsewhere
-   my ($self, $c) = @_; my $s = $c->stash;
+has 'nav_class'        => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(Navigation);
+
+has 'realm_class'      => is => 'ro',   isa => NonEmptySimpleStr,
+   default             => q(UsersSimple);
+
+has 'user_agent_class' => is => 'lazy', isa => LoadableClass, coerce => TRUE,
+   default             => sub { 'Parse::HTTP::UserAgent' };
+
+has 'usul'             => is => 'lazy', isa => BaseClass,
+   handles             => [ qw(debug encoding log prefix salt) ];
+
+sub auto { # Allow access to authorised users. Redirect the unwanted elsewhere
+   my ($self, $c) = @_; my $s = $c->stash; my $name;
 
    # Select the action to authenticate
-   my $name = $c->action->name || q(unknown);
-
+   $self->_stash_action_info( $c, $name = $c->action->name || q(unknown) );
    # Redirects are open to anyone always
    $name =~ m{ \A redirect_to }mx and return TRUE;
    # Browser dependant content
-   $self->user_agent_ok( $c ) or return FALSE;
+   $self->_is_user_agent_ok( $c ) or return FALSE;
    # Handle closing of the application by administrators
    __want_app_closed( $c ) and return TRUE;
-   $s->{app_closed} and $self->redirect_to_page( $c, q(app_closed) );
+   $s->{app_closed} and $self->_redirect_to_page( $c, q(app_closed) );
    # Administrators can close individual actions
-   $self->_action_state_ok( $c, $name )
-      or $self->redirect_to_page( $c, q(action_closed) );
+   $self->_is_action_state_ok( $c )
+      or $self->_redirect_to_page( $c, q(action_closed) );
    # Actions with the Public attribute are open to anyone
    exists $c->action->attributes->{Public} and return TRUE;
 
@@ -77,99 +76,55 @@ sub auto {
 
    if ($rv == ACCESS_UNKNOWN_USER) {
       # Force the user to authenticate. Save wanted action in session store
-      $c->can( q(session) ) and $c->session->{wanted} = $c->action->reverse;
-      $self->redirect_to_page( $c, q(authenticate), { no_action_args => TRUE });
+      $s->{session}->{wanted} = $c->action->reverse;
+      $self->_redirect_to_page( $c, q(authenticate),
+                                { no_action_args => TRUE } );
    }
 
    # Access denied, user not authorised
-   $rv == ACCESS_DENIED and $self->redirect_to_page( $c, q(access_denied) );
+   $rv == ACCESS_DENIED and $self->_redirect_to_page( $c, q(access_denied) );
 
    return FALSE;
 }
 
 sub begin {
-   my ($self, $c, @rest) = @_; my $req = $c->req; my $s = $c->stash; my $cfg;
+   my ($self, $c) = @_; my $s = $c->stash; my $req = $c->req;
 
-   # No configuration game over. Implies we didn't parse homedir/appname.xml
-   unless ($cfg = $c->config and $cfg->{has_loaded}) {
-      $s->{leader} = blessed $self;
-      $self->log_fatal_message( 'No configuration file loaded', $s );
-      return;
-   }
+   my $cfg = $c->config; my $ns = $c->action->namespace || NUL;
 
+   $c->stash( leader => blessed $self );
+   # No configuration game over. Implies we didn't parse homedir/appname.json
+   ($cfg and $cfg->{has_loaded}) or $self->_throw_up_and_die( $c, $s );
+   # Stash the session to reduce can session calls
    # Stash the content type from the request. Default from config
-   $s->{content_type} = __preferred_content_type( $c );
+   $c->stash( session      => $c->can( q(session) ) ? $c->session : {},
+              content_type => __preferred_content_type( $req, $cfg ) );
+   # Redirect after successful model call from a post request
+   $c->stash( redirect_after_execute => TRUE );
    # Select the view from the content type
-   $s->{current_view} = $cfg->{content_map}->{ $s->{content_type} };
+   $c->stash( current_view => $cfg->{content_map}->{ $s->{content_type} } );
    # Derive the verb from the request. View dependant
-   $s->{verb} = $c->view( $s->{current_view } )->get_verb( $c );
-   # Deserialize the request if necessary
-   $s->{data} = __deserialize( $c );
-   # Recover the user identity from the session store
-   $self->_stash_user_attributes( $c );
+   $c->stash( verb => $c->view( $s->{current_view } )->get_verb( $c ) );
    # Recover attributes from cookies set by Javascript in the browser
-   $self->_stash_browser_state( $c );
-   # Set the language to sane supported value
-   $s->{lang} = __get_language( $c );
+   $c->stash( $self->get_browser_state( $c, $cfg ) );
    # Debug output mimics system debug but turned on within the application
-   $s->{debug} and not $c->debug
-               and $self->log_debug( $req->method.SPC.$req->path );
-   # Load the config files from cache
-   my $model; $model = $c->model( $self->config_class )
-      and $model->load_per_request_config;
-
-   my $ns   = $c->action->namespace || NUL;
-   my $name = $c->action->name      || NUL;
-   my $navm = $c->model( $self->nav_class );
-
+   $self->_set_debug_state( $c, $s, $req );
+   # Set the language to sane supported value
+   $c->stash( language => __get_language( $s, $req, $cfg ) );
+   # Recover the user identity from the session store
+   $c->stash( user => $self->_get_user_object( $c, $s, $cfg ) );
+   # Load the per request config files from cache
+   $c->model( $self->config_class )->load_per_request_config( $ns );
    # Stuff some basic information into the stash
-   $s->{application} = q(unknown) unless ($s->{application});
-   $s->{class      } = $self->prefix;
-   $s->{dhtml      } = TRUE;
-   $s->{domain     } = __get_req_domain( $req->uri->host );
-   $s->{encoding   } = $self->encoding;
-   $s->{fonts      } = [ split SPC, $cfg->{fonts} || NUL ];
-   $s->{hidden     } = {};
-   $s->{host_port  } = $req->uri->host_port;
-   $s->{host       } = (split m{ \. }mx, ucfirst $req->uri->host)[ 0 ];
-   $s->{is_popup   } = q(false);
-   $s->{is_xml     } = TRUE if ($s->{content_type} =~ m{ xml }mx);
-   $s->{literal_js } = [];
-   $s->{nav_model  } = $navm;
-   $s->{nbsp       } = NBSP;
-   $s->{ns         } = $ns;
-   $s->{optional_js} = [ split SPC, $cfg->{optional_js} || NUL ];
-   $s->{port       } = $req->uri->port;
-   $s->{page       } = TRUE;
-   $s->{platform   } = $s->{host_port} unless ($s->{platform});
-   $s->{page_title } = $s->{application}.SPC.$s->{platform};
-   $s->{pwidth     } = $cfg->{pwidth} || 40;
-   $s->{root       } = $cfg->{root};
-   $s->{skindir    } = $cfg->{skindir};
-   $s->{title      } = $s->{application}.SPC.(ucfirst $ns);
-   $s->{token      } = $cfg->{token};
-   $s->{version    } = eval { $self->version };
-
-   # Generate and stash some uris
-   my $sep  = SEP;
-   my $hash = HASH_CHAR;
-   my $mark = $ns.$hash.(ucfirst $name);
-   my $skin = $sep.$cfg->{skins}.$sep.$s->{skin};
-   my $path = $ns.$sep.($navm ? $navm->default_action : q(about));
-   my $uri  = $c->uri_for_action( $ns.$sep.$name, $c->req->captures );
-
-   $s->{assets     } = $c->uri_for( $skin ).$sep;
-   $s->{form       } = { action => $uri, name => $name };
-   $s->{help_url   } = $c->uri_for_action( $sep.q(help), $mark );
-   $s->{help_url   } =~ s{ %23 }{$hash}mx;
-   $s->{static     } = $c->uri_for( $sep.q(static) ).$sep;
-   $s->{default_url} = $c->uri_for_action( $path ).$sep;
-   $s->{default_url} =~ s{ ($sep) $sep \z }{$1}mx;
+   $c->stash( $self->_get_basic_info( $c, $s, $req, $cfg, $ns ) );
+   # Generate and stash some common uris
+   $c->stash( $self->_get_common_uris( $c, $s, $req, $cfg, $ns ) );
    return;
 }
 
 sub deny_access {
    # Auto has allowed access to the form. Can deny access to individual actions
+   # Called from the action class for "POST" requests
    my ($self, $c, $action_path) = @_;
 
    my $sep     = SEP; $action_path =~ s{ \A $sep }{}mx;
@@ -180,71 +135,76 @@ sub deny_access {
 
    exists $action->attributes->{Public} and return ACCESS_OK;
 
-   my $model   = $c->stash->{nav_model};
-   my $rv      = $model->access_check( $self->action_source, $action->name );
+   my $navm    = $c->stash->{nav_model};
+   my $rv      = $navm->access_check( $self->action_source, $action->name );
 
    return $rv == ACCESS_NO_UGRPS ? ACCESS_OK : $rv;
 }
 
-sub end {
-   # Last controller method called by Catalyst
-   my ($self, $c) = @_; my $s = $c->stash;
+sub end { # Last controller method called by Catalyst
+   my ($self, $c) = @_; $c->error->[ 0 ] or return $c->forward( q(render) );
 
-   $self->can( q(add_token) ) and $self->add_token( $c );
-   $c->error->[ 0 ] or return $c->forward( q(render) );
-
-   my ($class, $e, $errors); $s->{leader} = blessed $self;
+   my ($class, $e, $errors); my $s = $c->stash; $s->{leader} = blessed $self;
 
    for my $error (grep { defined } @{ $c->error }) {
-      if ($e = $error and $class = blessed $e and $e->can( q(stacktrace) )) {
-         $s->{debug} and $s->{stacktrace} .= $class."\n".$e->stacktrace."\n";
+      if ($e = $error and $class = blessed $e and $e->can( q(args) )) {
+         if ($s->{debug}) {
+            $e->can( q(class) ) and $class = $e->class
+               and $s->{stacktrace} .= "${class}\n";
+            $e->can( q(stacktrace) )
+               and $s->{stacktrace} .= $e->stacktrace."\n";
+         }
       }
       else { $e = exception $error }
 
-      $self->log_error_message( $e, $s );
+      $errors .= $e->can( q(leader) ) ? $e->leader : NUL;
       $errors .= ucfirst $self->loc( $s, $e->error, $e->args )."\n";
+      $self->log->error_message( $s, $e );
    }
 
-   $self->_error_page( $c, $errors ); $c->clear_errors;
+   $c->clear_errors; $self->_error_page( $c, $errors );
 
    return $c->forward( q(render) );
 }
 
-sub error_page {
-   # Log and display a localized error message
-   my ($self, $c, $error, @rest) = @_; my $s = $c->stash;
+sub error_page { # Log and display a localized error message
+   my ($self, $c, $error, @args) = @_; my $s = $c->stash;
 
-   my $args = (is_arrayref $rest[ 0 ]) ? $rest[ 0 ] : [ @rest ];
+   my $args = (is_arrayref $args[ 0 ]) ? $args[ 0 ] : [ @args ];
    my $e    = exception 'error' => $error, 'args' => $args;
 
-   $s->{leader} = blessed $self;
-   $self->log_error_message( $e, $s );
+   $s->{leader} = blessed $self; $self->log->error_message( $s, $e );
    $self->_error_page( $c, $self->loc( $s, $e->error, $e->args ) );
 
    return FALSE; # Must return false for auto
 }
 
-sub redirect_to_page {
-   # Redirects to a private action path via a config attribute
-   my ($self, $c, $page, $opts) = @_; my ($name, $ns);
+sub get_browser_state {
+   # Default key/value pairs overridden by the browser state cookie values
+   my ($self, $c, $cfg) = @_;
 
-   my $path = $c->config->{ $page }
-      or return $self->error_page( $c, 'Page [_1] unknown', $page );
-
-   unless ($opts->{no_action_args}) {
-      $ns = $c->action->namespace; $name = $c->action->name || q(unknown);
-   }
-
-   $self->redirect_to_path( $c, $path, $ns, $name );
-   return;
+   return ( footer  => { state => TRUE },
+            sbstate => FALSE,
+            skin    => $cfg->{default_skin}  || q(default),
+            width   => $cfg->{default_width} || 1024, );
 }
 
-sub redirect_to_path {
-   # Does a response redirect and detach
-   my ($self, $c, $path, @rest) = @_; my $s = $c->stash; my $sep = SEP;
+sub loc { # Localize the key and substitute the placeholder args
+   my ($self, $opts, $key, @args) = @_; my $car = $args[ 0 ];
 
-   my $navm           = $s->{nav_model};
-   my $default_action = $navm ? $navm->default_action : q(about);
+   my $args = (is_hashref $car) ? { %{ $car } }
+            : { params => (is_arrayref $car) ? $car : [ @args ] };
+
+   $args->{domain_names} ||= [ DEFAULT_L10N_DOMAIN, $opts->{ns} ];
+   $args->{locale      } ||= $opts->{language};
+
+   return $self->usul->localize( $key, $args );
+}
+
+sub redirect_to_path { # Does a response redirect and detach
+   my ($self, $c, $path, @args) = @_; my $s = $c->stash;
+
+   my $default_action = __get_default_action( $s ); my $sep = SEP;
 
    # Normalise the path. It must contain a SEP char
    defined $path          or $path  = $sep.$default_action;
@@ -260,21 +220,173 @@ sub redirect_to_path {
    length $ns   or $ns = ($c->action && $c->action->namespace) || ROOT;
    $ns eq ROOT and $ns = $sep; # Expand the root symbol
 
-   defined $rest[ 0 ] or @rest = ();
-   $self->can( q(do_not_add_token) ) and $self->do_not_add_token( $c );
-   $c->res->redirect( $c->uri_for_action( $ns.$sep.$name, @rest ) );
+   defined $args[ 0 ] or @args = ();
+   $c->res->redirect( $c->uri_for_action( $ns.$sep.$name, @args ) );
    $c->detach(); # Never returns
    return;
 }
 
-sub user_agent_ok {
+# Private methods
+
+sub _error_page { # Display a customised error page
+   my ($self, $c, $error) = @_; my $action = $c->action; my $s = $c->stash;
+
+   my $body = "<h1>500 Internal Server Error</h1><pre>${error}\n</pre>";
+
+   $s->{error} = { class => q(banner), content => ucfirst $error, level => 4 };
+
+   $c->res->status( 500 );
+
+   if ($self->can( q(reset_nav_menu) )) {
+      try {
+         $s->{nav_model} ||= $c->model( $self->nav_class );
+
+         $self->reset_nav_menu( $c, q(back) )->clear_form( { force => TRUE } );
+
+         $action->namespace( NUL ); $action->name( q(error) );
+         return;
+      }
+      catch ($e) { $body .= "<pre>${e}</pre>" }
+   }
+
+   $c->res->body( $body );
+   return;
+}
+
+sub _get_basic_info {
+   my ($self, $c, $s, $req, $cfg, $ns) = @_;
+
+   my $req_host = $req->uri->host;
+   my $app      = $s->{application} || q(unknown);
+   my $hostname = (split m{ \. }mx, $req_host)[ 0 ];
+   my $platform = $s->{platform} || $hostname;
+   my $navm     = $c->model( $self->nav_class );
+
+   # TODO: Add some sort of structure to the stash. Move all globals down
+   return ( action_paths => $navm ? $navm->action_paths : {},
+            application  => $app,
+            class        => $self->prefix,
+            dhtml        => TRUE,
+            domain       => __get_request_domain( $req_host ),
+            fonts        => [ split SPC, $cfg->{fonts} || NUL ],
+            hidden       => {},
+            host         => $req_host,
+            host_port    => $req->uri->host_port,
+            hostname     => $hostname,
+            is_popup     => q(false),
+            is_xml       => $s->{content_type} =~ m{ xml }mx ? TRUE : FALSE,
+            literal_js   => [],
+            nav_model    => $navm,
+            nbsp         => NBSP,
+            ns           => $ns,
+            optional_js  => [ split SPC, $cfg->{optional_js} || NUL ],
+            port         => $req->uri->port,
+            page         => TRUE,
+            page_title   => "${app} ${platform}",
+            platform     => $platform,
+            pwidth       => $cfg->{pwidth} || 40,
+            root         => $cfg->{root},
+            skindir      => $cfg->{skindir},
+            title        => $app.SPC.(ucfirst $ns),
+            token        => $cfg->{token},
+            version      => eval { $self->version } || NUL, );
+}
+
+sub _get_common_uris {
+   my ($self, $c, $s, $req, $cfg, $ns) = @_;
+
+   my $sep     =  SEP;
+   my $hash    =  HASH_CHAR;
+   my $name    =  $c->action->name || NUL;
+   my $skin    =  $sep.$cfg->{skins}.$sep.$s->{skin};
+   my $path    =  "${ns}${sep}".__get_default_action( $s );
+   my $base    =  $c->uri_for_action( $path );
+   my $default =  "${base}${sep}"; $default =~ s{ ($sep) $sep \z }{$1}mx;
+   my $comp    =  q(::Controller::).(ucfirst $ns).$hash.(ucfirst $name);
+   my $help    =  $c->uri_for_action( "${sep}help", $cfg->{name}.$comp );
+      $help    =~ s{ %23 }{$hash}mx;
+   my $uri     =  $c->uri_for_action( "${ns}${sep}${name}", $req->captures,
+                                      @{ $req->args } );
+
+   return ( assets        => $c->uri_for( $skin ).$sep,
+            base_url      => $base,
+            canonical_url => $uri,
+            default_url   => $default,
+            form          => { action => $uri, name => $name },
+            help_url      => $help,
+            static        => $c->uri_for( "${sep}static" ).$sep, );
+}
+
+sub _get_unexpired_user {
+   # Set user identity from the session state. Session state will be retained
+   # for ninety days. User lasts for max_sess_time or two hours
+   my ($self, $c, $s) = @_; my $now = time; my ($class, $max, $user);
+
+   $s->{elapsed} = $now - ($s->{session}->{__updated} || $now);
+
+   if ($c->can( q(user) ) and $user = $c->user) {
+      delete $user->{_users};
+
+      if ($max = $user->max_sess_time and $s->{elapsed} > $max) {
+         my $model = $c->model( $class = $self->realm_class )
+            or throw error => 'Class [_1] has no user model',
+                     args  => [ $class ];
+
+         $model->logout( { no_redirect => TRUE,
+                           message     => 'User [_1] session expired',
+                           user        => $user, } );
+         return;
+      }
+      else {
+         $s->{elapsed} > $user->sess_updt_period
+            and $c->session->{__updated} = $now;
+      }
+   }
+
+   return $user;
+}
+
+sub _get_unknown_user {
+   my ($self, $c) = @_; state $cache; $cache and return $cache; my $class;
+
+   my $model = $c->model( $class = $self->realm_class )
+      or throw error => 'Class [_1] has no user model', args => [ $class ];
+   my $user  = $model->find_user( 'unknown' ); $user and delete $user->{_users};
+
+   return $cache = $user;
+}
+
+sub _get_user_object {
+   my ($self, $c, $s, $cfg) = @_; my $user;
+
+   if ($user = $self->_get_unexpired_user( $c, $s )) {
+      my $admin_role = $cfg->{admin_role};
+      # Administrators get access to all controllers and actions
+      $s->{is_administrator} = (first { $_ eq $admin_role } @{ $user->roles })
+                             ? TRUE : FALSE;
+   }
+   else {
+      $user = $self->_get_unknown_user( $c ); $s->{is_administrator} = FALSE;
+   }
+
+   return $user;
+}
+
+sub _is_action_state_ok {
+   my ($self, $c) = @_; my $state = $c->stash->{action_state} // ACTION_OPEN;
+
+   # If the state attribute is > 1 then the action is closed to access
+   return $state > ACTION_HIDDEN ? FALSE : TRUE;
+}
+
+sub _is_user_agent_ok {
    my ($self, $c) = @_; my $cfg = $c->config; my $s = $c->stash;
 
    $cfg->{misery_page} or $cfg->{misery_skin} or return TRUE;
 
-   my $header = $c->req->headers->{ q(user-agent) } || NUL;
+   my $header = $c->req->headers->{ q(user-agent) } || 'Mozilla';
    my $ua     = $s->{user_agent}
-              = Parse::HTTP::UserAgent->new( $header, { extended => 0 } );
+              = $self->user_agent_class->new( $header, { extended => 0 } );
 
    (not $ua->name or $ua->name ne EVIL_EMPIRE) and return TRUE;
 
@@ -288,45 +400,6 @@ sub user_agent_ok {
    return FALSE;
 }
 
-# Private methods
-
-sub _action_state_ok {
-   my ($self, $c, $name) = @_; my $s = $c->stash; my $state = ACTION_OPEN;
-
-   my $action_info = $s->{ $self->action_source } || {}; my $cfg;
-
-   # Lookup config information for this action
-   if (exists $action_info->{ $name } and $cfg = $action_info->{ $name }) {
-      exists $cfg->{state } and $state = $cfg->{state};
-      exists $cfg->{pwidth} and $s->{pwidth} = $cfg->{pwidth};
-      $s->{keywords   } = $self->loc( $s, $name.q(.keywords),
-                                      { no_default => TRUE } );
-      $s->{description} = $self->loc( $s, $name.q(.tip),
-                                      { no_default => TRUE } );
-   }
-
-   # If the state attribute is > 1 then the action is closed to access
-   return $state > ACTION_HIDDEN ? FALSE : TRUE;
-}
-
-sub _error_page {
-   # Display a customised error page
-   my ($self, $c, $error) = @_; my $action = $c->action; my $s = $c->stash;
-
-   $s->{error} = { class => q(banner), content => ucfirst $error, level => 4 };
-
-   try {
-      $self->add_header( $c );
-
-      $self->reset_nav_menu( $c, q(back) )->clear_form( { force => TRUE } );
-
-      $action->namespace( NUL ); $action->name( q(error) );
-   }
-   catch ($e) { $c->res->body( q(<pre>).$error."\n".$e.q(</pre>) ) }
-
-   return;
-}
-
 sub _parse_HasActions_attr { ## no critic
    # Adding the HasActions attribute to a controller action causes our apps
    # action class handler to be called for each request
@@ -335,80 +408,60 @@ sub _parse_HasActions_attr { ## no critic
    return ( q(ActionClass), $c->config->{action_class} );
 }
 
-sub _stash_browser_state {
-   # Extract key/value pairs from the browser state cookie
-   my ($self, $c) = @_; my $cfg = $c->config; my $s = $c->stash;
+sub _redirect_to_page { # Redirects to a private action via a config attribute
+   my ($self, $c, $page, $opts) = @_; my ($name, $ns);
 
-   $s->{cookie_path  } = $cfg->{cookie_path} || SEP;
-   $s->{cookie_prefix} = app_prefix $cfg->{name};
+   my $path = $c->stash->{action_paths}->{ $page }
+      or return $self->error_page( $c, 'Page [_1] unknown', $page );
 
-   # Call the controller plugin if it's loaded
-   my $default_state = { fstate  => TRUE,
-                         sbstate => TRUE,
-                         skin    => $cfg->{default_skin}  || q(default),
-                         width   => $cfg->{default_width} || 1024, };
-   my $cookie_name   = $s->{cookie_prefix}.q(_state);
-   my $browser_state = $self->can( q(get_browser_state) )
-                     ? $self->get_browser_state( $c, $cookie_name ) : {};
-   my $debug         = $s->{is_administrator}
-                     ? $browser_state->{debug} : $c->debug;
+   unless ($opts->{no_action_args}) {
+      $ns = $c->action->namespace; $name = $c->action->name || q(unknown);
+   }
 
-   $c->stash( %{ $default_state }, %{ $browser_state } );
-   $c->stash( debug => $debug );
+   $self->redirect_to_path( $c, $path, $ns, $name );
    return;
 }
 
-sub _stash_user_attributes {
-   # Set user identity from the session state. Session state will be retained
-   # for ninety days. User lasts for max_sess_time or two hours
-   my ($self, $c) = @_; my $s = $c->stash; my $now = time; my $user;
+sub _set_debug_state {
+   my ($self, $c, $s, $req) = @_;
 
-   my $admin_role = $c->config->{admin_role};
-   my $session    = $c->can( q(session) ) ? $c->session : {};
+   my $debug = defined $s->{browser_debug} ? delete $s->{browser_debug}
+                                           : $c->debug;
 
-   $s->{elapsed}  = $now - ($session->{last_visit} || $now);
-   $s->{expires}  = $s->{max_sess_time} || 7_200;
-   $s->{user   }  = NUL;
+   $self->debug( $s->{debug} = $debug );
+   $debug and not $c->debug
+          and $self->log->info( $req->method.SPC.$req->path );
+   return;
+}
 
-   if ($c->can( 'user' ) and $user = $c->user) {
-      if ($s->{elapsed} < $s->{expires}) {
-         $session->{last_visit} = $now;
-         $s->{user      } = $user->username;
-         $s->{user_email} = $user->email_address;
-         $s->{firstName } = $user->first_name || NUL;
-         $s->{lastName  } = $user->last_name || NUL;
-         $s->{roles     } = $user->roles;
-         $s->{name      } = $s->{firstName}.SPC.$s->{lastName};
-      }
-      else {
-         my $msg = 'User [_1] session expired';
+sub _stash_action_info {
+   my ($self, $c, $name) = @_; my $s = $c->stash;
 
-         $self->log_info( $self->loc( $s, $msg, $user->username ) );
-         $c->can( q(session) ) and $c->session_expire_key( __user => FALSE );
-         $c->logout;
-      }
+   my $action_info = $s->{ $self->action_source } || {}; my $cfg;
+   # Lookup config information for this action
+   if (exists $action_info->{ $name } and $cfg = $action_info->{ $name }) {
+      exists $cfg->{state } and $s->{action_state} = $cfg->{state};
+      exists $cfg->{pwidth} and $s->{pwidth} = $cfg->{pwidth};
+      $s->{keywords   } = $self->loc
+         ( $s, $name, { context => 'action.keywords', no_default => TRUE } );
+      $s->{description} = $self->loc
+         ( $s, $name, { context => 'action.tip',      no_default => TRUE } );
    }
-
-   unless ($s->{user}) {
-      $s->{user      } = q(unknown);
-      $s->{user_email} = NUL;
-      $s->{name      } = NUL;
-      $s->{firstName } = q(Dave);
-      $s->{lastName  } = NUL;
-      $s->{roles     } = [];
-   }
-
-   # Administrators get access to all controllers and actions
-   $s->{is_administrator}
-      = (first { $_ eq $admin_role } @{ $s->{roles} }) ? TRUE : FALSE;
 
    return;
 }
 
-# Private subroutines
+sub _throw_up_and_die {
+   my ($self, $c, $s) = @_; my $msg = 'No configuration file loaded';
 
-sub __accepted_content_types {
-   # Taken from jshirley's Catalyst::Action::REST
+   $c->stash( page => TRUE, content_type => DEFAULT_CONTENT_TYPE );
+   $self->log->fatal( $s, $msg ); throw $msg;
+   return; # Never reached
+}
+
+# Private functions
+
+sub __accepted_content_types { # Taken from jshirley's Catalyst::Action::REST
    my $req = shift; my ($accept_header, $qvalue, $type, %types);
 
    # First, we use the content type in the HTTP Request.  It wins all.
@@ -435,23 +488,17 @@ sub __accepted_content_types {
    return [ reverse sort { $types{ $a } <=> $types{ $b } } keys %types ];
 }
 
-sub __deserialize {
-   my $c       = shift;
-   my $s       = $c->stash;
-   my $verb    = $s->{verb} or return;
-   my $view    = $c->view( $s->{current_view } );
-   my %methods = ( options => 1, post => 1, put => 1, );
+sub __get_default_action {
+   my $navm = $_[ 0 ]->{nav_model};
 
-   return $methods{ $verb } ? $view->deserialize( $s, $c->req ) : NUL;
+   return $navm ? $navm->default_action : q(about);
 }
 
 sub __get_language {
    # Select from; query parameters, domain host, cookie, session key,
    # request headers, config default or hard coded
-   my $c          = shift;
-   my $req        = $c->req;
-   my $cfg        = $c->config;
-   my $session    = $c->can( q(session) ) ? $c->session : {};
+   my ($s, $req, $cfg) = @_;
+
    my @languages  = split SPC, $cfg->{languages}   || LANG;
    my $candidate  = $req->query_parameters->{lang} || NUL;
 
@@ -461,11 +508,11 @@ sub __get_language {
 
    __is_language( $candidate, \@languages ) and return $candidate;
 
-   $candidate     = $c->stash->{lang} ||  NUL;
+   $candidate     = $s->{language} || NUL;
 
    __is_language( $candidate, \@languages ) and return $candidate;
 
-   $candidate     = $session->{language} || NUL;
+   $candidate     = $s->{session}->{language} || NUL;
 
    __is_language( $candidate, \@languages ) and return $candidate;
 
@@ -475,32 +522,25 @@ sub __get_language {
    return $lang || $cfg->{language} || LANG;
 }
 
-sub __get_req_domain {
-   my $host = shift; my @parts = split m{ [\.] }mx, $host;
+sub __get_request_domain {
+   my @parts = split m{ [\.] }mx, $_[ 0 ]; shift @parts; my $domain;
 
-   shift @parts; my $domain = join q(.), @parts;
-
-   return $domain ? q(.).$domain : NUL;
+   return ($domain = join q(.), @parts) ? q(.).$domain : NUL;
 }
 
-sub __is_language {
-   # Is this one if the languages the application supports
+sub __is_language { # Is this one if the languages the application supports
    my ($candidate, $languages) = @_;
 
    return (first { $_ eq $candidate } @{ $languages }) ? TRUE : FALSE;
 }
 
 sub __list_acceptable_languages {
-   my $req = shift;
-
-   return (map    { (split m{ ; }mx, $_)[ 0 ] }
-           split m{ , }mx, lc( $req->headers->{ q(accept-language) } || NUL ));
+   return (map { (split m{ ; }mx, $_)[ 0 ] } split m{ , }mx,
+           lc( $_[ 0 ]->headers->{ q(accept-language) } || NUL ));
 }
 
 sub __preferred_content_type {
-   my $c = shift; my $cfg = $c->config; my $type;
-
-   my $types = __accepted_content_types( $c->req );
+   my ($req, $cfg) = @_; my $types = __accepted_content_types( $req ); my $type;
 
    # Set the content type from the client request header
    $cfg->{negotiate_content_type} ne NEGOTIATION_OFF and $type = $types->[ 0 ];
@@ -518,27 +558,17 @@ sub __preferred_content_type {
    return $type;
 }
 
-sub __setup_plugins {
-   # Load the controller plugins
-   my $app  = shift; my $plugins;
-
-   $plugins = __PACKAGE__->get_inherited( q(_c_plugins) ) and return $plugins;
-
-   my $cfg  = { search_paths => [ q(::Plugin::Controller) ],
-                %{ $app->config->{ setup_plugins } || {} } };
-
-   $plugins = __PACKAGE__->setup_plugins( $cfg );
-
-   return __PACKAGE__->set_inherited( q(_c_plugins), $plugins );
-}
-
 sub __want_app_closed {
    my $c = shift; my $cfg = $c->config; my $root = ROOT; my $sep = SEP;
 
-   my $path = $cfg->{app_closed} || NUL; $path =~ s{ \A $root $sep }{}mx;
+   my $navm = $c->stash->{nav_model};
+   my $path = $navm->action_paths->{app_closed} || NUL;
+      $path =~ s{ \A $root $sep }{}mx;
 
    return $c->action->reverse eq $path ? TRUE : FALSE;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -552,50 +582,86 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version 0.7.$Rev: 1181 $
+This document describes CatalystX::Usul::Controller version 0.8.$Rev: 1320 $
 
 =head1 Synopsis
 
-   package CatalystX::Usul;
-   use parent qw(CatalystX::Usul::Base CatalystX::Usul::Encoding);
-
-   package CatalystX::Usul::Controller;
-   use parent qw(Catalyst::Controller CatalystX::Usul);
-
    package YourApp::Controller::YourController;
-   use parent qw(CatalystX::Usul::Controller);
+
+   BEGIN { extents qw(CatalystX::Usul::Controller) }
 
 =head1 Description
 
 Provides methods common to all controllers. Implements the "big three"
-L<Catalyst> API methods; B<begin>, B<auto> and B<end>
+L<Catalyst> API methods; C<begin>, C<auto> and C<end>
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item action_source
+
+String which defaults to C<action>. A key in the stash where meta information
+about actions is stored
+
+=item config_class
+
+String which defaults to C<Config>
+
+=item fs_class
+
+String which defaults to C<FileSystem>
+
+=item global_class
+
+String which defaults to C<Config::Globals>
+
+=item help_class
+
+String which defaults to C<Help>
+
+=item model_base_class
+
+String which defaults to C<Base>
+
+=item nav_class
+
+String which defaults to C<Navigation>
+
+=item realm_class
+
+String which defaults to C<UsersSimple>
+
+=item usul
+
+A L<Class::Usul> object
+
+=back
+
+Extends L<Catalyst::Controller>. Applies the controller roles including;
+
+=over 3
+
+=item L<CatalystX::Usul::TraitFor::BuildingUsul>
+
+=item L<CatalystX::Usul::TraitFor::Controller::Cookies>
+
+=item L<CatalystX::Usul::TraitFor::Controller::ModelHelper>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
+
+=item L<CatalystX::Usul::TraitFor::Controller::TokenValidation>
+
+=item L<Class::Usul::TraitFor::LoadingClasses>
+
+=back
 
 =head1 Subroutines/Methods
 
 Private methods begin with an _ (underscore). Private subroutines begin
 with __ (two underscores)
-
-=head2 COMPONENT
-
-The constructor stores a copy of the application instance for future
-reference. It does this to remain compatible with L<Catalyst::Controller>
-whose constructor is no longer called
-
-Extracts the phase number from the configuration's I<appldir>
-attribute.  The phase number is used to select one of a set of
-configuration files
-
-Loads the controller plugins including;
-
-=over 3
-
-=item L<CatalystX::Usul::Plugin::Controller::Cookies>
-
-=item L<CatalystX::Usul::Plugin::Controller::ModelHelper>
-
-=item L<CatalystX::Usul::Plugin::Controller::TokenValidation>
-
-=back
 
 =head2 auto
 
@@ -637,12 +703,12 @@ to the I<error_page> action
 
 =head2 begin
 
-This method stuffs the stash with most of data needed by TT to
-generate a 'blank' page. Begin methods in controllers forward to
-here. They can alter the stash contents before and after the call to
-this method
+This method stuffs the stash with most of data needed by
+L<Template::Toolkit> to generate a 'blank' page. Begin methods in
+controllers forward to here. They can alter the stash contents before
+and after the call to this method
 
-The file F<default.xml> contains the meta data for each
+The file F<default.json> contains the meta data for each
 controller. Each controller has two configuration files which contain
 the controller specific data. One of the files is language independent
 and contains elements that define form fields and form keys. The
@@ -674,7 +740,7 @@ Calls
 L<add_token|CatalystX::Usul::Plugin::Controller::TokenValidation/add_token>
 if the current page should contain a token and the plugin has been
 loaded. Traps and processes any errors. Forwards to the C<render>
-method which has the action class attribute set to 'RenderView'
+method which has the action class attribute set to C<RenderView>
 
 =head2 error_page
 
@@ -684,12 +750,21 @@ Generic error page which displays the specified message. The error message is
 localized by calling the L<localize|CatalystX::Usul/loc> method in the base
 class
 
-=head2 redirect_to_page
+=head2 get_browser_state
 
-   $self->redirect_to_page( $c, $page_name );
+   $self->get_browser_state( $c, $c->config );
 
-Takes a simple page name works out it's private path and then calls
-L</redirect_to_path>
+Recover information stored in the browser state cookie. Uses the
+L<CatalystX::Usul::TraitFor::Controller::Cookies> module if it's loaded
+
+=head2 loc
+
+   $local_text = $self->loc( $c->stash, $key, @options );
+
+Localizes the message. Calls L<Class::Usul::L10N/localize>. Adds the
+constant C<DEFAULT_L10N_DOMAINS> to the list of domain files that are
+searched. Adds C<< $c->stash->language >> and C<< $c->stash->namespace >>
+(search domain) to the arguments passed to C<localize>
 
 =head2 redirect_to_path
 
@@ -698,37 +773,37 @@ L</redirect_to_path>
 Sets redirect on the response object and then detaches. Defaults
 to the I<default_action> config attribute if the action path is null
 
-=head2 user_agent_ok
+=head1 Private Methods
 
-   $bool = $self->user_agent_ok( $c );
+=head2 _get_user_object
+
+   $c->stash->{user} = $self->_get_user_object( $c, $c->stash, $c->config );
+
+Using this system, sessions do not expire for three months. Instead the
+user key is expired after a period of inactivity. This method recovers
+information about the user and stores it on the stash. Everywhere else
+the stashed information is used as required
+
+=head2 _is_user_agent_ok
+
+   $bool = $self->_is_user_agent_ok( $c );
 
 Detects use of the misery browser. Sets the skin to
 C<< $c->config->{misery_skin} >> if its defined. Otherwise redirects to
 C<< $c->config->{misery_page} >> if that is defined. Otherwise serves
 up a W3C validated page for Exploiter to render as garbage
 
-=head1 Private Methods
-
-=head2 _stash_browser_state
-
-   $self->_stash_browser_state( $c );
-
-Recover information stored in the browser state cookie. Uses the
-L<CatalystX::Usul::Plugin::Controller::Cookies> module if it's loaded
-
-=head2 _stash_user_attributes
-
-   $self->_stash_user_attributes( $c );
-
-Using this system sessions do not expire for three months. Instead the
-user key is expired after a period of inactivity. This method recovers
-information about the user and stores it on the stash. Everywhere else
-the stashed information is used as required
-
 =head2 _parse_HasActions_attr
 
-Associates the B<HasActions> method attribute with the action class defined
-in the I<action_class> configuration attribute
+Associates the C<HasActions> method attribute with the action class defined
+in the C<action_class> configuration attribute
+
+=head2 _redirect_to_page
+
+   $self->_redirect_to_page( $c, $page_name );
+
+Takes a simple page name works out it's private path and then calls
+L</redirect_to_path>
 
 =head1 Private Subroutines
 
@@ -766,16 +841,9 @@ relative quality specified for each type
 If a type appears in more than one of these places, it is ordered based on
 where it is first found.
 
-=head2 __deserialize
-
-   $data = __deserialize( $c, $verb );
-
-Calls C<deserialize> on the current view if the request is one of; options,
-post, or put
-
 =head2 __get_language
 
-   $language = __get_language( $c );
+   $language = __get_language( $c->stash, $c->req, $c->config );
 
 In order of precedence uses; the first capture argument, the
 I<accept-language> headers from the request, the configuration default
@@ -789,23 +857,12 @@ Tests to see if the given language is supported by the current configuration
 
 =head2 __preferred_content_type
 
-   $content_type = __preferred_content_type( $c->config, $c->req );
+   $content_type = __preferred_content_type( $c->req, $c->config );
 
 Returns the first accepted content type if the I<negotiate_content_type>
 config attribute is true. Defaults to the config attribute I<content_type>
 
-=head2 __setup_plugins
-
-   __setup_plugins( $app );
-
-Load and instantiate any installed controller plugins. Called from the
-constructor
-
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -815,13 +872,15 @@ None
 
 =item L<Catalyst::Controller>
 
-=item L<CatalystX::Usul>
+=item L<Class::Usul>
 
-=item L<CatalystX::Usul::ModelHelper>
-
-=item L<HTTP::DetectUserAgent>
+=item L<CatalystX::Usul::Moose>
 
 =item L<HTTP::Headers::Util>
+
+=item L<Parse::HTTP::UserAgent>
+
+=item L<TryCatch>
 
 =back
 
@@ -841,7 +900,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Pete Flanigan. All rights reserved
+Copyright (c) 2013 Pete Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

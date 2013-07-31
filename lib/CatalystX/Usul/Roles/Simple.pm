@@ -1,31 +1,24 @@
-# @(#)$Id: Simple.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Simple.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Roles::Simple;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Roles);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(is_member throw);
-use File::DataClass::Schema;
-use Scalar::Util qw(blessed);
+use CatalystX::Usul::Functions   qw(is_member throw);
+use CatalystX::Usul::Constraints qw(File);
 
-__PACKAGE__->mk_accessors( qw(ctrldir file path schema) );
+extends q(CatalystX::Usul::Roles);
 
-sub new {
-   my ($class, $app, $attrs) = @_; my $ac = $app->config || {};
+has 'filename' => is => 'ro', isa => Str, default => q(roles-simple.json);
 
-   $attrs->{ctrldir} ||= $ac->{ctrldir};
-   $attrs->{file   } ||= q(roles-simple.json);
+has 'path'     => is => 'ro', isa => File, builder => '_build_path',
+   lazy        => TRUE;
 
-   my $new = $class->next::method( $app, $attrs );
-
-   $new->path  ( $new->_build_path   );
-   $new->schema( $new->_build_schema );
-   return $new;
-}
+has 'schema'   => is => 'ro', isa => Object, builder => '_build_schema',
+   lazy        => TRUE;
 
 # Factory methods
 
@@ -54,7 +47,7 @@ sub remove_user_from_role {
 
    my $user_obj = $self->users->find_user( $user );
 
-   is_member $role, $user_obj->roles or return;
+#   is_member $role, $user_obj->roles or return;
 
    $self->_roles->splice
       ( { items => [ $user ], list => q(users), name => $role } );
@@ -74,36 +67,45 @@ sub _assert_role {
 
 sub _build_path {
    my $self = shift;
-   my $path = $self->path || $self->catfile( $self->ctrldir, $self->file );
+   my $path = $self->io( [ $self->config->ctrldir, $self->filename ] );
 
-   $path          or throw 'Path not specified';
-   blessed $path  or $path = $self->io( $path );
    $path->is_file or $path->touch;
    $path->is_file or throw error => 'Path [_1] not found', args => [ $path ];
    return $path;
 }
 
 sub _build_schema {
-   my $self    = shift;
-   my $attrs   = {
-      ioc_obj  => $self,
-      path     => $self->path,
+   my $attr    = {
+      path     => $_[ 0 ]->path,
       result_source_attributes => {
          roles => { attributes => [ qw(users) ],
                     defaults   => { users => [] }, }, },
       storage_class => q(JSON),
    };
 
-   return File::DataClass::Schema->new( $attrs );
+   return $_[ 0 ]->file->dataclass_schema( $attr );
 }
 
 sub _load {
-   my $self = shift; return ({ %{ $self->schema->load->{roles} || {} } });
+   my $self  = shift;
+   my $cache = $self->cache;
+   my $mtime = $self->path->stat->{mtime};
+   my $updt  = delete $cache->{_dirty} ? TRUE : FALSE;
+
+   $updt or $updt = $mtime == ($cache->{_mtime} || 0) ? FALSE : TRUE;
+
+   $updt or return ($cache->{roles}); $cache->{_mtime} = $mtime;
+
+   $cache->{roles} = { %{ $self->schema->load->{roles} || {} } };
+
+   return ($cache->{roles});
 }
 
 sub _roles {
-   return shift->schema->resultset( q(roles) );
+   return $_[ 0 ]->schema->resultset( q(roles) );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -117,32 +119,43 @@ CatalystX::Usul::Roles::Simple - Role management file storage
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Roles::DBIC;
+   use CatalystX::Usul::Roles::Simple;
 
-   my $class = CatalystX::Usul::Roles::DBIC;
+   my $class = CatalystX::Usul::Roles::Simple;
 
-   my $role_obj = $class->new( $attrs, $app );
+   my $role_obj = $class->new( $attr );
 
 =head1 Description
 
-Methods to manipulate the I<roles> and I<user_roles> table in a
-database using L<DBIx::Class>. This class implements the methods
-required by it's base class
+Methods to manipulate user roles in the simple user store. This class
+implements the methods required by it's base class
+L<CatalystX::Usul::Roles>
+
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item C<filename>
+
+A string which defaults to F<roles-simple.json>
+
+=item C<path>
+
+A path to a file which contains the roles database
+
+=item C<schema>
+
+A L<File::DataClass::Schema> object
+
+=back
 
 =head1 Subroutines/Methods
-
-=head2 new
-
-Constructor
-
-=head2 build_per_context_instance
-
-Make copies of DBIC model references available only after the application
-setup is complete
 
 =head2 add_user_to_role
 
@@ -166,13 +179,9 @@ Deletes the specified role
 
    $role_obj->remove_user_to_role( $role, $user );
 
-Removes the specified user to the specifed role
+Removes the specified user to the specified role
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -181,6 +190,8 @@ None
 =over 3
 
 =item L<CatalystX::Usul::Roles>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -200,7 +211,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

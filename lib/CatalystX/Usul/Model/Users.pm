@@ -1,86 +1,111 @@
-# @(#)$Id: Users.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Users.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model::Users;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model
-              CatalystX::Usul::Email CatalystX::Usul::Captcha);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(create_token is_member throw);
-use CatalystX::Usul::Shells;
-use CatalystX::Usul::Time;
-use MRO::Compat;
+use CatalystX::Usul::Constraints qw( Directory Path );
+use CatalystX::Usul::Functions   qw( create_token merge_attributes throw );
+use CatalystX::Usul::Moose;
+use Class::Usul::File;
+use Class::Usul::Time            qw( time2str );
+use File::Basename               qw( dirname );
+use File::Spec::Functions        qw( catdir catfile );
 use TryCatch;
 
-__PACKAGE__->config( activate_path       => q(entrance/activate_account),
-                     app_name            => NUL,
-                     email_content_type  => q(text/html),
-                     email_template      => q(new_account.tt),
-                     rprtdir             => q(root/reports),
-                     sessdir             => q(hist),
-                     shells_attributes   => {},
-                     shells_class        => q(CatalystX::Usul::Shells),
-                     template_attributes => {}, );
+extends q(CatalystX::Usul::Model);
+with    q(Class::Usul::TraitFor::LoadingClasses);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
+with    q(CatalystX::Usul::TraitFor::Captcha);
 
-__PACKAGE__->mk_accessors( qw(activate_path app_name auth_realms
-                              domain_cache email_content_type
-                              email_template fs_model
-                              register_queue_path roles rprtdir
-                              sessdir shells shells_attributes
-                              shells_class template_attributes) );
+has 'default_realm'      => is => 'ro',   isa => NonEmptySimpleStr,
+   required              => TRUE;
+
+has 'email_attributes'   => is => 'ro',   isa => HashRef,
+   default               => sub {
+      { content_type     => q(text/html),
+        template         => q(new_account.tt),
+        template_attrs   => { ABSOLUTE => TRUE, }, } };
+
+has 'register_authorise' => is => 'ro',   isa => Bool, default => FALSE;
+
+has 'role_model_class'   => is => 'ro',   isa => NonEmptySimpleStr,
+   required              => TRUE;
+
+has 'rprtdir'            => is => 'ro',   isa => Directory, coerce => TRUE,
+   required              => TRUE;
+
+has 'template_dir'       => is => 'ro',   isa => Directory, coerce => TRUE,
+   required              => TRUE;
+
+has 'user_model_classes' => is => 'ro',   isa => HashRef,
+   default               => sub { {} };
+
+
+has '_file'     => is => 'lazy', isa => FileClass,
+   default      => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
+   handles      => [ qw(io) ], init_arg => undef, reader => 'file';
+
+has '_fs_model' => is => 'lazy', isa => Object,
+   default      => sub { $_[ 0 ]->context->model( q(FileSystem) ) },
+   init_arg     => undef, reader => 'fs_model';
 
 sub COMPONENT {
-   my ($class, $app, $config) = @_; my $ac = $app->config || {};
+   my ($class, $app, $attr) = @_; my $ac = $app->config || {};
 
-   my $rprtdir = $class->catdir( $ac->{vardir}, $class->config->{rprtdir} );
-   my $sessdir = $class->catdir( $ac->{vardir}, $class->config->{sessdir} );
+   merge_attributes $attr, $class->config, $ac,
+      [ qw(auth_component role_model_class rprtdir template_dir) ];
 
-   $config->{app_name} ||= $ac->{name   };
-   $config->{rprtdir } ||= $ac->{rprtdir} || $rprtdir;
-   $config->{sessdir } ||= $ac->{sessdir} || $sessdir;
+   my $comp    = delete $attr->{auth_component} || q(Plugin::Authentication);
+   my $realms  = $ac->{ $comp }->{realms};
+   my %classes = map   { $_ => $realms->{ $_ }->{store}->{model_class} }
+                 keys %{ $realms };
 
-   my $new = $class->next::method( $app, $config );
+   $attr->{user_model_classes}   = \%classes;
+   $attr->{default_realm     }   = $ac->{ $comp }->{default_realm};
+   $attr->{rprtdir           } ||= catdir( $ac->{root}, qw(reports)   );
+   $attr->{template_dir      } ||= catdir( $ac->{root}, qw(templates) );
 
-   $new->ensure_class_loaded( $new->domain_class );
-   $new->domain_cache( { dirty => TRUE } );
-   return $new;
+   return $class->next::method( $app, $attr );
 }
 
-sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $class;
+{  my $user_cache = {}; my $role_cache = {};
 
-   my $clone = $self->next::method( $c, @rest );
-   my $attrs = { %{ $clone->domain_attributes || {} },
-                 sessdir => $clone->sessdir,
-                 cache   => $clone->domain_cache, };
-   my $dm    = $clone->domain_model( $clone->domain_class->new( $c, $attrs ) );
+   sub build_per_context_instance {
+      my ($self, $c, @args) = @_; my $class = blessed $self;
 
-   $clone->fs_model( $c->model( q(FileSystem) ) );
-   $attrs = { %{ $clone->shells_attributes || {} }, };
-   $clone->shells( $clone->shells_class->new( $c, $attrs ) );
-   return $clone;
+      my $is_dirty = exists $user_cache->{ $class } ? FALSE : TRUE;
+      my $clone    = $self->next::method( $c, @args );
+      my $attr     = { %{ $clone->domain_attributes },
+                       builder    => $clone->usul,
+                       cache      => $user_cache->{ $class } ||= {},
+                       language   => $c->stash->{language},
+                       role_cache => $role_cache->{ $class } ||= {}, };
+
+      $attr->{dbic_user_class} and $attr->{dbic_user_model}
+         = $c->model( $attr->{dbic_user_class} );
+
+      $attr->{dbic_role_class} and $attr->{dbic_role_model}
+         = $c->model( $attr->{dbic_role_class} );
+
+      $attr->{dbic_user_roles_class} and $attr->{dbic_user_roles_model}
+         = $c->model( $attr->{dbic_user_roles_class} );
+
+      $clone->domain_model( $clone->domain_class->new( $attr ) );
+      $is_dirty and $clone->invalidate_cache;
+      return $clone;
+   }
 }
 
-sub activate_account {
-   my ($self, $key) = @_;
+sub activate_account_form {
+   my ($self, $file) = @_; my $dm = $self->domain_model;
 
-   my $path = $self->io( $self->catfile( $self->sessdir, $key ) );
-
-   $path->is_file
-      or return $self->add_error_msg( 'Path [_1] not found', $path );
-
-   my $user = $path->chomp->lock->getline
-      or return $self->add_error_msg( 'Path [_1] contained no data', $path );
-
-   $path->unlink;
-
-   try        { $self->domain_model->activate_account( $user ) }
+   try        { $self->add_result_msg( $dm->activate_account( $file ) ) }
    catch ($e) { return $self->add_error( $e ) }
 
-   $self->add_result_msg( 'Account [_1] activated', $user );
    return;
 }
 
@@ -88,169 +113,205 @@ sub authenticate {
    # Try to authenticate the supplied user info with each defined realm
    my $self = shift; my $c = $self->context; my $s = $c->stash;
 
-   my ($msg, $user_ref, $wanted); $self->scrubbing( TRUE );
+   $s->{query_scrubbing} = TRUE;
 
-   my $realm = $self->query_value( q(realm)  );
-   my $user  = $self->query_value( q(user)   );
-   my $pass  = $self->query_value( q(passwd) );
+   my $realm    = $self->query_value( q(realm)  );
+   my $username = $self->query_value( q(user)   );
+   my $pass     = $self->query_value( q(passwd) );
 
-   unless ($user and $pass) {
-      $s->{user} = q(unknown); throw 'Id and/or password not set';
-   }
+   ($username and $pass) or throw 'Id and/or password not set';
 
-   my $userinfo = { username => $user, password => $pass };
+   my $userinfo = { username => $username, password => $pass };
    my @realms   = $realm ? ( $realm ) : sort keys %{ $c->auth_realms };
 
    for $realm (@realms) {
-      $realm eq q(default) and next;
-      ($user_ref = $c->find_user( $userinfo, $realm )
-       and $user_ref->username eq $user) or next;
-      $c->authenticate( $userinfo, $realm ) or next;
+      $realm eq q(default) and next; my $user;
 
-      $msg = 'User [_1] logged in to realm [_2]';
-      $self->log_info( $self->loc( $msg, $user, $realm ) );
+      ($user = $c->find_user( $userinfo, $realm )
+          and $user->username eq $username) or next;
 
-      if ($c->can( q(session) )) {
-         $c->session->{last_visit} = time;
-         $s->{wanted} = $c->session->{wanted};
-         $c->session->{wanted} = NUL;
-      }
+      $user = $c->authenticate( $userinfo, $realm ) or next;
 
-      $s->{wanted} ||= $c->controller( q(Root) )->default_namespace;
-      $s->{realm }   = $realm;
-      return;
+      $user->has_password_expired
+         and return $self->_user_password_expired( $c, $username, $realm );
+
+      return $self->_user_authenticated( $c, $username, $realm, $user );
    }
 
-   $c->logout;
-   $s->{override} = TRUE;
-   $s->{user    } = q(unknown);
-   $c->can( q(session) ) and $c->session_expire_key( __user => FALSE );
-   $msg = 'Login id ([_1]) and password not recognised';
-   throw error => $msg, args => [ $user ];
+   $c->stash( override => TRUE ); __logout( $c );
+
+   throw error => 'Login id ([_1]) and password not recognised',
+         args  => [ $username ];
    return; # Never reached
 }
 
 sub authentication_form {
-   my ($self, $user) = @_; my $s = $self->context->stash;
+   my ($self, $username) = @_; my $s = $self->context->stash;
 
    my $form = $s->{form}->{name}; $s->{pwidth} += 3;
 
-   ($user ||= $s->{user}) =~ s{ \A unknown \z }{}msx;
+   ($username ||= $s->{user}->username) =~ s{ \A unknown \z }{}msx;
 
-   $self->clear_form ( { firstfld => $form.q(.user),
-                         heading  => $self->loc( $form.q(.header) ) } );
-   $self->add_field  ( { default  => $user, id => $form.q(.user) } );
-   $self->add_field  ( { id       => $form.q(.passwd) } );
-   $self->add_field  ( { id       => $form.q(.login_text) } );
+   $self->clear_form ( { firstfld => $username ? "${form}.passwd"
+                                               : "${form}.user",
+                         heading  => $self->loc( "${form}.header" ) } );
+   $self->add_field  ( { default  => $username, id => "${form}.user" } );
+   $self->add_field  ( { id       => "${form}.passwd" } );
+   $self->add_field  ( { id       => "${form}.login_text" } );
    $self->add_buttons( qw(Login) );
    return;
 }
 
 sub change_password {
-   my $self = shift; $self->scrubbing( TRUE );
-   my @flds = ( qw(user oldPass newPass1 newPass2) );
-   my $flds = $self->check_form( $self->query_value_by_fields( @flds ) );
+   my $self = shift; my $c = $self->context; my $s = $c->stash;
 
-   $self->domain_model->change_password
-      ( $flds->{user}, $flds->{oldPass}, $flds->{newPass1} );
-   $self->add_result_msg( 'User [_1] password changed', $flds->{user} );
+   $s->{query_scrubbing} = TRUE;
+
+   my @fields = ( qw(user oldPass newPass1 newPass2) );
+   my $fields = $self->check_form( $self->query_value_by_fields( @fields ) );
+   my @args   = ( map { $fields->{ $_ } } qw(user oldPass newPass1) );
+   my $msg    = $self->loc( $self->domain_model->change_password( @args ) );
+   my $mid    = $c->set_status_msg( $msg );
+
+   if ($s->{user}->username eq q(unknown)) {
+      $c->stash( wanted          => $s->{action_paths}->{authenticate},
+                 redirect_params => [ $fields->{user}, { mid => $mid } ] );
+   }
+   else {
+      my $wanted   = $c->session->{wanted} and $c->session( wanted => NUL );
+         $wanted ||= $c->controller( q(Root) )->default_namespace;
+
+      $c->stash( wanted => $wanted, redirect_params => [ { mid => $mid } ] );
+   }
+
    return TRUE;
 }
 
 sub change_password_form {
-   my ($self, $user) = @_;
+   my ($self, $username) = @_; my $c = $self->context;
 
-   my $s      = $self->context->stash; $s->{pwidth} -= 10;
+   my $s      = $c->stash; $s->{pwidth} -= 10;
    my $form   = $s->{form}->{name};
    my $realm  = $s->{user_realm};
-   my $values = [ q(), sort keys %{ $self->auth_realms } ];
+   my @realms = grep { $_ ne q(default) } sort keys %{ $c->auth_realms };
 
-   ($user ||= $s->{user}) =~ s{ unknown }{}mx;
+   ($username ||= $s->{user}->username) =~ s{ unknown }{}mx;
 
-   $self->clear_form( { firstfld => $form.q(.user) } );
+   $self->clear_form( { firstfld => $username ? "${form}.oldPass"
+                                              : "${form}.user" } );
    $self->add_field ( { default  => $realm,
-                        id       => $form.q(.realm),
-                        values   => $values } );
+                        id       => "${form}.realm",
+                        values   => [ NUL, @realms ] } );
 
    if ($realm) {
-      $self->add_field  ( { ajaxid  => $form.q(.user), default => $user } );
-      $self->add_field  ( { id      => $form.q(.oldPass)  } );
-      $self->add_field  ( { ajaxid  => $form.q(.newPass1) } );
+      $self->add_field  ( { id => "${form}.user", default => $username } );
+      $self->add_field  ( { id => "${form}.oldPass"  } );
+      $self->add_field  ( { id => "${form}.newPass1" } );
       $self->add_buttons( qw(Set) );
    }
 
-   my $id = $form.($realm && $user ? q(.select) : q(.selectUnknown));
+   my $id = $form.($realm && $username ? q(.select) : q(.selectUnknown));
 
    $self->group_fields( { id => $id } );
    return;
 }
 
 sub create_or_update {
-   my $self   = shift;
-   my @fields = ( qw(username profile first_name last_name
-                     location work_phone email_address home_phone
-                     project homedir shell populate) );
-   my $fields = $self->query_value_by_fields( @fields );
-   my $user   = $fields->{username} or throw 'User not specified';
-   my $method = $self->is_user( $user ) ? q(update) : q(create);
-   my $model  = $self->domain_model;
+   my $self     = shift;
+   my @fields   = ( qw( username profile first_name last_name
+                        location work_phone email_address home_phone
+                        project homedir shell populate ) );
+   my $fields   = $self->query_value_by_fields( @fields );
+   my $username = $fields->{username} or throw 'User not specified';
+   my $method   = $self->is_user( $username ) ? q(update) : q(create);
+   my $dm       = $self->domain_model;
+   my $aliases  = $dm->aliases;
 
    $fields->{active       }   = TRUE;
-   $fields->{alias_name   }   = $fields->{username};
-   $fields->{first_name   }   = ucfirst $fields->{first_name};
-   $fields->{last_name    }   = ucfirst $fields->{last_name };
-   $fields->{email_address} ||= $model->make_email_address( $user );
-   $fields->{owner        }   = $self->context->stash->{user};
+   $fields->{alias_name   }   = $username;
+   $fields->{first_name   }   = my $first = ucfirst $fields->{first_name};
+   $fields->{last_name    }   = my $last  = ucfirst $fields->{last_name };
+   $fields->{email_address} ||= $aliases->email_address( "${first}.${last}" );
+   $fields->{owner        }   = $self->context->stash->{user}->username;
    $fields->{comment      }   = [ 'Local user' ];
    $fields->{recipients   }   = [ $fields->{email_address} ];
-   $fields                    = $self->check_form( $fields );
 
-   $self->add_result_msg( $model->$method( $fields ), $user );
-   return $user;
+   $self->add_result_msg( $dm->$method( $self->check_form( $fields ) ) );
+
+   return $username;
 }
 
 sub delete {
    my $self = shift;
-   my $user = $self->query_value( q(user) ) or throw 'User not specified';
 
-   $self->add_result_msg( $self->domain_model->delete( $user ), $user );
+   if (my $username = $self->query_value( q(user) )) {
+      $self->add_result_msg( $self->domain_model->delete( $username ) );
+   }
+   else { $self->add_error( 'User not specified' ) }
+
    return TRUE;
 }
 
 sub find_user {
-   my ($self, @rest) = @_; return $self->domain_model->find_user( @rest );
+   return shift->domain_model->find_user( @_ );
 }
 
-sub get_features {
-   my ($self, @rest) = @_; return $self->domain_model->get_features( @rest );
+sub get_user_model_class {
+   my ($self, $default, $realm) = @_;
+
+   $realm ||= $self->default_realm; my $user_class;
+
+   exists $self->user_model_classes->{ $realm }
+      or $realm = $self->default_realm;
+
+   unless ($realm and $user_class = $self->user_model_classes->{ $realm }) {
+      my $msg = 'Defaulting identity model [_1]';
+
+      $self->log->warning( $self->loc( $msg, $user_class = $default ) );
+   }
+
+   return ($user_class, $realm);
 }
 
-sub get_primary_rid {
-   my ($self, $user) = @_; return $self->domain_model->get_primary_rid( $user);
-}
-
-sub get_users_by_rid {
-   my ($self, $rid) = @_; return $self->domain_model->get_users_by_rid( $rid );
+sub invalidate_cache {
+   $_[ 0 ]->domain_model->invalidate_cache; return;
 }
 
 sub is_user {
-   my ($self, $user) = @_; return $self->domain_model->is_user( $user );
+   return shift->domain_model->is_user( @_ );
+}
+
+sub list {
+   return shift->domain_model->list( @_ );
+}
+
+sub logout {
+   my ($self, $args) = @_; $args ||= {};
+
+   my $user  = $args->{user} or return FALSE; my $c = $self->context;
+
+   my $realm = $user->auth_realm; my $username = $user->username;
+
+   my $msg   = $args->{message} || 'User [_1] logged out from realm [_2]';
+
+   $self->log->info( $msg = $self->loc( $msg, $username, $realm ) );
+   $args->{no_redirect} or $c->stash( redirect_params => [ {
+      mid => $c->set_status_msg( $msg ) } ] );
+   __logout( $c );
+   return TRUE;
 }
 
 sub profiles {
-   return shift->domain_model->profiles;
+   return $_[ 0 ]->domain_model->profiles;
 }
 
 sub purge {
-   my $self  = shift;
-   my $nrows = $self->query_value( q(__nrows) )
-      or throw 'Account not specified';
+   my $self = shift; my $selected = $self->query_array( q(file) );
 
-   for my $rno (0 .. $nrows - 1) {
-      my $user = $self->query_value( q(select).$rno ) or next;
-      my $msg  = $self->domain_model->delete( $user );
+   $selected->[ 0 ] or throw 'Nothing selected';
 
-      $self->add_result_msg( $msg, $user );
+   for my $username (@{ $selected }) {
+      $self->add_result_msg( $self->domain_model->delete( $username ) );
    }
 
    return TRUE;
@@ -259,71 +320,72 @@ sub purge {
 sub register {
    my ($self, $path) = @_; my $c = $self->context; my $s = $c->stash;
 
-   my $code = $self->query_value( q(security) ); my $fields;
-
-   $self->validate_captcha( $code )
-      or throw error => 'Security code [_1] incorrect', args => [ $code ];
+   my $dm = $self->domain_model; my $fields;
 
    unless ($path) {
       my @fields = ( qw(email_address first_name last_name newPass1 newPass2
-                        work_phone home_phone location project) );
+                        work_phone home_phone location project security) );
 
-      $fields             = $self->query_value_by_fields( @fields );
-      $fields->{active  } = FALSE;
-      $fields->{password} = $fields->{newPass1};
-      $fields->{profile } = $s->{register}->{profile};
+      $fields = $self->query_value_by_fields( @fields );
+      $fields = $self->_validate_registration( $s, $fields );
+
+      if ($self->register_authorise) {
+         $self->add_result_msg( $dm->register_authorisation( $fields ) );
+         return TRUE;
+      }
    }
 
-   if (not $path and $self->register_queue_path) {
-      $self->_register_write_queue( $fields );
-      # TODO:  Add email message to authorising authority
-      $self->add_result_msg( 'Awaiting authorisation', $fields->{email} );
-      return TRUE;
-   }
+   my $attr     = $self->email_attributes;
+   my $activate = $s->{action_paths}->{activate_account};
+   my $key      = $activate ? substr create_token, 0, 32 : undef;
+   my $link     = $key ? $c->uri_for_action( $activate, $key ) : undef;
+   my $subject  = $self->loc( q(accountVerification), $c->config->{name} );
+   my $post     = {
+      attributes      => {
+         charset      => $attr->{encoding} || $self->encoding,
+         content_type => $attr->{content_type} },
+      from            => q(UserRegistration@).($s->{domain} || $s->{host}),
+      mailer          => $s->{mailer},
+      mailer_host     => $s->{mailer_host},
+      stash           => {
+         app_name     => $c->config->{name},
+         link         => $link,
+         title        => $subject, },
+      subject         => $subject,
+      template        => catfile( $self->template_dir, $attr->{template} ),
+      template_attrs  => $attr->{template_attrs}, };
 
-   try {
-      $self->lock->set( k => q(register_user) );
-      $path and $fields = $self->_register_read_queue( $path );
-      $fields = $self->_register_validation( $fields );
-      $self->domain_model->create( $fields );
-      $self->_register_verification_email( $fields );
-      $self->add_result_msg( 'User [_1] account created', $fields->{username} );
-      $self->lock->reset( k => q(register_user) );
-   }
-   catch ($e) { $self->lock->reset( k => q(register_user) ); throw $e }
+   my $args = { key => $key, path => $path, post => $post };
 
+   $self->add_result_msg( $dm->register( $args, $fields ) );
    return TRUE;
 }
 
 sub register_form {
-   my ($self, $captcha_action) = @_;
+   my $self = shift; my $c = $self->context; my $s = $c->stash;
 
-   my $c    = $self->context;
-   my $form = $c->stash->{form}->{name};
-   my $uri  = $c->uri_for_action( $captcha_action );
+   my $form = $s->{form}->{name};
+   my $uri  = $c->uri_for_action( $s->{action_paths}->{captcha} );
 
-   $self->clear_form  ( { firstfld => $form.q(.first_name)    } );
-   $self->add_field   ( { ajaxid   => $form.q(.first_name)    } );
-   $self->add_field   ( { ajaxid   => $form.q(.last_name)     } );
-   $self->add_field   ( { ajaxid   => $form.q(.email_address) } );
-   $self->add_field   ( { ajaxid   => $form.q(.newPass1)      } );
-   $self->add_field   ( { id       => $form.q(.work_phone)    } );
-   $self->add_field   ( { id       => $form.q(.location)      } );
-   $self->add_field   ( { id       => $form.q(.project)       } );
-   $self->add_field   ( { id       => $form.q(.home_phone)    } );
-   $self->add_field   ( { name     => $form.q(.captcha), text => $uri } );
-   $self->add_field   ( { ajaxid   => $form.q(.security)      } );
-   $self->group_fields( { id       => $form.q(.legend)        } );
+   $self->clear_form  ( { firstfld => "${form}.first_name"    } );
+   $self->add_field   ( { id       => "${form}.first_name"    } );
+   $self->add_field   ( { id       => "${form}.last_name"     } );
+   $self->add_field   ( { id       => "${form}.email_address" } );
+   $self->add_field   ( { id       => "${form}.newPass1"      } );
+   $self->add_field   ( { id       => "${form}.work_phone"    } );
+   $self->add_field   ( { id       => "${form}.location"      } );
+   $self->add_field   ( { id       => "${form}.project"       } );
+   $self->add_field   ( { id       => "${form}.home_phone"    } );
+   $self->add_field   ( { name     => "${form}.captcha", text => $uri } );
+   $self->add_field   ( { id       => "${form}.security"      } );
+   $self->group_fields( { id       => "${form}.legend"        } );
    $self->add_buttons ( qw(Insert) );
    return;
 }
 
-sub retrieve {
-   my ($self, @rest) = @_; return $self->domain_model->retrieve( @rest );
-}
-
 sub set_password {
    my $self      = shift;
+   my $dm        = $self->domain_model;
    my $user      = $self->query_value( q(user) ) or throw 'User not specified';
    my $ptype     = $self->query_value( q(p_type) ) || 1;
    my $password  = $self->query_value( q(p_default) );
@@ -336,18 +398,15 @@ sub set_password {
       my $p_word1 = $self->query_value( q(p_word1) );
       my $p_word2 = $self->query_value( q(p_word2) );
 
-      ($p_word1 and $p_word2) or throw 'Passwords not specified';
-
-      $p_word1 eq $p_word2 or throw 'Passwords are not the same';
-
+     ($p_word1 and $p_word2) or throw 'Passwords not specified';
+      $p_word1 eq  $p_word2  or throw 'Passwords are not the same';
       $password = $p_word1;
    }
    elsif ($ptype == 2) {
       $password = q(*).$self->query_value( q(p_value) ).q(*); $encrypted = TRUE;
    }
 
-   $self->domain_model->set_password( $user, $password, $encrypted );
-   $self->add_result_msg( 'User [_1] password set', $user );
+   $self->add_result_msg( $dm->set_password( $user, $password, $encrypted ) );
    return TRUE;
 }
 
@@ -357,164 +416,162 @@ sub user_fill {
    my $fill  = $s->{fill} = {};
    my $first = $fill->{first_name} = $self->query_value( q(first_name) );
    my $last  = $fill->{last_name } = $self->query_value( q(last_name) );
-   my $model = $self->domain_model;
 
-   $fill->{email} = $model->make_email_address( $first.q(.).$last );
-   $s->{override} = TRUE;
-   return TRUE;
+   return $s->{override} = TRUE;
 }
 
 sub user_manager_form {
-   my ($self, $user) = @_; my $s = $self->context->stash; my $data = {};
+   my ($self, $username) = @_; my $c = $self->context; my $s = $c->stash;
+
+   my $uref = {}; my $is_new = ($username || '') eq $s->{newtag} ? TRUE : FALSE;
 
    # Retrieve data from models
-   try        { $data = $self->_get_user_data( $user ) }
+   try        { $uref = $self->domain_model->get_user_data( $s, $username ) }
    catch ($e) { return $self->add_error( $e ) }
 
    # Add elements to form
-   my $form   = $s->{form}->{name};
-   my $realm  = $s->{user_realm};
-   my $realms = [ NUL, sort keys %{ $self->auth_realms } ];
+   my $form   = $s->{form}->{name}; my $realm = $s->{user_realm};
+
+   my @realms = grep { $_ ne q(default) } sort keys %{ $c->auth_realms };
 
    $self->clear_form( { firstfld => $form.($realm ? '.user' : '.realm') } );
    $self->add_field ( { default  => $realm,
-                        id       => $form.'.realm',
-                        values   => $realms } );
+                        id       => "${form}.realm",
+                        values   => [ NUL, @realms ] } );
 
    if ($realm) {
-      $self->add_field( { default => $user,
-                          id      => $form.'.user',
-                          values  => $data->{users} } );
+      $self->add_field( { default => $username,
+                          id      => "${form}.user",
+                          values  => $uref->{users} } );
 
-      if ($user and $user eq $s->{newtag}) {
-         $self->add_field( { default => $data->{profile_name},
-                             id      => $form.'.profile',
-                             labels  => $data->{labels},
-                             values  => $data->{profiles} } );
+      if ($is_new) {
+         $self->add_field( { default => $uref->{profile_name},
+                             id      => "${form}.profile",
+                             labels  => $uref->{labels},
+                             values  => $uref->{profiles} } );
       }
       else {
-         $self->add_hidden( q(profile), $data->{profile_name} );
+         $self->add_hidden( q(profile), $uref->{profile_name} );
 
-         if ($data->{role}) {
-            my $text  = $self->loc( $form.'.pgroup' );
-               $text .= ($data->{labels}->{ $data->{role} } || NUL);
-               $text .= ' ('.$data->{role}.') ';
+         if ($uref->{role}) {
+            my $text  = $self->loc( "${form}.pgroup" );
+               $text .= ($uref->{labels}->{ $uref->{role} } || NUL);
+               $text .= ' ('.$uref->{role}.') ';
 
-            $self->add_field( { id => $form.'.pgroup', text => $text } );
+            $self->add_field( { id => "${form}.pgroup", text => $text } );
          }
       }
    }
 
-   $self->group_fields( { id => $form.'.select' } );
+   $self->group_fields( { id => "${form}.select" } );
 
-   (not $user or lc $user eq q(all)) and return;
-   $user eq $s->{newtag} and not $data->{profile_name} and return;
+   ($username and lc $username ne q(all)) or return;
+   $is_new and not $uref->{profile_name} and return;
 
-   $self->add_field( { default => $data->{first_name},
-                       id      => $form.'.first_name' } );
-   $self->add_field( { default => $data->{last_name},
-                       id      => $form.'.last_name'  } );
+   $self->add_field( { default => $uref->{first_name},
+                       id      => "${form}.first_name" } );
+   $self->add_field( { default => $uref->{last_name},
+                       id      => "${form}.last_name"  } );
 
-   if ($user eq $s->{newtag}) { # Create new account
-      if ($data->{name}) {
-         $self->add_field( { default => $data->{name},
-                             id      => $form.'.username' } );
+   if ($is_new) { # Create new account
+      if ($uref->{name}) {
+         $self->add_field( { default => $uref->{name},
+                             id      => "${form}.username" } );
          $self->add_buttons( qw(Insert) );
       }
       else {
-         $self->add_field( { id => $form.'.afill' } );
+         $self->add_field( { id => "${form}.afill" } );
          $self->add_buttons( qw(Fill) );
       }
    }
    else { # Edit existing account
-      $self->add_hidden ( q(username), $user );
+      $self->add_hidden ( q(username), $username );
       $self->add_buttons( qw(Save Delete) );
    }
 
-   unless ($data->{name}) {
-      $self->group_fields( { id => $form.'.edit' } ); return;
+   unless ($uref->{name}) {
+      $self->group_fields( { id => "${form}.edit" } ); return;
    }
 
-   $self->add_field( { default => $data->{email},
-                       id      => $form.'.email_address' } );
-   $self->add_field( { default => $data->{location},
-                       id      => $form.'.location'      } );
-   $self->add_field( { default => $data->{work_tel},
-                       id      => $form.'.work_phone'    } );
-   $self->add_field( { default => $data->{home_tel},
-                       id      => $form.'.home_phone'    } );
-   $self->add_field( { default => $data->{project},
-                       id      => $form.'.project'       } );
+   $self->add_field( { default => $uref->{email_address},
+                       id      => "${form}.email_address" } );
+   $self->add_field( { default => $uref->{location},
+                       id      => "${form}.location"      } );
+   $self->add_field( { default => $uref->{work_phone},
+                       id      => "${form}.work_phone"    } );
+   $self->add_field( { default => $uref->{home_phone},
+                       id      => "${form}.home_phone"    } );
+   $self->add_field( { default => $uref->{project},
+                       id      => "${form}.project"       } );
 
-   if ($self->supports( qw(fields homedir) )
-       and $data->{homedir} ne $data->{common_home}) {
-      $user eq $s->{newtag}
-         and $self->add_field( { label => SPC, id => $form.'.populate' } );
-
-      $self->add_field( { default  => $data->{homedir},
-                          id       => $form.'.homedir',
-                          readonly => $user eq $s->{newtag} ? 0 : 1 } );
+   if ($uref->{supports}->{fields_homedir}
+       and $uref->{homedir} ne $uref->{common_home}) {
+      $is_new and $self->add_field( { label => SPC, id => "${form}.populate" });
+      $self->add_field( { default  => $uref->{homedir},
+                          id       => "${form}.homedir",
+                          readonly => $is_new ? FALSE : TRUE } );
    }
 
-   defined $data->{shells}
-      and $self->add_field( { default => $data->{shell},
-                              id      => $form.'.shell',
-                              values  => $data->{shells} } );
+   defined $uref->{shells}
+      and $self->add_field( { default => $uref->{shell},
+                              id      => "${form}.shell",
+                              values  => $uref->{shells} } );
 
-   $self->group_fields( { id => $form.'.edit' } );
+   $self->group_fields( { id => "${form}.edit" } );
    return;
 }
 
 sub user_report {
    my ($self, $type) = @_;
+   my $dm    = $self->domain_model;
    my $s     = $self->context->stash;
    my $stamp = time2str( '%Y%m%d%H%M' );
-   my $path  = $self->catfile( $self->rprtdir, 'userReport_'.$stamp.'.csv' );
+   my $path  = catfile( $self->rprtdir, "userReport_${stamp}.csv" );
 
-   $self->add_result( $self->domain_model->user_report( { debug => $s->{debug},
-                                                          path  => $path,
-                                                          type  => $type } ) );
+   $self->add_result( $dm->user_report( {
+      debug => $s->{debug}, path => $path, type => $type } ) );
    return TRUE;
 }
 
 sub user_report_form {
-   my ($self, $id) = @_; my ($data, $dir, $key, $pat, $ref);
+   my ($self, $id) = @_; my ($dir, $key, $pat);
 
-   my $s     = $self->context->stash; $s->{pwidth} -= 10;
+   my $c     = $self->context;
+   my $s     = $c->stash; $s->{pwidth} -= 10;
    my $form  = $s->{form}->{name};
    my $realm = $s->{user_realm};
 
-   unless ($dir = $self->query_value( q(dir) )) {
+   if ($dir = $self->query_value( q(dir) )) { $pat = q(.*); $key = undef }
+   else {
       $dir = $self->{rprtdir}; $pat = q(userReport*);
       $key = sub { return (split m{ \. }mx, (split m{ _ }mx, $_[0])[1])[0] };
    }
-   else { $pat = q(.*); $key = undef }
 
    $self->clear_form;
 
    if ($id) {
-      my $path = $self->catfile( $dir, 'userReport_'.$id.'.csv' );
+      my $path = catfile( $dir, "userReport_${id}.csv" );
 
-      $self->add_field( { path    => $path, id => $form.'.file' } );
-      $self->add_field( { id      => $form.'.keynote' } );
+      $self->add_field( { path => $path, id => "${form}.file" } );
+      $self->add_field( { id   => "${form}.keynote" } );
       $self->add_buttons( qw(List Purge) );
    }
    else {
-      my $values = [ q(), sort keys %{ $self->auth_realms } ];
+      my @realms = grep { $_ ne q(default) } sort keys %{ $c->auth_realms };
 
       $self->add_field( { default => $realm,
-                          id      => $form.'.realm',
-                          values  => $values } );
+                          id      => "${form}.realm",
+                          values  => [ NUL, @realms ] } );
       $self->add_buttons( qw(Execute) );
-      $ref  = { action   => $s->{form}->{action},
-                assets   => $s->{assets},
-                dir      => $dir,
-                make_key => $key,
-                pattern  => qr{ $pat }mx };
 
       try {
-         $data = $self->fs_model->list_subdirectory( $ref );
-         $self->add_field( { data => $data, type => q(table) } );
+         my $subdir = $self->fs_model->list_subdirectory( {
+            action   => $s->{form}->{action},
+            assets   => $s->{assets},
+            dir      => $dir,
+            make_key => $key,
+            pattern  => qr{ $pat }mx } );
+         $self->add_field( { data => $subdir, type => q(table) } );
       }
       catch ($e) { return $self->add_error( $e ) }
    }
@@ -526,187 +583,116 @@ sub user_report_form {
 }
 
 sub user_security_form {
-   my ($self, $user) = @_; my $s = $self->context->stash; my $data = {};
+   my ($self, $username) = @_; my $c = $self->context; my $s = $c->stash;
 
-   try        { $data = $self->_get_security_data( $user ) }
+   my $sec_ref = {}; my $p_type = $self->query_value( q(p_type) ) || 1;
+
+   try {
+      $sec_ref = $self->domain_model->get_security_data( $username, $p_type );
+   }
    catch ($e) { return $self->add_error( $e ) }
 
    my $form   = $s->{form}->{name};
    my $realm  = $s->{user_realm};
-   my $realms = [ NUL, sort keys %{ $self->auth_realms } ];
+   my @realms = grep { $_ ne q(default) } sort keys %{ $c->auth_realms };
 
-   $s->{messages}->{p_default  }->{text} = $data->{passwd};
-   $s->{messages}->{p_generated}->{text} = $data->{generated};
-   $s->{fullname} = $data->{fullname};
+   $s->{fullname} = $sec_ref->{fullname};
+   $s->{messages}->{p_default  }->{text} = $sec_ref->{passwd};
+   $s->{messages}->{p_generated}->{text} = $sec_ref->{generated};
 
    $self->clear_form  ( { firstfld => $form.($realm ? q(.user) : q(.realm)) } );
-   $self->add_hidden  ( q(p_default),   $data->{passwd   } );
-   $self->add_hidden  ( q(p_generated), $data->{generated} );
+   $self->add_hidden  ( q(p_default),   $sec_ref->{passwd   } );
+   $self->add_hidden  ( q(p_generated), $sec_ref->{generated} );
    $self->add_field   ( { default  => $realm,
-                          id       => $form.'.realm',
-                          values   => $realms } );
+                          id       => "${form}.realm",
+                          values   => [ NUL, @realms ] } );
    $realm and
-      $self->add_field( { default  => $user,
-                          id       => $form.'.user',
-                          values   => $data->{users} } );
-   $self->group_fields( { id       => $form.'.select' } );
+      $self->add_field( { default  => $username,
+                          id       => "${form}.user",
+                          values   => $sec_ref->{users} } );
+   $self->group_fields( { id       => "${form}.select" } );
 
-   ($user and $user ne $s->{newtag} and lc $user ne q(all)) or return;
+   ($username and $username ne $s->{newtag} and lc $username ne q(all))
+      or return;
 
-   $data->{passwd} and
-      $self->add_field( { id       => $form.'.p_default',
-                          prompt   => $data->{labels   }->[ 0 ],
-                          stepno   => $data->{prompts  }->[ 0 ],
-                          text     => $data->{passwd   }, } );
-   $self->add_field   ( { id       => $form.'.p_generated',
-                          prompt   => $data->{labels   }->[ 3 ],
-                          stepno   => $data->{prompts  }->[ 3 ],
-                          text     => $data->{generated}, } );
+   my $labels = [ SPC.$self->loc( "${form}.set_password_option1" ),
+                  SPC.$self->loc( "${form}.set_password_option2" ),
+                  SPC.$self->loc( "${form}.set_password_option3" ),
+                  SPC.$self->loc( "${form}.set_password_option4" ) ];
+
+   $sec_ref->{passwd} and
+      $self->add_field( { id       => "${form}.p_default",
+                          prompt   => $labels->[ 0 ],
+                          stepno   => $sec_ref->{prompts  }->[ 0 ],
+                          text     => $sec_ref->{passwd   }, } );
+   $self->add_field   ( { id       => "${form}.p_generated",
+                          prompt   => $labels->[ 3 ],
+                          stepno   => $sec_ref->{prompts  }->[ 3 ],
+                          text     => $sec_ref->{generated}, } );
    $self->add_field   ( { default  => $self->query_value( q(p_value) ) || NUL,
-                          id       => $form.'.p_value',
-                          prompt   => $data->{labels   }->[ 1 ],
-                          stepno   => $data->{prompts  }->[ 1 ],
+                          id       => "${form}.p_value",
+                          prompt   => $labels->[ 1 ],
+                          stepno   => $sec_ref->{prompts  }->[ 1 ],
                           values   => [ qw(disabled left nologin unused) ] } );
-   $self->add_field   ( { id       => $form.'.p_word1',
-                          prompt   => $data->{labels   }->[ 2 ],
-                          stepno   => $data->{prompts  }->[ 2 ], } );
-   $self->group_fields( { id       => $form.'.set_password' } );
-   $self->add_field   ( { all      => $data->{all_roles},
-                          current  => $data->{roles    },
-                          id       => $form.'.groups' } );
-   $self->group_fields( { id       => $form.'.secondary' } );
+   $self->add_field   ( { id       => "${form}.p_word1",
+                          prompt   => $labels->[ 2 ],
+                          stepno   => $sec_ref->{prompts  }->[ 2 ], } );
+   $self->group_fields( { id       => "${form}.set_password" } );
+   $self->add_field   ( { all      => $sec_ref->{all_roles},
+                          current  => $sec_ref->{roles    },
+                          id       => "${form}.groups" } );
+   $self->group_fields( { id       => "${form}.secondary" } );
    $self->add_buttons ( qw(Set Update) );
    return;
 }
 
 # Private methods
+sub _user_authenticated {
+   my ($self, $c, $username, $realm, $user) = @_;
 
-sub _get_security_data {
-   my ($self, $user) = @_; my $s = $self->context->stash; my $data = {};
+   my $msg = 'User [_1] logged in to realm [_2]';
 
-   my $user_obj = $self->domain_model->retrieve( NUL, $user );
-   my @roles    = $user ? @{ $user_obj->roles } : ();
+   $self->log->info( $msg = $self->loc( $msg, $username, $realm ) );
 
-   $data->{users    } = [ NUL, @{ $user_obj->user_list } ];
-   $data->{all_roles} = [ grep { not is_member $_, @roles }
-                               $self->roles->get_roles( q(all) ) ];
+   $user->should_warn_of_expiry
+      and $msg = "${msg}\n".$self->loc( 'Password will expire soon' );
 
-   my $profile = $roles[ 0 ] ? $self->profiles->find( $roles[ 0 ] ) : FALSE;
+   my $wanted   = $c->session->{wanted} and $c->session( wanted => NUL );
+      $wanted ||= $c->controller( q(Root) )->default_namespace;
 
-   $user_obj->pgid and shift @roles;
-
-   $data->{roles   } = \@roles;
-   $data->{passwd  } = $profile ? $profile->passwd : NUL;
-   $data->{fullname} = $user_obj->first_name.SPC.$user_obj->last_name;
-
-   try {
-      $self->ensure_class_loaded( q(Crypt::PassGen) );
-      $data->{generated} = (Crypt::PassGen::passgen( NLETT  => 6,
-                                                     NWORDS => 1 ))[ 0 ]
-         or throw $Crypt::PassGen::ERRSTR;
-   }
-   catch ($e) { $data->{generated} = $e }
-
-   my $form = $s->{form}->{name}; my $labels = {};
-
-   $data->{labels  } = [ SPC.$self->loc( $form.'.set_password_option1' ),
-                         SPC.$self->loc( $form.'.set_password_option2' ),
-                         SPC.$self->loc( $form.'.set_password_option3' ),
-                         SPC.$self->loc( $form.'.set_password_option4' ) ];
-
-   my $p_type = $self->query_value( q(p_type) ) || 1;
-
-   for my $i (1 .. 4) {
-      $data->{prompts}->[ $i - 1 ] = { container_class => q(step_number),
-                                       labels          => { $i => undef },
-                                       name            => q(p_type),
-                                       type            => q(radioGroup),
-                                       values          => [ $i ] };
-      $p_type == $i and $data->{prompts}->[ $i - 1 ]->{default} = $i;
-   }
-
-   return $data;
+   $c->stash( realm           => $realm,
+              redirect_params => [ { mid => $c->set_status_msg( $msg ) } ],
+              wanted          => $wanted, );
+   return;
 }
 
-sub _get_user_data {
-   my ($self, $user) = @_; my $s = $self->context->stash; my $data = {};
+sub _user_password_expired {
+   my ($self, $c, $username, $realm) = @_;
 
-   $data->{profile_name} = $s->{user_params}->{profile};
+   my $msg    = 'User [_1] password expired in realm [_2]';
+   my $wanted = $c->stash->{action_paths}->{change_password};
 
-   my $profile_obj   = $self->profiles->list( $data->{profile_name} );
-   my $user_obj      = $self->retrieve( NUL, $user );
-   my $profile       = $profile_obj->result;
+   $self->log->info( $msg = $self->loc( $msg, $username, $realm ) );
 
-   $data->{homedir } = $profile->homedir;
-   $data->{project } = $profile->project;
-   $data->{labels  } = $profile_obj->labels;
-   $data->{profiles} = [ NUL, @{ $profile_obj->list } ];
-   $data->{users   } = [ NUL, $s->{newtag}, @{ $user_obj->user_list } ];
-
-   if ($self->supports( qw(fields shells) )) {
-      my $shells_obj = $self->shells->retrieve;
-
-      $data->{shells} = $shells_obj->shells;
-      $data->{shell } = $profile->shell || $shells_obj->default || q(/bin/ksh);
-   }
-
-   $user or return $data; my $auto_fill;
-
-   if ($user eq $s->{newtag} and $auto_fill = $s->{fill}) {
-      $data->{email     } = $auto_fill->{email};
-      $data->{first_name} = $auto_fill->{first_name};
-      $data->{last_name } = $auto_fill->{last_name};
-
-      try {
-         $data->{name   } = $self->domain_model->get_new_user_id
-            ( $data->{first_name}, $data->{last_name}, $profile->prefix );
-      }
-      catch ($e) { $self->add_error( $e ) }
-
-      if ($data->{name} and $self->supports( qw(fields homedir) )) {
-         $data->{common_home} = $user_obj->common_home;
-         $data->{homedir} ne $data->{common_home}
-            and $data->{homedir} = $self->catdir( $data->{homedir},
-                                                  $data->{name} );
-      }
-   }
-   elsif ($user ne $s->{newtag} and lc $user ne q(all)) {
-      $data->{email     } = $user_obj->email_address;
-      $data->{first_name} = $user_obj->first_name;
-      $data->{last_name } = $user_obj->last_name;
-      $data->{name      } = $user;
-
-      $data->{home_tel  } = $user_obj->home_phone;
-      $data->{location  } = $user_obj->location;
-      $data->{project   } = $user_obj->project;
-      $data->{role      } = shift @{ $user_obj->roles };
-      $data->{shell     } = $user_obj->shell;
-      $data->{work_tel  } = $user_obj->work_phone;
-
-      if ($self->supports( qw(fields homedir) )) {
-         $data->{common_home} = $user_obj->common_home;
-         $data->{homedir    } = $user_obj->homedir;
-      }
-   }
-
-   return $data;
+   $c->stash( override        => TRUE,
+              realm           => $realm,
+              redirect_params => [ $username, {
+                 mid          => $c->set_error_msg( $msg ),
+                 realm        => $realm, } ],
+              wanted          => $wanted, );
+   __logout( $c );
+   return;
 }
 
-sub _register_read_queue {
-   my ($self, $path) = @_;
+sub _validate_registration {
+   my ($self, $s, $fields) = @_;
 
-   -f $path or throw error => 'File [_1] not found', args  => [ $path ];
-
-   my $fields = $self->file_dataclass_schema( { lock => TRUE } )->load( $path );
-   my $io     = $self->io( $self->register_queue_path )->chomp->lock;
-
-   $io->println( grep { not m{ \A $path \z }mx } $io->getlines ); unlink $path;
-
-   return $fields;
-}
-
-sub _register_validation {
-   my ($self, $fields) = @_; $fields = $self->check_form( $fields || {} );
+   $self->validate_captcha( delete $fields->{security} );
+   $self->clear_captcha_string;
+   $fields->{active  } = FALSE;
+   $fields->{password} = $fields->{newPass1};
+   $fields->{profile } = $s->{register}->{profile};
+   $fields = $self->check_form( $fields );
 
    $fields->{newPass1} eq $fields->{newPass2}
       or throw 'Passwords are not the same';
@@ -723,50 +709,12 @@ sub _register_validation {
    return $fields;
 }
 
-sub _register_verification_email {
-   # Registration verification email
-   my ($self, $fields) = @_;
-
-   my $c       = $self->context;
-   my $s       = $c->stash;
-   my $key     = substr create_token, 0, 32;
-   my $path    = $self->io( $self->catfile( $self->sessdir, $key ) );
-
-   $path->println( $fields->{username} );
-
-   my $link    = $c->uri_for_action( $self->activate_path, $key );
-   my $subject = $self->loc( q(accountVerification), $self->app_name );
-   my $post    = {
-      attributes      => {
-         charset      => $s->{encoding},
-         content_type => $self->email_content_type },
-      from            => q(UserRegistration@).$s->{domain},
-      mailer          => $s->{mailer},
-      mailer_host     => $s->{mailer_host},
-      stash           => {
-         %{ $fields },
-         app_name     => $self->app_name,
-         link         => $link,
-         title        => $subject, },
-      subject         => $subject,
-      template        => $self->email_template,
-      template_attrs  => $self->template_attributes,
-      to              => $fields->{email_address}, };
-
-   $self->add_result( $self->send_email( $post ).SPC.$fields->{email_address} );
-   return;
+# Private functions
+sub __logout {
+   my $c = shift; $c->session_expire_key( __user => 0 ); $c->logout; return;
 }
 
-sub _register_write_queue {
-   my ($self, $fields) = @_;
-
-   my $path = $self->tempname( $self->dirname( $self->register_queue_path ) );
-   my $fdss = $self->file_dataclass_schema( { lock => TRUE } );
-
-   $fdss->dump( { data => $fields, path => $path } );
-   $self->io( $self->register_queue_path )->lock->appendln( $path );
-   return;
-}
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -780,55 +728,88 @@ CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Model::Users;
+   package YourApp;
 
-   my $user_obj = CatalystX::Usul::Model::Users->new( $app, $config );
+   use Catalyst qw(ConfigComponents...);
+
+   __PACKAGE__->config(
+     'Model::UsersDBIC'          => {
+        parent_classes           => 'CatalystX::Usul::Model::Users',
+        domain_attributes        => {
+           dbic_user_class       => 'Authentication::Users',
+           dbic_role_class       => 'Authentication::Roles',
+           dbic_user_roles_class => 'Authentication::UserRoles',
+           role_class            => 'CatalystX::Usul::Roles::DBIC', },
+        domain_class             => 'CatalystX::Usul::Users::DBIC',
+        role_model_class         => 'RolesDBIC',
+        template_attributes      => {
+           COMPILE_DIR           => '__appldir(var/tmp)__',
+           INCLUDE_PATH          => '__appldir(var/root/templates)__', }, }, );
 
 =head1 Description
 
-Forms and actions for user maintainence
+Forms and actions for user maintenance
+
+=head1 Configuration and Environment
+
+Defines the following list of attributes;
+
+=over 3
+
+=item C<default_realm>
+
+A required non-empty simple string. The name of the default
+authentication realm
+
+=item C<email_attributes>
+
+A hash ref used to provide static config for the user registration email
+
+=item C<register_authorise>
+
+A boolean which defaults to false. If true then new user registrations
+require authorisation before the account is created
+
+=item C<register_queue_path>
+
+Pathname to the file which contains the list of pending user registrations
+
+=item C<role_model_class>
+
+Class of the role model
+
+=item C<rprtdir>
+
+Directory location in the filesystem of the user reports
+
+=item C<template_dir>
+
+Path to the directory which contains the user registration email template
+
+=item C<user_model_classes>
+
+Hash ref containing the map between realm names and storage model classes.
+Initialised by L</COMPONENT>
+
+=back
 
 =head1 Subroutines/Methods
 
 =head2 COMPONENT
 
-Constructor initialises these attributes
-
-=over 3
-
-=item app_name
-
-Name of the application using this identity model. Prefixes the subject line
-of the account activation email sent to users who create an account via the
-registration method
-
-=item rprtdir
-
-Location in the filesystem of the user reports
-
-=item sessdir
-
-Location in the filesystem of used user passwords and account activation
-keys
-
-=back
+Constructor initialises default attribute values
 
 =head2 build_per_context_instance
 
-=over 3
+Completes the initialisation process on a per request basis
 
-=item fs_domain
+=head2 activate_account_form
 
-An clone of the I<FileSystem> model used by the L</user_report_form>
-method to list the available user reports
-
-=back
-
-=head2 activate_account
+   $self->activate_account_form( $filename );
 
 Checks for the existence of the file created by the L</register> method. If
 it exists it contains the username of a recently created account. The
@@ -836,13 +817,9 @@ accounts I<active> attribute is set to true, enabling the account
 
 =head2 authenticate
 
-Calls L<authenticate|CatalystX::Usul::Users/authenticate> in the domain model
+   $self->authenticate;
 
-=head2 authentication_form
-
-Adds fields to the stash for the login screen
-
-=head2 authenticate_user
+Calls L<authenticate|CatalystX::Usul::Users/authenticate> in the domain model.
 
 Authenticate the user. If another controller was wanted and the user
 was forced to authenticate first, redirect the session to the
@@ -850,93 +827,141 @@ originally requested controller. This was stored in the session by the
 auto method prior to redirecting to the authentication controller
 which forwarded to here
 
+Redirects to the change password form it the users password has expired
+
+=head2 authentication_form
+
+   $self->authentication_form( $username );
+
+Adds fields to the stash for the login screen
+
 =head2 change_password
+
+   $bool = $self->change_password;
 
 Method to change the users password. Throws exceptions for field
 constraint failures and if the passwords entered are not the same
 
 =head2 change_password_form
 
+   $self->change_password_form( $username );
+
 Adds field data to the stash for the change password screen. Allows users
 to change their own password
 
 =head2 create_or_update
 
+   $username = $self->create_or_update;
+
 Method to create a new account or update an existing one. Throws exceptions
-for field constraint failures. Calls methods in the subclass to do the
+for field constraint failures. Calls methods on the domain model to do the
 actual work
 
 =head2 delete
+
+   $bool = $self->delete;
 
 Deletes the selected account
 
 =head2 find_user
 
-Calls L<find_user|CatalystX::Usul::Users/find_user> in the domain model
+   $user_object = $self->find_user( $username, $verbose );
 
-=head2 get_features
+Calls L<find_user|CatalystX::Usul::Users/find_user> on the domain model.
+The verbose flag maximises the information returned about the user
 
-Delegates the call to the domain model
+=head2 get_user_model_class
 
-=head2 get_primary_rid
+   ($model_class, $realm) = $self->get_user_model_class( $default, $realm );
 
-Returns the primary role id for the given user. Note not all storage models
-support primary_role ids
+Return the user model class for the specified realm. If not found return
+the default user model
 
-=head2 get_users_by_rid
+=head2 invalidate_cache
 
-Returns the list of users that share the given primary role id
+   $self->invalidate_cache;
+
+Invalidates the user cache in the domain model
 
 =head2 is_user
 
+   $bool = $self->is_user( $username );
+
 Calls L<is_user|CatalystX::Usul::Users/is_user> in the domain model
 
+=head2 list
+
+Proxy the call to the domain method
+
+=head2 logout
+
+   $bool = $self->logout( $args );
+
+Expires the user object on the session store. The C<$args> hash takes an
+optional C<message> attribute and an optional C<no_redirect> attribute
+
 =head2 profiles
+
+   $profile_object = $self->profiles;
 
 Returns the domain model's profiles object
 
 =head2 purge
 
+   $bool = $self->purge;
+
 Delete the list of selected accounts
 
 =head2 register
+
+   $bool = $self->register( [ $path ] );
 
 Create the self registered account. The account is created in an inactive
 state and a confirmation email is sent
 
 =head2 register_form
 
+   $self->register_form( $captcha_action_path );
+
 Added the fields to the stash for the self registration screen. Users can
 use this screen to create their own accounts
 
-=head2 retrieve
-
-Calls L<retrieve|CatalystX::Usul::Users/retrieve> in the domain model
-
 =head2 set_password
+
+   $bool = $self->set_password;
 
 Sets the users password to a given value
 
 =head2 user_fill
+
+   $bool = $self->user_fill;
 
 Sets the I<fill> attribute of the stash in response to clicking the
 auto fill button
 
 =head2 user_manager_form
 
-Adds fields to the stash for the user management screen. Adminstrators can
+   $self->user_manager_form( $username );
+
+Adds fields to the stash for the user management screen. Administrators can
 create new accounts or modify the details of existing ones
 
 =head2 user_report
+
+   $bool = $self->user_report( $type );
 
 Creates a report of the user accounts in this realm
 
 =head2 user_report_form
 
+   $self->user_report_form( $id );
+
 View either the list of available account reports or the contents of a
 specific report
 
 =head2 user_security_form
+
+   $self->user_security_form( $username );
 
 Add fields to the stash for the security administration screen. From here
 administrators can reset passwords and change the list of roles to which
@@ -946,23 +971,17 @@ the selected user belongs
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
-=item L<CatalystX::Usul::Captcha>
+=item L<CatalystX::Usul::TraitFor::Captcha>
 
-=item L<CatalystX::Usul::Email>
+=item L<CatalystX::Usul::TraitFor::Email>
 
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::Shells>
-
-=item L<CatalystX::Usul::Time>
+=item L<Class::Usul::Time>
 
 =back
 
@@ -986,7 +1005,7 @@ Larry Wall - For the Perl programming language
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

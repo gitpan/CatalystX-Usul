@@ -1,8 +1,8 @@
-# @(#)$Id: 05kwalitee.t 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: 05kwalitee.t 1319 2013-06-23 16:21:01Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -20,7 +20,7 @@ eval { require Test::Kwalitee; };
 
 plan skip_all => 'Test::Kwalitee not installed' if ($EVAL_ERROR);
 
-Test::Kwalitee->import();
+Test::Kwalitee->import( tests => [ qw(-use_strict) ] );
 
 # Local Variables:
 # mode: perl

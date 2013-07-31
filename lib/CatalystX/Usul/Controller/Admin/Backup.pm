@@ -1,17 +1,22 @@
-# @(#)$Id: Backup.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Backup.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Backup;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-__PACKAGE__->config( device_class => q(TapeBackup),
-                     logfile      => q(cli.log),
-                     namespace    => q(admin) );
+use CatalystX::Usul::Moose;
+use File::Spec::Functions qw(catfile);
 
-__PACKAGE__->mk_accessors( qw(device_class logfile) );
+BEGIN { extends q(CatalystX::Usul::Controller) }
+
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+
+__PACKAGE__->config( namespace => q(admin) );
+
+has 'device_class' => is => 'ro', isa => Str, default => q(TapeBackup);
+
+has 'logfile'      => is => 'ro', isa => Str, default => q(cli.log);
 
 sub backup_base : Chained(common) PathPart(backup) CaptureArgs(0) {
    my ($self, $c) = @_; my $s = $c->stash;
@@ -34,7 +39,7 @@ sub backup_eject : ActionFor(backup.eject) {
 sub backup_logfile : Chained(backup_base) PathPart(logfile) Args(0) {
    my ($self, $c) = @_;
 
-   my $path = $self->catfile( $c->config->{logsdir}, $self->logfile );
+   my $path = catfile( $self->usul->config->logsdir, $self->logfile );
 
    return $c->model( $self->fs_class )->view_file( q(logfile), $path );
 }
@@ -44,6 +49,8 @@ sub backup_start : ActionFor(backup.start) {
 
    return $c->stash->{device_model}->start( $paths );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -57,19 +64,39 @@ CatalystX::Usul::Controller::Admin::Backup - Tape device backups
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Admin;
+   package YourApp::Controller::Admin;
 
-   use base qw(CatalystX::Usul::Controller::Admin);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Admin) }
 
    __PACKAGE__->build_subcontrollers;
 
 =head1 Description
 
 Perform dumps and tars to selected tape device
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item C<device_class>
+
+A string which defaults to C<TapeBackup>. The name of the interface
+model class
+
+=item C<logfile>
+
+A string which defaults to F<cli.log>. The name of the command line interface
+log file
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -97,15 +124,13 @@ Start a backup on the selected drive
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Controller>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
 
 =back
 
@@ -125,7 +150,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

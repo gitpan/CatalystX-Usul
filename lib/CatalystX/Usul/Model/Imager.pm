@@ -1,36 +1,52 @@
-# @(#)$Id: Imager.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Imager.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model::Imager;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
-use CatalystX::Usul::Functions
-    qw(create_token is_member merge_attributes throw);
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
+use CatalystX::Usul::Functions   qw(create_token is_member
+                                    merge_attributes throw);
+use Class::Usul::File;
+use File::Basename               qw(basename);
+use CatalystX::Usul::Constraints qw(Directory Path);
+use File::Spec::Functions        qw(catdir catfile);
 use Imager;
 use MIME::Types;
 
-my @METHODS = qw(scale scaleX scaleY crop flip rotate convert map);
+extends qw(CatalystX::Usul::Model);
 
-__PACKAGE__->config( cache_depth => 2,
-                     cache_dir   => q(imager_cache),
-                     types       => MIME::Types->new( only_complete => 1 ) );
+has 'cache_depth' => is => 'ro', isa => PositiveInt, default => 2;
 
-__PACKAGE__->mk_accessors( qw(cache_depth cache_dir cache_root root types) );
+has 'cache_root'  => is => 'ro', isa => Path, coerce => TRUE,
+   required       => TRUE;
+
+has 'methods'     => is => 'ro', isa => ArrayRef[NonEmptySimpleStr],
+   default        => sub { [ qw(scale scaleX scaleY crop
+                                flip rotate convert map) ] };
+
+has 'root'        => is => 'ro', isa => Directory, coerce => TRUE,
+   required       => TRUE;
+
+has 'types'       => is => 'ro', isa => Object,
+   default        => sub { MIME::Types->new( only_complete => 1 ) };
+
+has '_file' => is => 'lazy', isa => FileClass,
+   default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(io status_for) ], init_arg => undef, reader => 'file';
 
 sub COMPONENT {
-   my ($class, $app, $attrs) = @_; my $ac = $app->config;
+   my ($class, $app, $attr) = @_;
 
-   merge_attributes $attrs, $ac, $class->config, [ qw(root) ];
+   my $ac = $app->config || {}; my $cc = $class->config || {};
 
-   my $new = $class->next::method( $app, $attrs );
+   $cc->{cache_root} ||= catdir( $ac->{tempdir}, q(imager_cache) );
 
-   defined $new->cache_root
-      or $new->cache_root( $class->catdir( $new->tempdir, $new->cache_dir ) );
+   merge_attributes $attr, $cc, $ac, [ qw(cache_root root) ];
 
-   return $new;
+   return $class->next::method( $app, $attr );
 }
 
 sub transform {
@@ -41,7 +57,7 @@ sub transform {
    my $methods = shift @{ $args }; my @methods = split m{ \+ }mx, $methods;
 
    for my $method (@methods) {
-      is_member $method, @METHODS
+      is_member $method, @{ $self->methods }
          or throw error => 'Imager method [_1] unknown', args => [ $method ];
    }
 
@@ -49,19 +65,19 @@ sub transform {
 
    my $stat  = delete $query->{stat};
    my $force = delete $query->{force};
-   my $path  = $self->catfile( @{ $args } );
-   my $key   = $self->_make_key( $methods, $path, $query );
+   my $path  = catfile( @{ $args } );
+   my $key   = __make_key( $methods, $path, $query );
 
-   $path = $self->catfile( $self->root, $path );
+   $path = catfile( $self->root, $path );
 
    -f $path or throw error => 'Path [_1] not found', args => [ $path ];
 
    my $mtime = $stat ? $self->status_for( $path )->{mtime} : undef;
-   my $type  = $self->types->mimeTypeOf( $self->basename( $path ) )->type;
+   my $type  = $self->types->mimeTypeOf( basename( $path ) )->type;
    my $data;
 
    if ($force or not $data = $self->_cache( $mtime, $key )) {
-      $data = $self->_get_image( \@methods, $path, $query );
+      $data = __get_image( \@methods, $path, $query );
       $self->_cache( undef, $key, $data );
    }
 
@@ -75,9 +91,8 @@ sub _bucket {
 
    my $file = create_token $key;
 
-   return $self->catfile( $self->cache_root,
-                          (map { substr $file, 0, $_ + 1 } (0 .. $depth - 1)),
-                          $file );
+   return catfile( $self->cache_root,
+                   (map { substr $file, 0, $_ + 1 } (0 .. $depth - 1)), $file );
 }
 
 sub _cache {
@@ -95,8 +110,10 @@ sub _cache {
    return $data;
 }
 
-sub _get_image {
-   my ($self, $methods, $path, $query) = @_;
+# Private functions
+
+sub __get_image {
+   my ($methods, $path, $query) = @_;
 
    my $img  = Imager->new; my ($data, $transformed);
 
@@ -112,13 +129,15 @@ sub _get_image {
    return $data;
 }
 
-sub _make_key {
-   my ($self, $methods, $path, $query) = @_;
+sub __make_key {
+   my ($methods, $path, $query) = @_;
 
    return $methods.q(/).$path.q(?).(join  q(&),
                                     map   { $_.q(=).$query->{ $_ } }
                                     keys %{ $query });
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -132,21 +151,56 @@ CatalystX::Usul::Model::Imager - Manipulate images
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   my $model = $c->model( q(Imager) );
+   package YourApp;
 
-   my ($data, $type, $mtime) =
-      $model->transform( [ @args ], $c->req->query_parameters );
+   use Catalyst qw(ConfigComponents...);
+
+   __PACKAGE__->config(
+     'Model::Imager'   => {
+        parent_classes => q(CatalystX::Usul::Model::Imager),
+        scale          => { scalefactor => 0.5 } }, );
 
    # For a thumbnail image
-   # http://localhost:3000/en/imager/scale/static/images/catalyst_logo.png?scalefactor=0.5
+   # http://localhost:3000/imager/scale/static/images/catalyst_logo.png?scalefactor=0.5
 
 =head1 Description
 
 Transform any image under the document root using the L<Imager> module
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item cache_depth
+
+A positive integer which defaults to C<2>. The number of intermediate
+directory levels beneath the C<cache_root>
+
+=item cache_root
+
+A required path which points to the root of the image cache
+
+=item methods
+
+An array ref of non empty simple strings which are the list of methods
+that can be applied to the image. Defaults to
+C<scale scaleX scaleY crop flip rotate convert map>
+
+=item root
+
+A required directory. The document root for serving static content
+
+=item types
+
+An instance of L<MIME::Types>
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -155,6 +209,8 @@ Transform any image under the document root using the L<Imager> module
 Sets attributes for the document root and the cache root
 
 =head2 transform
+
+   ($data, $type, $mtime) = $self->transform( $args, $query );
 
 Creates an L<Imager> object for the supplied path under the document
 root. Transforms the object using the supplied method and parameters.
@@ -165,15 +221,15 @@ time of the image file
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Model>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::File>
 
 =item L<Imager>
 
@@ -197,7 +253,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

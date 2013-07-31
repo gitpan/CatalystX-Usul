@@ -1,21 +1,39 @@
-# @(#)$Id: XML.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: XML.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::View::XML;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::View);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use XML::Simple;
-use MRO::Compat;
 
-__PACKAGE__->config
-   ( content_types     => {
-      'text/x-xml'     => { build_widgets => 0 },
-      'text/xml'       => { build_widgets => 1 }, },
-     deserialize_attrs => { ForceArray    => 0 }, );
+extends q(CatalystX::Usul::View);
 
+has 'content_types'     => is => 'ro', isa => HashRef, default => sub { {
+   'text/x-xml'         => { build_widgets => 0 },
+   'text/xml'           => { build_widgets => 1 }, } };
+has 'deserialize_attrs' => is => 'ro', isa => HashRef, default => sub { {
+   ForceArray           => 0 } };
+
+around 'prepare_data' => sub {
+   my ($next, $self, $c) = @_; my $data = $self->$next( $c );
+
+   my $js = join "\n", @{ $c->stash->{literal_js} || [] };
+
+   $js and $data->{script} ||= [] and push @{ $data->{script} }, $js;
+
+   return $data;
+};
+
+around 'read_form_sources' => sub {
+   my ($next, $self, $c) = @_; my $data = $self->$next( $c );
+
+   $self->content_types->{ $c->stash->{content_type} }->{build_widgets}
+      and $self->_build_widgets( $c, { data => $data, skip_groups => 1 } );
+
+   return $data;
+};
 
 sub deserialize {
    my ($self, @rest) = @_;
@@ -31,16 +49,7 @@ sub serialize {
    return XML::Simple->new( %{ $attrs } )->xml_out( $data );
 }
 
-# Private Methods
-
-sub _read_form_sources {
-   my ($self, $c) = @_; my $data = $self->next::method( $c );
-
-   $self->content_types->{ $c->stash->{content_type} }->{build_widgets}
-      and $self->_build_widgets( $c, { data => $data, skip_groups => 1 } );
-
-   return $data;
-}
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -54,12 +63,12 @@ CatalystX::Usul::View::XML - Render XML response to an XMLHttpRequest
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   MyApp->config( "View::XML"   => {
-                     base_class => qw(CatalystX::Usul::View::XML) } );
+   MyApp->config( "View::XML"    => {
+                  parent_classes => qw(CatalystX::Usul::View::XML) } );
 
 =head1 Description
 
@@ -77,11 +86,11 @@ Deserializes the supplied data
 
 Returns the supplied data encoded as XML
 
-=head1 Diagnostics
+=head1 Configuration and Environment
 
 None
 
-=head1 Configuration and Environment
+=head1 Diagnostics
 
 None
 
@@ -90,6 +99,8 @@ None
 =over 3
 
 =item L<Catalyst::View>
+
+=item L<CatalystX::Usul::Moose>
 
 =item L<XML::Simple>
 
@@ -111,7 +122,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

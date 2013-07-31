@@ -1,19 +1,27 @@
-# @(#)$Id: Buttons.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Buttons.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Buttons;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-__PACKAGE__->config
-   ( classes        => { help => q(ifield autosize) },
-     create_msg_key => 'Button [_1]/[_2] created',
-     delete_msg_key => 'Button [_1]/[_2] deleted',
-     keys_attr      => q(buttons),
-     typelist       => { help => q(textarea) },
-     update_msg_key => 'Button [_1]/[_2] updated', );
+use CatalystX::Usul::Moose;
+
+extends q(CatalystX::Usul::Model::Config);
+
+has '+classes'        => default => sub { { help => q(ifield autosize) } };
+
+has '+create_msg_key' => default => 'Button [_1]/[_2] created';
+
+has '+delete_msg_key' => default => 'Button [_1]/[_2] deleted';
+
+has '+keys_attr'      => default => q(buttons);
+
+has '+typelist'       => default => sub { { help => q(textarea) } };
+
+has '+update_msg_key' => default => 'Button [_1]/[_2] updated';
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -27,7 +35,7 @@ CatalystX::Usul::Model::Config::Buttons - Class definition for buttons
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 

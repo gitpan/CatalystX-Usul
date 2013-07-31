@@ -1,14 +1,14 @@
-# @(#)$Id: JSON.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: JSON.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::View::JSON;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::View);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use MRO::Compat;
+use CatalystX::Usul::Moose;
 use JSON;
+
+extends q(CatalystX::Usul::View);
 
 sub deserialize {
    my ($self, @rest) = @_;
@@ -24,6 +24,8 @@ sub serialize {
    return JSON->new->allow_blessed->convert_blessed->encode( $data );
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -36,12 +38,12 @@ CatalystX::Usul::View::JSON - Render JSON response to an XMLHttpRequest
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    MyApp->config( "View::JSON"   => {
-                     base_class => qw(CatalystX::Usul::View::JSON) } );
+                  parent_classes => qw(CatalystX::Usul::View::JSON) } );
 
 =head1 Description
 
@@ -60,11 +62,11 @@ Decodes the supplied data. Calls C<decode_json> to get the work done
 Returns the supplied data encoded as JSON.  Calls C<decode_json> to
 get the work done
 
-=head1 Diagnostics
+=head1 Configuration and Environment
 
 None
 
-=head1 Configuration and Environment
+=head1 Diagnostics
 
 None
 
@@ -72,7 +74,7 @@ None
 
 =over 3
 
-=item L<Catalyst::View>
+=item L<CatalystX::Usul::View>
 
 =item L<JSON>
 
@@ -94,7 +96,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,24 +1,31 @@
-# @(#)$Id: Roles.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Roles.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Roles;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(is_member throw);
+use Class::Usul::IPC;
 
-__PACKAGE__->mk_accessors( qw(cache users) );
+has 'cache' => is => 'ro',   isa => HashRef,
+   default  => sub { { _dirty => TRUE } };
 
-sub new {
-   my ($class, $app, $attrs) = @_;
+has 'users' => is => 'ro',   isa => Object, required => TRUE, weak_ref => TRUE;
 
-   $attrs->{cache} ||= {};
+has '_file' => is => 'lazy', isa => FileClass,
+   default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
 
-   return $class->next::method( $app, $attrs );
-}
+has '_ipc'  => is => 'lazy', isa => IPCClass,
+   default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(run_cmd) ], init_arg => undef, reader => 'ipc';
+
+has '_usul' => is => 'ro',   isa => BaseClass,
+   handles  => [ qw(config debug lock log) ], init_arg => 'builder',
+   reader   => 'usul', required => TRUE, weak_ref => TRUE;
 
 sub get_member_list {
    my ($self, $role) = @_; my (%found, @members) = ((), ());
@@ -75,13 +82,11 @@ sub get_roles {
 
    # If checking a specific user then add its primary role name
    if (lc $user ne q(all)) {
-      if (not defined $rid and defined $self->users) {
-         $rid = $self->users->get_primary_rid( $user );
-      }
+      not defined $rid and defined $self->users
+         and $rid = $self->users->get_primary_rid( $user );
 
-      if (defined $rid and defined $id2name and exists $id2name->{ $rid }) {
-         unshift @tmp, $id2name->{ $rid };
-      }
+      defined $rid and defined $id2name and exists $id2name->{ $rid }
+         and unshift @tmp, $id2name->{ $rid };
    }
 
    # Deduplicate list of roles
@@ -117,8 +122,10 @@ sub _cache_results {
 sub _get_role {
    my ($self, $role) = @_; $role or return; my ($cache) = $self->_load;
 
-   return exists $cache->{ $role } ? $cache->{ $role } : NUL;
+   return exists $cache->{ $role } ? $cache->{ $role } : undef;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -132,25 +139,41 @@ CatalystX::Usul::Roles - Manage the roles and their members
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::Roles::DBIC;
+   use Class::Usul;
 
-   my $class    = CatalystX::Usul::Roles::DBIC;
-   my $role_obj = $class->new( $app, $config );
+   my $usul     = Class::Usul->new;
+   my $user_obj = CatalystX::Usul::Users::DBIC->new( builder => $usul );
+   my $role_obj = CatalystX::Usul::Roles::DBIC->new( builder => $usul,
+                                                     users   => $user_obj );
+
 
 =head1 Description
 
 Implements the base class for role data stores. Each factory subclass
 should inherit from this and implement the required list of methods
 
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item cache
+
+Hash ref which defaults to I<< { _dirty => TRUE } >>
+
+=item users
+
+A L<CatalystX::Usul::Users> object which is required
+
+=back
+
 =head1 Subroutines/Methods
-
-=head2 new
-
-Constructor.
 
 =head2 add_roles_to_user
 
@@ -259,15 +282,13 @@ L</add_users_to_role> and/or L</remove_users_from_role> as appropriate
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
-=item L<CatalystX::Usul::Model>
+=item L<Class::Usul::IPC>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -287,7 +308,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

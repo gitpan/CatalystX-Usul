@@ -1,202 +1,60 @@
-# @(#)$Id: Constants.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Constants.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Constants;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent  qw(Class::Accessor::Grouped);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
-my @_constants;
+use Class::Usul::Constants ();
+use Sub::Exporter;
+
+my @CONSTANTS;
 
 BEGIN {
-   @_constants =
-      ( qw(ACCESS_OK ACCESS_NO_UGRPS ACCESS_UNKNOWN_USER ACCESS_DENIED
-           ACTION_OPEN ACTION_HIDDEN ACTION_CLOSED ARRAY ASSERT BRK
-           CODE DEFAULT_ACTION DEFAULT_L10N_DOMAIN DIGEST_ALGORITHMS
-           DOTS EVIL EVIL_EMPIRE EXCEPTION_CLASS FAILED FALSE GT HASH
-           HASH_CHAR LANG LBRACE LOCALIZE LSB NBSP
-           NEGOTIATION_IGNORE_XML NEGOTIATION_OFF NEGOTIATION_ON NUL
-           OK PHASE ROOT RSB SEP SPC TRUE TTS UNTAINT_IDENTIFIER
-           UNTAINT_PATH_REGEX UUID_PATH) );
+   @CONSTANTS = qw( ACCESS_OK ACCESS_NO_UGRPS ACCESS_UNKNOWN_USER
+                    ACCESS_DENIED ACTION_OPEN ACTION_HIDDEN
+                    ACTION_CLOSED DEFAULT_ACTION DEFAULT_CONTENT_TYPE DOTS
+                    EVIL_EMPIRE GT HASH_CHAR LSB MAX_SESSION_TIME NBSP
+                    NEGOTIATION_IGNORE_XML NEGOTIATION_OFF
+                    NEGOTIATION_ON ROOT RSB TTS );
 }
 
-use Sub::Exporter -setup => {
-   exports => [ @_constants ], groups => { default => [ @_constants ], },
-};
+sub import {
+   my ($class, @wanted) = @_; my $into = caller;
 
-sub ACCESS_OK () {
-   return 0;
+   my $import = Sub::Exporter::build_exporter( {
+      exports => [ @CONSTANTS ], groups => { default => [ @CONSTANTS ], },
+   } );
+
+   # TODO: Split wanted in two lists and add to import calls
+   Class::Usul::Constants->import( { into => $into } );
+   __PACKAGE__->$import( { into => $into } );
+   return;
 }
 
-sub ACCESS_NO_UGRPS () {
-   return 1;
-}
-
-sub ACCESS_UNKNOWN_USER () {
-   return 2;
-}
-
-sub ACCESS_DENIED () {
-   return 3;
-}
-
-sub ACTION_OPEN () {
-   return 0;
-}
-
-sub ACTION_HIDDEN () {
-   return 1;
-}
-
-sub ACTION_CLOSED () {
-   return 2;
-}
-
-sub ARRAY () {
-   return q(ARRAY);
-}
-
-sub ASSERT () {
-   return __PACKAGE__->get_inherited( q(Assert) ) || sub {};
-}
-
-sub BRK () {
-   return q(: );
-}
-
-sub CODE () {
-   return q(CODE);
-}
-
-sub DEFAULT_ACTION () {
-   return q(redirect_to_default);
-}
-
-sub DEFAULT_L10N_DOMAIN () {
-   return q(default);
-}
-
-sub DIGEST_ALGORITHMS () {
-   return ( qw(SHA-512 SHA-256 SHA-1 MD5) );
-}
-
-sub DOTS () {
-   return chr 8230;
-}
-
-sub EVIL () {
-   return q(MSWin32);
-}
-
-sub EVIL_EMPIRE () {
-   return q(MSIE);
-}
-
-sub EXCEPTION_CLASS () {
-   return __PACKAGE__->get_inherited( q(Exception_Class) )
-       || q(CatalystX::Usul::Exception);
-}
-
-sub FAILED () {
-   return 1;
-}
-
-sub FALSE () {
-   return 0;
-}
-
-sub GT () {
-   return q(&gt;);
-}
-
-sub HASH () {
-   return q(HASH);
-}
-
-sub HASH_CHAR () {
-   return chr 35;
-}
-
-sub LANG () {
-   return q(en);
-}
-
-sub LBRACE () {
-   return q({);
-}
-
-sub LOCALIZE () {
-   return q([_);
-}
-
-sub LSB () {
-   return q([);
-}
-
-sub NBSP () {
-   return q(&#160;);
-}
-
-sub NEGOTIATION_IGNORE_XML {
-   return 2;
-}
-
-sub NEGOTIATION_OFF {
-   return 0;
-}
-
-sub NEGOTIATION_ON {
-   return 1;
-}
-
-sub NUL () {
-   return q();
-}
-
-sub OK () {
-   return 0;
-}
-
-sub PHASE () {
-   return 2;
-}
-
-sub ROOT () {
-   return q(root);
-}
-
-sub RSB () {
-   return q(]);
-}
-
-sub SEP () {
-   return q(/);
-}
-
-sub SPC () {
-   return q( );
-}
-
-sub TRUE () {
-   return 1;
-}
-
-sub TTS () {
-   return q( ~ );
-}
-
-sub UNTAINT_IDENTIFIER () {
-   return qr{ \A ([a-zA-Z0-9_]+) \z }mx;
-}
-
-sub UNTAINT_PATH_REGEX () {
-   return qr{ \A ([^\$%;|&><]+) \z }mx;
-}
-
-sub UUID_PATH () {
-   return [ NUL, qw(proc sys kernel random uuid) ];
-}
+sub ACCESS_OK              () { 0         }
+sub ACCESS_NO_UGRPS        () { 1         }
+sub ACCESS_UNKNOWN_USER    () { 2         }
+sub ACCESS_DENIED          () { 3         }
+sub ACTION_OPEN            () { 0         }
+sub ACTION_HIDDEN          () { 1         }
+sub ACTION_CLOSED          () { 2         }
+sub DEFAULT_ACTION         () { q(redirect_to_default) }
+sub DEFAULT_CONTENT_TYPE   () { q(text/html) }
+sub DOTS                   () { chr 8230  }
+sub EVIL_EMPIRE            () { q(MSIE)   }
+sub GT                     () { q(&gt;)   }
+sub HASH_CHAR              () { chr 35    }
+sub LSB                    () { q([)      }
+sub MAX_SESSION_TIME       () { 7_200     }
+sub NBSP                   () { q(&#160;) }
+sub NEGOTIATION_IGNORE_XML () { 2         }
+sub NEGOTIATION_OFF        () { 0         }
+sub NEGOTIATION_ON         () { 1         }
+sub ROOT                   () { q(root)   }
+sub RSB                    () { q(])      }
+sub TTS                    () { q( ~ )    }
 
 1;
 
@@ -210,7 +68,7 @@ CatalystX::Usul::Constants - Definitions of constant values
 
 =head1 Version
 
-0.7.$Rev: 1181 $
+0.8.$Rev: 1320 $
 
 =head1 Synopsis
 
@@ -276,6 +134,10 @@ String CODE
 
 All controllers should implement this method as a redirect
 
+=head2 DEFAULT_CONTENT_TYPE
+
+Returns I<text/html>
+
 =head2 DEFAULT_L10N_DOMAIN
 
 Name of the GNU Gettext Portable Object file that contains common message
@@ -297,13 +159,6 @@ The devil's spawn. Value returned by C<$OSNAME> on the unmentionable platform
 =head2 EVIL_EMPIRE
 
 What L<HTTP::DetectUserAgent> returns if someone is using the wrong client
-
-=head2 EXCEPTION_CLASS
-
-Returns the exception class used by L</throw> to raise an exception. Can be set
-via a call to to the I<Exception_Class> inherited attribute mutator, i.e.
-
-   CatalystX::Usul::Constants->set_inherited( q(Exception_Class), q(YourClass));
 
 =head2 FAILED
 
@@ -341,6 +196,11 @@ parameter
 =head2 LSB
 
 Left square bracket character
+
+=head2 MAX_SESSION_TIME
+
+The default length of time before a session expires through non use (in
+seconds). Two hours
 
 =head2 NBSP
 
@@ -404,7 +264,8 @@ Regular expression used to untaint path strings
 
 =head2 UUID_PATH
 
-An array which if catfiled is a path to the proc filesystems random generator
+An array ref. which is passed to C<catfile> and is a path to the F<proc>
+filesystems random generator
 
 =head1 Diagnostics
 
@@ -417,6 +278,8 @@ None
 =head1 Dependencies
 
 =over 3
+
+=item L<Class::Usul::Constants>
 
 =item L<Sub::Exporter>
 
@@ -438,7 +301,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2012 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

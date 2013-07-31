@@ -1,25 +1,36 @@
-# @(#)$Id: Config.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Config.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Config;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 
-__PACKAGE__->config( button_class     => q(Config::Buttons),
-                     credential_class => q(Config::Credentials),
-                     field_class      => q(Config::Fields),
-                     key_class        => q(Config::Keys),
-                     message_class    => q(Config::Messages),
-                     namespace        => q(admin),
-                     template_class   => q(Templates), );
+BEGIN { extends q(CatalystX::Usul::Controller) }
 
-__PACKAGE__->mk_accessors( qw(button_class credential_class
-                              field_class key_class
-                              message_class template_class) );
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+
+__PACKAGE__->config( namespace => q(admin), );
+
+has 'button_class'     => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(Config::Buttons);
+
+has 'credential_class' => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(Config::Credentials);
+
+has 'field_class'      => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(Config::Fields);
+
+has 'key_class'        => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(Config::Keys);
+
+has 'message_class'    => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(Config::Messages);
+
+has 'template_class'   => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(Templates);
 
 sub config_base : Chained(common) PathPart(configuration) CaptureArgs(0) {
 }
@@ -178,6 +189,8 @@ sub templates_view : Chained(config_base) PathPart(templates) Args HasActions {
    return $c->model( $self->template_class )->form( @args );
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -190,19 +203,59 @@ CatalystX::Usul::Controller::Admin::Config - Editor for config files
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Admin;
+   package YourApp::Controller::Admin;
 
-   use base qw(CatalystX::Usul::Controller::Admin);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Admin) }
 
    __PACKAGE__->build_subcontrollers;
 
 =head1 Description
 
 CRUD methods for the configuration files
+
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item C<button_class>
+
+A non empty simple string which defaults to C<Config::Buttons>. The model
+class for button widgets
+
+=item C<credential_class>
+
+A non empty simple string which defaults to C<Config::Credentials>. The
+model class for database login credentials
+
+=item C<field_class>
+
+A non empty simple string which defaults to C<Config::Fields>. The model
+class for input field widgets
+
+=item C<key_class>
+
+A non empty simple string which defaults to C<Config::Keys>. The model
+class for form keys
+
+=item C<message_class>
+
+A non empty simple string which defaults to C<Config::Messages>. The model
+class for GNU Gettext messages
+
+=item C<template_class>
+
+A non empty simple string which defaults to C<Templates>. The model
+class for L<Toolkit::Template> templates
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -228,12 +281,12 @@ currently selected button definition or inserts a new one
 
 =head2 buttons_view
 
-Displays the button defintion form. Button defintions define the help,
+Displays the button definition form. Button definitions define the help,
 prompt and error text associated with a form submission image button
 
 =head2 credentials
 
-Displays the credential defintion form. Credentials contain the data used
+Displays the credential definition form. Credentials contain the data used
 to connect to a database
 
 =head2 credentials_delete
@@ -262,7 +315,7 @@ currently selected fields definition or inserts a new one
 
 =head2 fields_view
 
-Displays the fields defintion form. Field defintions define the
+Displays the fields definition form. Field definitions define the
 attributes passed to the L<HTML::FormWidgets> class that is used by
 the view to create user interface widgets
 
@@ -290,7 +343,7 @@ currently selected keys definition or inserts a new one
 
 =head2 keys_view
 
-Displays the keys defintion form. Keys defintions define the
+Displays the keys definition form. Keys definitions define the
 attributes that L<CatalystX::Usul::PersistentState> uses
 
 =head2 messages_delete
@@ -331,15 +384,13 @@ of a page
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Controller>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
 
 =back
 
@@ -359,7 +410,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

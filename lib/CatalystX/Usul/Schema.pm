@@ -1,88 +1,57 @@
-# @(#)$Id: Schema.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Schema.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Schema;
 
-use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
+use namespace::sweep;
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(create_token throw);
-use Crypt::CBC;
-use English qw(-no_match_vars);
-use MIME::Base64;
-use Sys::Hostname;
+use CatalystX::Usul::Functions qw( distname );
+use Class::Usul::Types         qw( ArrayRef Bool HashRef
+                                   NonEmptySimpleStr Str );
+use Moo;
+use MooX::Options;
+use File::Spec::Functions      qw( catfile );
 
-my $CLEANER         = '.*^\s*use\s+Acme::Bleach\s*;\r*\n';
-my %DB_ADMIN_IDS    = ( mysql  => q(root),
-                        pg     => q(postgres), );
-my $KEY             = " \t" x 8;
-my $DATA            = do { local $RS = undef; <DATA> };
-my %UNICODE_OPTIONS = ( mysql  => { mysql_enable_utf8 => TRUE },
-                        pg     => { pg_enable_utf8    => TRUE },
-                        sqlite => { sqlite_unicode    => TRUE }, );
+extends q(Class::Usul::Programs);
+with    q(CatalystX::Usul::TraitFor::ConnectInfo);
+with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
 
-__PACKAGE__->mk_accessors( qw(attrs database driver dsn host password
-                              preversion rdbms schema_version unlink user) );
+# Public attributes
+option 'attrs'          => is => 'ro',   isa => HashRef,
+   default              => sub { { add_drop_table => TRUE,
+                                   no_comments    => TRUE, } },
+   init_arg             => 'dbattrs';
 
-# Class methods
+option 'database'       => is => 'ro',   isa => NonEmptySimpleStr,
+   required             => TRUE;
 
-sub get_connect_info {
-   my ($self, $app_cfg, $db) = @_; $app_cfg ||= {};
+option 'db_admin_ids'   => is => 'ro',   isa => HashRef,
+   default              => sub { { mysql => q(root), pg => q(postgres), } };
 
-   $db or throw error => 'Class [_1] no database name',
-                args  => [ ref $self || $self ];
+option 'preversion'     => is => 'ro',   isa => Str, default => NUL;
 
-   my $schema  = $self->file_dataclass_schema;
-   my $ctlfile = $self->_get_control_file( $app_cfg, $db );
-   my $data    = $self->_load_credentials( $schema, $ctlfile, $db );
-   my $creds   = $data->{credentials}->{ $db };
-   my $dsn     = q(dbi:).$creds->{driver}.q(:database=).$db;
-      $dsn    .= q(;host=).$creds->{host}.q(;port=).$creds->{port};
-   my $uopt    = $creds->{unicode_option}
-              || $UNICODE_OPTIONS{ lc $creds->{driver} } || {};
-   my $attr    = { AutoCommit => defined $creds->{auto_commit}
-                               ? $creds->{auto_commit} : TRUE,
-                   PrintError => defined $creds->{print_error}
-                               ? $creds->{print_error} : FALSE,
-                   RaiseError => defined $creds->{raise_error}
-                               ? $creds->{raise_error} : TRUE,
-                   %{ $uopt }, };
+option 'rdbms'          => is => 'ro',   isa => ArrayRef,
+   default              => sub { [ qw(MySQL PostgreSQL) ] };
 
-   $creds->{password} = $self->_decrypt_from_cfg( $app_cfg, $creds->{password});
+option 'schema_classes' => is => 'ro',   isa => HashRef, default => sub { {} };
 
-   return [ $dsn, $creds->{user}, $creds->{password}, $attr ];
-}
+option 'schema_version' => is => 'ro',   isa => NonEmptySimpleStr,
+   default              => '0.1';
 
-# Public interface object methods
+option 'unlink'         => is => 'ro',   isa => Bool, default => FALSE;
 
-sub schema_init {
-   my ($self, $cfg, $vars) = @_; my $dbs; $vars ||= {};
+with q(Class::Usul::TraitFor::UntaintedGetopts);
 
-   $self->rdbms( [ @{ $cfg->{rdbms} } ] );
+# Private attributes
+has '_connect_info'  => is => 'lazy', isa => ArrayRef, init_arg => undef,
+   reader            => 'connect_info';
 
-   if ($dbs = $vars->{rdbms}) {
-      push @{ $self->rdbms }, ref $dbs eq ARRAY ? @{ $dbs } : $dbs;
-   }
+has '_paragraph'     => is => 'ro',   isa => HashRef,
+   default           => sub { { cl => TRUE, fill => TRUE, nl => TRUE } },
+   reader            => 'paragraph';
 
-   $self->database      ( $vars->{database  } || $cfg->{database      } );
-   $self->preversion    ( $vars->{preversion} || $cfg->{preversion    } );
-   $self->schema_version( $vars->{version   } || $cfg->{schema_version} );
-   $self->unlink        ( $vars->{unlink    } || $cfg->{unlink        } );
-
-   my $info = $self->get_connect_info( $cfg, $self->database );
-
-   $self->dsn     ( $vars->{dsn}      || $info->[ 0 ]                );
-   $self->user    ( $vars->{user    } || $info->[ 1 ]                );
-   $self->password( $vars->{password} || $info->[ 2 ]                );
-   $self->attrs   ( { add_drop_table => TRUE, no_comments => TRUE,
-                 %{ $vars->{dbattrs } || $info->[ 3 ] }, }           );
-   $self->host    ( (split q(=), (split q(;), $self->dsn)[ 1 ])[ 1 ] );
-   $self->driver  ( (split q(:), $self->dsn)[ 1 ]                    );
-   return;
-}
-
+# Public methods
 sub create_database : method {
    my $self = shift; my $cmd;
 
@@ -107,98 +76,68 @@ sub create_database : method {
 
    if (lc $self->driver eq q(pg)) {
       $self->info( "Creating PostgreSQL database ${database}" );
-      $cmd = "create role ${user} login password '${password}';";
+      $cmd  = "create role ${user} login password '${password}';";
       $self->_run_db_cmd( $admin_creds, $cmd );
-      $cmd = "create database ${database} owner ${user} encoding 'UTF8';";
+      $cmd  = "create database ${database} owner ${user} encoding 'UTF8';";
       $self->_run_db_cmd( $admin_creds, $cmd );
       return OK;
    }
 
+   $self->warning( 'Create database failed: Unknown driver '.$self->driver );
    return FAILED;
 }
 
-sub create_ddl {
-   my ($self, $dbh, $dir) = @_; my $version = $self->schema_version;
+sub create_ddl : method {
+   my $self = shift; $self->output( 'Creating DDL for '.$self->dsn );
 
-   if ($self->unlink) {
-      for my $db (@{ $self->rdbms }) {
-         my $path = $self->io( $dbh->ddl_filename( $db, $version, $dir ) );
-
-         $path->is_file and $path->unlink;
-      }
+   for my $schema_class (values %{ $self->schema_classes }) {
+      $self->_create_ddl( $schema_class, $self->config->dbasedir );
    }
 
-   $dbh->storage->create_ddl_dir( $dbh,
-                                  $self->rdbms,
-                                  $version,
-                                  $dir,
-                                  $self->preversion,
-                                  $self->attrs );
-   return;
+   return OK;
 }
 
-sub create_schema : method {
-   # Create databases and edit credentials
+sub create_schema : method { # Create databases and edit credentials
    my $self    = shift;
-   my $cfg     = $self->config;
-   my $picfg   = $self->read_post_install_config;
+   my $picfg   = $self->maybe_read_post_install_config;
    my $text    = 'Schema creation requires a database, id and password. ';
       $text   .= 'For Postgres the driver is Pg and the port 5432';
    my $default = defined $picfg->{create_schema}
                ? $picfg->{create_schema} : TRUE;
 
-   $self->output( $text, $cfg->{paragraph} );
+   $self->output( $text, $self->paragraph );
 
-   my $choice  = $self->yorn( 'Create database schema', $default, TRUE, 0 );
-
-   $picfg->{create_schema} = $choice or return OK;
+   $self->yorn( 'Create database schema', $default, TRUE, 0 ) or return OK;
 
    # Edit the config file that contains the database connection info
-   $self->_edit_credentials( $picfg );
-
+   $self->edit_credentials;
    # Create the database if we can. Will do nothing if we can't
-   $self->create_database;
-
+   $self->create_database and return OK;
    # Call DBIx::Class::deploy to create schema and populate it with static data
    $self->deploy_and_populate;
    return OK;
 }
 
-sub decrypt {
-   my ($self, $seed, $encoded) = @_; $encoded or return;
+sub dbattrs {
+   my $self = shift; my $attrs = $self->connect_info->[ 3 ];
 
-   my $cipher = Crypt::CBC->new( -cipher => q(Twofish),
-                                 -key    => $self->_keygen( $seed ) );
+   $attrs->{ $_ } = $self->attrs->{ $_ } for (keys %{ $self->attrs });
 
-   return $cipher->decrypt( decode_base64( $encoded ) );
+   return $attrs;
 }
 
-sub deploy_and_populate {
-   my ($self, $dbh, $dir, $schema) = @_; my $res; $dbh or return;
+sub deploy_and_populate : method {
+   my $self = shift; $self->output( 'Deploy and populate for '.$self->dsn );
 
-   $self->info( "Deploying schema ${schema} and populating" );
-   $dbh->storage->ensure_connected; $dbh->deploy( $self->attrs, $dir );
-
-   $schema =~ s{ :: }{-}gmx;
-
-   my $re = qr{ \A $schema [-] \d+ [-] (.*) \.xml \z }mx;
-   my $io = $self->io( $dir )->filter( sub { $_->filename =~ $re } );
-
-   for my $path ($io->all_files) {
-      my ($class) = $path->filename =~ $re;
-
-      if ($class) { $self->output( "Populating ${class}" ) }
-      else        { $self->fatal ( 'No class in [_1]', $path->filename ) }
-
-      my $hash = $self->file_dataclass_schema->load( $path );
-      my $flds = [ split SPC, $hash->{fields} ];
-      my @rows = map { [ map    { s{ \A [\'\"] }{}mx; s{ [\'\"] \z }{}mx; $_ }
-                         split m{ , \s* }mx, $_ ] } @{ $hash->{rows} };
-
-      @{ $res->{ $class } } = $dbh->populate( $class, [ $flds, @rows ] );
+   for my $schema_class (values %{ $self->schema_classes }) {
+      $self->_deploy_and_populate( $schema_class, $self->config->dbasedir );
    }
 
-   return;
+   return OK;
+}
+
+sub driver {
+   return (split q(:), $_[ 0 ]->dsn)[ 1 ];
 }
 
 sub drop_database : method {
@@ -224,108 +163,134 @@ sub drop_database : method {
       return OK;
    }
 
+   $self->error( "Failed to drop database ${database}" );
    return FAILED;
 }
 
-sub encrypt {
-   my ($self, $seed, $plain) = @_; $plain or return;
+sub dsn {
+   return $_[ 0 ]->connect_info->[ 0 ];
+}
 
-   my $cipher = Crypt::CBC->new( -cipher => q(Twofish),
-                                 -key    => $self->_keygen( $seed ) );
+sub edit_credentials : method {
+   my $self      = shift;
+   my $self_cfg  = $self->config;
+   my $db        = $self->database;
+   my $bootstrap = $self->options->{bootstrap};
+   my $cfg_data  = $bootstrap ? {} : $self->load_cfg_data( $self_cfg, $db );
+   my $creds     = $bootstrap ? {}
+                 : $self->extract_creds_from_cfg( $self_cfg, $db, $cfg_data );
+   my $prompts   = { name     => 'Enter db name',
+                     driver   => 'Enter DBD driver',
+                     host     => 'Enter db host',
+                     port     => 'Enter db port',
+                     user     => 'Enter db user',
+                     password => 'Enter db password' };
+   my $defaults  = { name     => $db,
+                     driver   => q(_field),
+                     host     => q(localhost),
+                     port     => q(_field),
+                     user     => q(_field),
+                     password => NUL };
 
-   return encode_base64( $cipher->encrypt( $plain ), NUL );
+   for my $field (qw(name driver host port user password)) {
+      my $value = $defaults->{ $field } ne q(_field) ? $defaults->{ $field }
+                :                                         $creds->{ $field };
+
+      $value = $self->get_line( $prompts->{ $field }, $value, TRUE, 0, FALSE,
+                                $field eq q(password) ? TRUE : FALSE );
+
+      $field eq q(password) and $value
+         = $self->encrypt_for_cfg( $self_cfg, $value, $creds->{password} );
+
+      $creds->{ $field } = $value || NUL;
+   }
+
+   $cfg_data->{credentials}->{ $creds->{name} } = $creds;
+   $self->dump_cfg_data( $self_cfg, $creds->{name}, $cfg_data );
+   return OK;
+}
+
+sub host {
+   return (split q(=), (split q(;), $_[ 0 ]->dsn)[ 1 ])[ 1 ];
+}
+
+sub password {
+   return $_[ 0 ]->connect_info->[ 2 ];
+}
+
+sub user {
+   return $_[ 0 ]->connect_info->[ 1 ];
 }
 
 # Private methods
+sub _build__connect_info {
+   my $self = shift;
 
-sub _decrypt_from_cfg {
-   my ($self, $cfg, $password) = @_;
-
-   return $password =~ m{ \A encrypt= (.+) \z }mx
-        ? $self->decrypt( $self->_get_crypt_args( $cfg ), $1 ) : $password;
+   return $self->get_connect_info( $self, { database => $self->database } );
 }
 
-sub _edit_credentials {
-   my ($self, $picfg) = @_; my $cfg = $self->config;
+sub _create_ddl {
+   my ($self, $schema_class, $dir) = @_;
 
-   my $db      = $picfg->{database_name} or throw 'No database name';
-   my $schema  = $self->file_dataclass_schema( $picfg->{config_attrs} );
-   my $ctlfile = $self->_get_control_file( $cfg, $db );
-   my $data    = $self->_load_credentials( $schema, $ctlfile, $db );
-   my $creds   = $data->{credentials}->{ $db };
-   my $prompts = { name     => 'Enter db name',
-                   driver   => 'Enter DBD driver',
-                   host     => 'Enter db host',
-                   port     => 'Enter db port',
-                   user     => 'Enter db user',
-                   password => 'Enter db password' };
-   my $defs    = { name     => $db,
-                   driver   => q(_field),
-                   host     => q(localhost),
-                   port     => q(_field),
-                   user     => q(_field),
-                   password => NUL };
-   my $value;
+   my $schema  = $schema_class->connect( $self->dsn, $self->user,
+                                         $self->password, $self->dbattrs );
+   my $version = $self->schema_version;
 
-   for my $fld (qw(name driver host port user password)) {
-      $value =  $defs->{ $fld } eq q(_field)
-             ? $creds->{ $fld } : $defs->{ $fld };
-      $value = $self->get_line( $prompts->{ $fld }, $value, TRUE, 0, FALSE,
-                                $fld eq q(password) ? TRUE : FALSE );
-      $fld eq q(password) and $value = $self->_encrypt_for_cfg( $cfg, $value );
-      $creds->{ $fld } = $value || NUL;
+   if ($self->unlink) {
+      for my $rdb (@{ $self->rdbms }) {
+         my $path = $self->io( $schema->ddl_filename( $rdb, $version, $dir ) );
+
+         $path->is_file and $path->unlink;
+      }
    }
 
-   $schema->dump( { data => $data, path => $ctlfile } );
-
-   # To reload the connect info
-   $self->schema_init( $cfg, $self->vars );
+   $schema->create_ddl_dir( $self->rdbms, $version, $dir,
+                            $self->preversion, $self->dbattrs );
    return;
 }
 
-sub _encrypt_for_cfg {
-   my ($self, $cfg, $value) = @_; $value or return;
+sub _deploy_and_populate {
+   my ($self, $schema_class, $dir) = @_; my $res;
 
-   $value = $self->encrypt( $self->_get_crypt_args( $cfg ), $value );
+   my $schema = $schema_class->connect( $self->dsn, $self->user,
+                                        $self->password, $self->dbattrs );
 
-   return $value ? q(encrypt=).$value : undef;
-}
+   $self->info( "Deploying schema ${schema_class} and populating" );
+   $schema->storage->ensure_connected; $schema->deploy( $self->dbattrs, $dir );
 
-sub _get_control_file {
-   my ($self, $app_cfg, $db) = @_;
+   my $dist = distname $schema_class;
+   my $extn = $self->config->extension;
+   my $re   = qr{ \A $dist [-] \d+ [-] (.*) \Q$extn\E \z }mx;
+   my $io   = $self->io( $dir )->filter( sub { $_->filename =~ $re } );
 
-   exists $app_cfg->{ctlfile} and return $app_cfg->{ctlfile};
+   for my $path ($io->all_files) {
+      my ($class) = $path->filename =~ $re;
 
-   my $extn = $app_cfg->{conf_extn} || $self->config->{conf_extn};
+      if ($class) { $self->output( "Populating ${class}" ) }
+      else        { $self->fatal ( 'No class in [_1]', $path->filename ) }
 
-   defined $extn or throw 'Config extension not defined';
+      my $hash = $self->file->dataclass_schema->load( $path );
+      my $flds = [ split SPC, $hash->{fields} ];
+      my @rows = map { [ map    { s{ \A [\'\"] }{}mx; s{ [\'\"] \z }{}mx; $_ }
+                         split m{ , \s* }mx, $_ ] } @{ $hash->{rows} };
 
-   return $self->catfile( $app_cfg->{ctrldir}, $db.$extn );
-}
+      @{ $res->{ $class } } = $schema->populate( $class, [ $flds, @rows ] );
+   }
 
-sub _get_crypt_args {
-   my ($self, $app_cfg) = @_;
-
-   my $dir  = $app_cfg->{ctrldir} || $app_cfg->{tempdir};
-   my $path = $self->catfile( $dir, $app_cfg->{prefix}.q(.txt) );
-   my $args = { seed => $app_cfg->{secret} || $app_cfg->{prefix} };
-
-   -f $path and $args->{data} = $self->io( $path )->all;
-
-   return $args;
+   return;
 }
 
 sub _get_db_admin_creds {
-   my ($self, $reason) = @_; my $cfg = $self->config;
+   my ($self, $reason) = @_;
 
    my $attrs  = { password => NUL, user => NUL, };
    my $text   = 'Need the database administrators id and password to perform ';
       $text  .= "a ${reason} operation";
 
-   $self->output( $text, $cfg->{paragraph} );
+   $self->output( $text, $self->paragraph );
 
    my $prompt = 'Database administrator id';
-   my $user   = $DB_ADMIN_IDS{ lc $self->driver } || NUL;
+   my $user   = $self->db_admin_ids->{ lc $self->driver } || NUL;
 
    $attrs->{user    } = $self->get_line( $prompt, $user, TRUE, 0 );
    $prompt    = 'Database administrator password';
@@ -333,37 +298,14 @@ sub _get_db_admin_creds {
    return $attrs;
 }
 
-sub _keygen {
-   my ($self, $args) = @_;
-
-   ($args and ref $args eq HASH) or $args = { seed => $args || NUL };
-
-   (my $salt = __inflate( $args->{data} || $DATA )) =~ s{ $CLEANER }{}msx;
-
-   my $material = ( eval $salt ).$args->{seed}; ## no critic
-
-   return substr create_token( $material ), 0, 32;
-}
-
-sub _load_credentials {
-   my ($self, $schema, $ctlfile, $db) = @_;
-
-   my $data = $schema->load( $ctlfile ); my $creds = $data->{credentials};
-
-   ($creds and exists $creds->{ $db })
-      or throw error => 'Path [_1] database [_2] no credentials',
-               args  => [ $ctlfile, $db ];
-
-   return $data;
-}
-
 sub _run_db_cmd {
    my ($self, $admin_creds, $cmd, $opts) = @_; $admin_creds ||= {};
 
    my $drvr = lc $self->driver;
    my $host = $self->host || q(localhost);
-   my $user = $admin_creds->{user} || $DB_ADMIN_IDS{ $drvr };
-   my $pass = $admin_creds->{password} or return 'No database admin password';
+   my $user = $admin_creds->{user} || $self->db_admin_ids->{ $drvr };
+   my $pass = $admin_creds->{password}
+      or $self->fatal( 'No database admin password' );
 
    $cmd = "echo \"${cmd}\" | ";
 
@@ -374,15 +316,9 @@ sub _run_db_cmd {
       $cmd .= "PGPASSWORD=${pass} psql -q -w -h ${host} -U ${user}";
    }
 
-   $self->run_cmd( $cmd, { debug => $self->debug, err => q(stderr),
-                           out   => q(stdout), %{ $opts || {} } } );
+   $self->run_cmd( $cmd, { debug => $self->debug, out => q(stdout),
+                           %{ $opts || {} } } );
    return;
-}
-
-# Private subroutines
-
-sub __inflate {
-   local $_ = pop; s{ \A $KEY|[^ \t] }{}gmx; tr{ \t}{01}; return pack 'b*', $_;
 }
 
 1;
@@ -395,141 +331,159 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   package CatalystX::Usul::Model::Schema;
+   package YourApp::Schema;
 
-   use parent qw(Catalyst::Model::DBIC::Schema
-                 CatalystX::Usul::Model
-                 CatalystX::Usul::Schema);
+   use CatalystX::Usul::Moose;
+   use Class::Usul::Functions qw(arg_list);
+   use YourApp::Schema::Authentication;
+   use YourApp::Schema::Catalog;
 
-   package YourApp::Model::YourModel;
+   extends qw(CatalystX::Usul::Schema);
 
-   use parent qw(CatalystX::Usul::Model::Schema);
+   my %ATTRS  = ( database          => q(library),
+                  schema_classes    => {
+                     authentication => q(YourApp::Schema::Authentication),
+                     catalog        => q(YourApp::Schema::Catalog), }, );
 
-   __PACKAGE__->config( database     => q(library),
-                        schema_class => q(YourApp::Schema::YourSchema) );
+   sub new_with_options {
+      my ($self, @rest) = @_; my $attrs = arg_list @rest;
 
-   sub COMPONENT {
-      my ($class, $app, $config) = @_;
-
-      $config->{database    } ||= $class->config->{database};
-      $config->{connect_info} ||=
-         $class->get_connect_info( $app, $config->{database} );
-
-      return $class->next::method( $app, $config );
+      return $self->next::method( %ATTRS, %{ $attrs } );
    }
 
 =head1 Description
 
-Provides utility methods to classes inheriting from
-L<DBIx::Class::Schema>
-
-The encryption/decryption methods only B<obscure> the database password from
-casual viewing, they do not in any way B<secure> it
+Methods used to install and uninstall database applications
 
 =head1 Configuration and Environment
 
-The XML data looks like this:
+Defines the following attributes
 
-  <credentials>
-    <name>database_we_want_to_connect_to</name>
-    <driver>mysql</driver>
-    <host>localhost</host>
-    <password>encrypt=0QqX325DLs18I8T/wU4/ZQQ=</password>
-    <port>3306</port>
-    <print_error>0</print_error>
-    <raise_error>1</raise_error>
-    <user>root</user>
-  </credentials>
+=over 3
+
+=item C<attrs>
+
+Hash ref which defaults to
+C<< { add_drop_table => TRUE, no_comments => TRUE, } >>. It has an
+initialisation argument of C<dbattrs>
+
+=item C<database>
+
+String which is required
+
+=item C<db_admin_ids>
+
+Hash ref which defaults to C<< { mysql => q(root), pg => q(postgres), } >>
+
+=item C<paragraph>
+
+Hash ref which defaults to C<< { cl => TRUE, fill => TRUE, nl => TRUE } >>
+
+=item C<preversion>
+
+String which defaults to null
+
+=item C<rdbms>
+
+Array ref which defaults  to C<< [ qw(MySQL PostgreSQL) ] >>
+
+=item C<schema_classes>
+
+Hash ref which defaults to C<< {} >>
+
+=item C<schema_version>
+
+String which defaults to C<0.1>
+
+=item C<unlink>
+
+Boolean which defaults to false
+
+=back
 
 =head1 Subroutines/Methods
 
-=head2 schema_init
-
-Called from the constructor of C<YourApp::Schema> this method initialiases
-the attributes used by the other methods
-
 =head2 create_database
+
+   $self->create_database;
 
 Creates a database. Understands how to do this for different RDBMSs,
 e.g. MySQL and PostgreSQL
 
 =head2 create_ddl
 
+   $self->create_ddl;
+
 Dump the database schema definition
 
 =head2 create_schema
 
+   $self->create_schema;
+
 Creates a database then deploys and populates the schema
 
-=head2 decrypt
+=head2 dbattrs
 
-   my $plain = $self->decrypt( $seed, $encoded );
+   $self->dbattrs;
 
-Decodes and decrypts the C<$encoded> argument and returns the plain
-text result. See the L</encrypt> method
+Merges the C<attrs> attribute with the database attributes returned by the
+L<get_connect_info|CatalystX::Usul::TraitFor::ConnectInfo/get_connect_info>
+method
 
 =head2 deploy_and_populate
+
+   $self->deploy_and_populate;
 
 Create database tables and populate them with initial data. Called as
 part of the application install
 
+=head2 driver
+
+   $self->driver;
+
+The database driver string, derived from the L</dsn> method
+
 =head2 drop_database
 
-Drops the database that is selected by the call to L</get_connect_info>
+   $self->drop_database;
 
-=head2 get_connect_info
+Drops the database that is selected by the call to C<database> attribute
 
-   my $db_info_arr = $self->get_connect_info( $config, $database );
+=head2 dsn
 
-Returns an array ref containing the information needed to make a
-connection to a database; DSN, user id, password, and options hash
-ref. The data is read from the XML file in the config
-I<ctrldir>. Multiple sets of data can be stored in the same file,
-keyed by the C<$database> argument. The password is decrypted if
-required. The password decrpytion can be seeded from a text file
-in the I<ctrldir>
+   $self->dsn;
 
-=head2 encrypt
+Returns the DSN from the call to
+L<get_connect_info|CatalystX::Usul::TraitFor::ConnectInfo/get_connect_info>
 
-   my $encrypted = $self->encrypt( $seed, $plain );
+=head2 edit_credentials
 
-Encrypts the plain text passed in the C<$plain> argument and returns
-it Base64 encoded. L<Crypt::Twofish_PP> is used to do the encryption. The
-C<$seed> argument is passed to the L</_keygen> method
+   $self->edit_credentials;
 
-=head1 Private Methods
+Edits the configuration file containing the database login information
 
-=head2 _edit_credentials
+=head2 host
 
-   $self->_edit_credentials( $config );
+   $self->host;
 
-Writes the database login information stored in the C<$config> to the
-application config file in the F<var/etc> directory. Called from
-L</create_schema>
+Returns the hostname of the database server derived from the call to
+L</dsn>
 
-=head2 _encrypt_for_cfg
+=head2 password
 
-   $encrypted_value = $self->_encrypt_for_conf( $config, $plain )
+   $self->password;
 
-Returns the encrypted value of the plain value prefixed appropriately
-for storage in a config file. Called from L</_edit_credentials>
+The unencrypted password used to connect to the database
 
-=head2 _keygen
+=head2 user
 
-Generates the key used by the L</encrypt> and L</decrypt> methods. Calls
-L</_inflate> to create the salt. Note that the salt is C<eval>'d in string
-context
+   $self->user;
 
-=head1 Private Subroutines
-
-=head2 __inflate
-
-Lifted from L<Acme::Bleach> this recovers the default salt for the key
-generator
+The user id used to connect to the database
 
 =head1 Diagnostics
 
@@ -539,13 +493,13 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Base>
+=item L<CatalystX::Usul::TraitFor::ConnectInfo>
 
-=item L<CatalystX::Usul::File>
+=item L<CatalystX::Usul::TraitFor::PostInstallConfig>
 
-=item L<Crypt::CBC>
+=item L<CatalystX::Usul::Moose>
 
-=item L<Crypt::Twofish>
+=item L<Class::Usul::Programs>
 
 =back
 
@@ -565,7 +519,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>
@@ -580,22 +534,3 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
 # mode: perl
 # tab-width: 3
 # End:
-
-__DATA__
-			  	   
-  		 	 	 
- 		 	 			
-  	   			
- 	     	 
-		 				 	
-	 		  			
-   	 			 
- 			 		 	
-    		 	 
-		 		 	 	
-  		  			
- 	  			  
-	   	 		 
-	  	 		 	
- 	  		 	 
-			  	  

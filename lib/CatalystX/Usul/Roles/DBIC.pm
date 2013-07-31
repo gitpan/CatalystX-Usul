@@ -1,102 +1,104 @@
-# @(#)$Id: DBIC.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: DBIC.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Roles::DBIC;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Roles);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(is_member sub_name throw);
 use TryCatch;
 
-__PACKAGE__->mk_accessors( qw(dbic_role_class dbic_user_roles_class
-                              dbic_role_model dbic_user_roles_model) );
+extends q(CatalystX::Usul::Roles);
 
-sub new {
-   my ($class, $app, $attrs) = @_;
+has 'dbic_role_model'       => is => 'ro', isa => Object,
+   builder                  => '_build_dbic_role_model',
+   lazy                     => TRUE;
 
-   my $new = $class->next::method( $app, $attrs );
-
-   $new->cache->{dirty} = TRUE;
-   $new->dbic_role_model( $app->model( $new->dbic_role_class ) );
-   $new->dbic_user_roles_model( $app->model( $new->dbic_user_roles_class ) );
-
-   return $new;
-}
+has 'dbic_user_roles_model' => is => 'ro', isa => Object,
+   builder                  => '_build_dbic_user_roles_model',
+   lazy                     => TRUE;
 
 # Factory methods
 
 sub add_user_to_role {
-   my ($self, $role, $user) = @_;
+   my ($self, $rolename, $username) = @_;
 
    return $self->_execute( sub {
-      my $role_id  = $self->get_rid( $role )
-         or throw error => 'Role [_1] unknown', args => [ $role ];
-      my $user_obj = $self->users->find_user( $user );
+      my $role_id = $self->get_rid( $rolename )
+         or throw error => 'Role [_1] unknown', args => [ $rolename ];
+      my $user    = $self->users->find_user( $username );
 
-      is_member $role, $user_obj->roles and return;
+      is_member $rolename, $user->roles and return;
 
       $self->dbic_user_roles_model->create
-         ( { role_id => $role_id, user_id => $user_obj->uid } );
+         ( { role_id => $role_id, user_id => $user->uid } );
    } );
 }
 
 sub create {
-   my ($self, $role) = @_;
+   my ($self, $rolename) = @_;
 
    return $self->_execute( sub {
-      $self->dbic_role_model->create( { role => $role } );
+      $self->dbic_role_model->create( { role => $rolename } );
    } );
 }
 
 sub delete {
-   my ($self, $role) = @_;
+   my ($self, $rolename) = @_;
 
    return $self->_execute( sub {
-      my $role_obj = $self->dbic_role_model->search( { role => $role } );
+      my $role = $self->dbic_role_model->search( { role => $rolename } );
 
-      defined $role_obj
-         or throw error => 'Role [_1] unknown', args => [ $role ];
+      defined $role
+         or throw error => 'Role [_1] unknown', args => [ $rolename ];
 
-      $role_obj->delete;
+      $role->delete;
    } );
 }
 
 sub remove_user_from_role {
-   my ($self, $role, $user) = @_;
+   my ($self, $rolename, $username) = @_;
 
    return $self->_execute( sub {
-      my $role_id  = $self->get_rid( $role )
-         or throw error => 'Role [_1] unknown', args => [ $role ];
-      my $user_obj = $self->users->find_user( $user );
+      my $role_id = $self->get_rid( $rolename )
+         or throw error => 'Role [_1] unknown', args => [ $rolename ];
+      my $user    = $self->users->find_user( $username );
 
-      is_member $role, $user_obj->roles or return;
+      is_member $rolename, $user->roles or return;
 
-      my $user_roles_obj = $self->dbic_user_roles_model->search
-         ( { role_id => $role_id, user_id => $user_obj->uid } );
+      my $user_roles = $self->dbic_user_roles_model->search
+         ( { role_id => $role_id, user_id => $user->uid } );
 
-      defined $user_roles_obj
+      defined $user_roles
          or throw error => 'User [_1] not in role [_2]',
-                  args  => [ $user, $role ];
+                  args  => [ $username, $rolename ];
 
-      $user_roles_obj->delete;
+      $user_roles->delete;
    } );
 }
 
 # Private methods
 
+sub _build_dbic_role_model {
+   return $_[ 0 ]->users->dbic_role_model;
+}
+
+sub _build_dbic_user_roles_model {
+   return $_[ 0 ]->users->dbic_user_roles_model;
+}
+
 sub _execute {
    my ($self, $f) = @_; my $key = __PACKAGE__.q(::_execute); my $res;
 
-   $self->debug and $self->log_debug( __PACKAGE__.q(::).(sub_name 1) );
+   $self->debug and $self->log->debug( __PACKAGE__.q(::).(sub_name 1) );
    $self->lock->set( k => $key );
 
    try        { $res = $f->() }
    catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
-   $self->cache->{dirty} = TRUE;
+   $self->cache->{_dirty} = TRUE;
    $self->lock->reset( k => $key );
    return $res;
 }
@@ -104,11 +106,11 @@ sub _execute {
 sub _load {
    my $self = shift; my $key = __PACKAGE__.q(::_load);
 
-   $self->lock->set( k => $key );
+   $self->lock->set( k => $key ); my $cache = $self->cache;
 
-   $self->cache->{dirty} or return $self->_cache_results( $key );
+   delete $cache->{_dirty} or return $self->_cache_results( $key );
 
-   my @keys = keys %{ $self->cache }; delete $self->cache->{ $_ } for (@keys);
+   delete $cache->{ $_ } for (keys %{ $cache });
 
    try {
       my ($role_obj, $user_roles_obj);
@@ -117,9 +119,8 @@ sub _load {
       while (defined ($role_obj = $rs->next)) {
          my $role = $role_obj->get_column( q(role) );
 
-         $self->cache->{roles}->{ $role }
-            = { id => $role_obj->id, users => [] };
-         $self->cache->{id2name}->{ $role_obj->id } = $role;
+         $cache->{roles}->{ $role } = { id => $role_obj->id, users => [] };
+         $cache->{id2name}->{ $role_obj->id } = $role;
       }
 
       my $attr = { include_columns => [ q(role_rel.role),
@@ -132,19 +133,19 @@ sub _load {
          my $role = $user_roles_obj->role_rel->role;
          my $user = $user_roles_obj->user_rel->username;
 
-         $self->cache->{user2role}->{ $user }
-            or $self->cache->{user2role}->{ $user } = [];
+         $cache->{user2role}->{ $user }
+            or $cache->{user2role}->{ $user } = [];
 
-         push @{ $self->cache->{roles}->{ $role }->{users} }, $user;
-         push @{ $self->cache->{user2role}->{ $user } }, $role;
+         push @{ $cache->{roles}->{ $role }->{users} }, $user;
+         push @{ $cache->{user2role}->{ $user } }, $role;
       }
-
-      $self->cache->{dirty} = FALSE;
    }
    catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
    return $self->_cache_results( $key );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -158,7 +159,7 @@ CatalystX::Usul::Roles::DBIC - Role management database storage
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -166,7 +167,7 @@ CatalystX::Usul::Roles::DBIC - Role management database storage
 
    my $class = CatalystX::Usul::Roles::DBIC;
 
-   my $role_obj = $class->new( $attrs, $app );
+   my $role_obj = $class->new( $attr );
 
 =head1 Description
 
@@ -174,16 +175,23 @@ Methods to manipulate the I<roles> and I<user_roles> table in a
 database using L<DBIx::Class>. This class implements the methods
 required by it's base class
 
+=head1 Configuration and Environment
+
+Defines the following attributes;
+
+=over 3
+
+=item dbic_role_model
+
+The schema object for the roles table
+
+=item dbic_user_roles_model
+
+The schema object form the user_roles join table
+
+=back
+
 =head1 Subroutines/Methods
-
-=head2 new
-
-Constructor
-
-=head2 build_per_context_instance
-
-Make copies of DBIC model references available only after the application
-setup is complete
 
 =head2 add_user_to_role
 
@@ -207,13 +215,9 @@ Deletes the specified role
 
    $role_obj->remove_user_to_role( $role, $user );
 
-Removes the specified user to the specifed role
+Removes the specified user to the specified role
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -241,7 +245,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

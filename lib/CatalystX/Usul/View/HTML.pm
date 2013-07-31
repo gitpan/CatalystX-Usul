@@ -1,123 +1,150 @@
-# @(#)$Id: HTML.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: HTML.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::View::HTML;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(Catalyst::View::TT CatalystX::Usul::View);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(exception is_member);
+use CatalystX::Usul::Functions   qw(exception is_member);
+use Catalyst::View::TT;
 use Encode;
-use English qw(-no_match_vars);
+use English                      qw(-no_match_vars);
+use File::Basename               qw(basename dirname);
+use CatalystX::Usul::Constraints qw(Directory);
+use File::DataClass::IO;
 use File::Find;
+use File::Spec::Functions        qw(catdir catfile);
 use HTML::FillInForm;
-use MRO::Compat;
-use Template::Stash;
 use TryCatch;
 
-__PACKAGE__->config( CATALYST_VAR       => q(c),
-                     COMPILE_EXT        => q(.ttc),
-                     PRE_CHOMP          => 1,
-                     TRIM               => 1,
-                     default_css        => q(presentation),
-                     default_jscript    => q(behaviour),
-                     default_template   => q(layout),
-                     font_extension     => q(.typeface.js),
-                     fonts_dir          => q(fonts),
-                     form_sources       =>
-                        [ qw(append button footer header hidden
-                             menus quick_links sdata sidebar) ],
-                     lang_dir           => q(lang),
-                     jscript_path       => q(static/jscript),
-                     target             => q(top),
-                     template_extension => q(.tt), );
+extends q(CatalystX::Usul::View);
 
-__PACKAGE__->mk_accessors( qw(css_paths default_css default_jscript
-                              default_template font_extension
-                              fonts_dir fonts_jscript js_for_skin
-                              jscript_dir jscript_path
-                              lang_dep_jsprefixs lang_dep_jscript
-                              lang_dir optional_js static_js target
-                              template_extension templates) );
+__PACKAGE__->config( CATALYST_VAR => q(c),
+                     COMPILE_EXT  => q(.ttc),
+                     PRE_CHOMP    => 1,
+                     TRIM         => 1, );
+
+has 'css_paths'          => is => 'ro',   isa => HashRef, default => sub { {} };
+
+has 'default_css'        => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(presentation);
+
+has 'default_jscript'    => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(behaviour);
+
+has 'default_template'   => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(layout);
+
+has 'font_extension'     => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(.typeface.js);
+
+has 'fonts_dir'          => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(fonts);
+
+has 'fonts_jscript'      => is => 'ro',   isa => HashRef, default => sub { {} };
+
+has '+form_sources'      => default => sub {
+   [ qw(append button footer header hidden menus quick_links sdata sidebar) ] };
+
+has 'js_for_skin'        => is => 'ro',   isa => HashRef, default => sub { {} };
+
+has 'jscript_dir'        => is => 'ro',   isa => Directory, coerce => TRUE,
+   required              => TRUE;
+
+has 'jscript_path'       => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(static/jscript);
+
+has 'lang_dep_jsprefixs' => is => 'ro',   isa => ArrayRef,
+   default               => sub { [] };
+
+has 'lang_dep_jscript'   => is => 'ro',   isa => HashRef, default => sub { {} };
+
+has 'lang_dir'           => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(lang);
+
+has 'optional_js'        => is => 'ro',   isa => ArrayRef,
+   default               => sub { [] };
+
+has 'static_js'          => is => 'ro',   isa => ArrayRef,
+   default               => sub { [] };
+
+has 'target'             => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(top);
+
+has 'template_extension' => is => 'ro',   isa => NonEmptySimpleStr,
+   default               => q(.tt);
+
+has 'templates'          => is => 'ro',   isa => HashRef, default => sub { {} };
+
+has 'view_tt'            => is => 'lazy', isa => Object;
 
 sub COMPONENT {
    my ($class, $app, @rest) = @_;
 
-   my $new = $class->next::method( $app, @rest );
-
-   $new->css_paths         ( {} );
-   $new->fonts_jscript     ( {} );
-   $new->js_for_skin       ( {} );
-   $new->lang_dep_jscript  ( {} );
-   $new->lang_dep_jsprefixs( [] ) unless ($new->lang_dep_jsprefixs);
-   $new->optional_js       ( [] );
-   $new->static_js         ( [] );
-   $new->templates         ( {} );
+   my $self       = $class->next::method( $app, @rest );
+   my $ac         = $app->config;
+   my $stylesheet = $ac->{stylesheet};
+   my $css_file   = $self->default_css.q(.css);
+   my $js_file    = $self->default_jscript.q(.js);
+   my $skin_dir   = io( $ac->{skindir} );
 
    # Cache the CSS files with the colour- prefix from each available skin
-   my $config     = $app->config;
-   my $stylesheet = $config->{stylesheet};
-   my $css_file   = $new->default_css.q(.css);
-   my $js_file    = $new->default_jscript.q(.js);
-   my $skin_dir   = $new->io( $config->{skindir} );
-
    for my $path ($skin_dir->all_dirs) {
       my $skin_name = $path->filename;
       my $css_path  = $skin_dir->catfile( $skin_name, $css_file );
 
       ($path->is_dir and $css_path->is_file) or next;
 
-      my $css_paths = $new->css_paths->{ $skin_name } = [];
-      my $skin_path = join SEP, NUL, $config->{skins}, $skin_name, NUL;
+      my $css_paths = $self->css_paths->{ $skin_name } = [];
+      my $skin_path = join SEP, NUL, $ac->{skins}, $skin_name, NUL;
 
       @{ $css_paths } = map  { $skin_path.$_ }
                         grep { not m{ \A $stylesheet }mx }
                         grep { m{ \A colour- }mx }
-                        map  { $new->basename( $_ ) }
+                        map  { basename( $_ ) }
                         glob $skin_dir->catfile( $skin_name, q(*.css) );
 
       $skin_dir->catfile( $skin_name, $stylesheet )->exists
          and unshift @{ $css_paths }, $skin_path.$stylesheet;
 
       $skin_dir->catfile( $skin_name, $js_file )->exists
-         and $new->js_for_skin->{ $skin_name } = $skin_path.$js_file;
+         and $self->js_for_skin->{ $skin_name } = $skin_path.$js_file;
    }
 
    # Cache the JS files in the static JS directory
-   for my $file ($new->_list_jscript( $new->jscript_dir )) {
+   for my $file (__list_jscript( $self->jscript_dir )) {
       my ($order)   = $file =~ m{ \A (\d+) }mx;
       my $array_ref = $order && $order < 50
-                    ? $new->static_js : $new->optional_js;
+                    ? $self->static_js : $self->optional_js;
 
-      push @{ $array_ref }, SEP.$new->jscript_path.SEP.$file;
+      push @{ $array_ref }, SEP.$self->jscript_path.SEP.$file;
    }
 
    # Cache the language dependant JS files
-   my $dir = $new->catdir( $new->jscript_dir, $new->lang_dir );
+   my $dir = catdir( $self->jscript_dir, $self->lang_dir );
 
-   for my $file ($new->_list_jscript( $dir )) {
-      $new->lang_dep_jscript->{ $file } = TRUE;
+   for my $file (__list_jscript( $dir )) {
+      $self->lang_dep_jscript->{ $file } = TRUE;
    }
 
    # Cache the font replacement JS files. Fugly
-   my $suffix = $new->font_extension;
+   my $suffix = $self->font_extension;
    my $wanted = sub {
-      m{ \Q$suffix\E \z }mx and $new->fonts_jscript->{
-         $new->basename( $_, $suffix ) } =
-            $new->catfile( $new->basename( $new->dirname( $_ ) ),
-                           $new->basename( $_ ) ) };
+      m{ \Q$suffix\E \z }mx
+         and $self->fonts_jscript->{ basename( $_, $suffix ) }
+            = catfile( basename( dirname( $_ ) ), basename( $_ ) ) };
 
-   $dir = $new->catdir( $new->jscript_dir, $new->fonts_dir );
-   find( { no_chdir => TRUE, wanted => $wanted }, $dir );
+   $dir = catdir( $self->jscript_dir, $self->fonts_dir );
+   -d $dir and find( { no_chdir => TRUE, wanted => $wanted }, $dir );
 
    # Cache the per page custom templates
-   $suffix = $new->template_extension;
-   $wanted = sub { m{ $suffix \z }mx and $new->templates->{ $_ } = TRUE };
-   find( { no_chdir => TRUE, wanted => $wanted }, $new->template_dir );
+   $suffix = $self->template_extension;
+   $wanted = sub { m{ $suffix \z }mx and $self->templates->{ $_ } = TRUE };
+   find( { no_chdir => TRUE, wanted => $wanted }, $self->template_dir );
 
-   return $new;
+   return $self;
 }
 
 sub bad_request {
@@ -130,7 +157,7 @@ sub bad_request {
    my $button  = $buttons->{ $c->action->{name}.q(.).$verb } || {};
    my $err     = $button->{error} || NUL;
 
-   $c->model( q(Base) )->add_result( $err ? $err."\n".(lcfirst $msg) : $msg );
+   $c->model( q(Config) )->add_result( $err ? $err."\n".(lcfirst $msg) : $msg );
 
    return $s->{override} = TRUE;
 }
@@ -154,17 +181,18 @@ sub get_verb {
 }
 
 sub process {
-   my ($self, $c) = @_; my $s = $c->stash; my $enc = $s->{encoding};
+   my ($self, $c) = @_; my $s = $c->stash; my $enc = $self->encoding;
 
    $self->_fix_stash    ( $c );
-   $self->_build_widgets( $c, { data => $self->_read_form_sources( $c ) } );
+   $self->_build_widgets( $c, { data => $self->read_form_sources( $c ) } );
    $self->_setup_css    ( $c );
    $self->_setup_jscript( $c );
 
-   $enc and $s->{content_type} .= q(; charset=).$enc;
+   $enc and $s->{content_type} .= "; charset=${enc}";
 
-   # Do the template thing
-   if ($self->next::method( $c )) { $s->{override} and $self->_fillform( $c ) }
+   if ($self->view_tt->process( $c )) { # Do the template thing
+      $s->{override} and $self->_fillform( $c );
+   }
    else { $c->res->body( $c->error() ) }
 
    # Encode the body of the page
@@ -176,6 +204,19 @@ sub process {
 }
 
 # Private methods
+
+sub _build_view_tt {
+   my $self = shift; my $class = 'Catalyst::View::TT';
+
+   $class->meta->add_method( loc => sub {
+      my (undef, $c, @rest) = @_; $self->loc( $c->stash, @rest ) } );
+
+   my $attr = { %{ $self } }; $attr->{expose_methods} ||= [];
+
+   push @{ $attr->{expose_methods} }, q(loc);
+
+   return $class->new( $self->app_class, $attr );
+}
 
 sub _fillform {
    my ($self, $c) = @_;
@@ -190,21 +231,21 @@ sub _fillform {
 sub _fix_stash {
    my ($self, $c) = @_; my $s = $c->stash;
 
-   my $action = $c->action; my $extension = $self->template_extension;
+   my $action = $c->action; my $extn = $self->template_extension;
 
    if ($action->name) {
       # Load a per page custom template if one is defined
-      my $suffix = q(_).$s->{lang}.$extension;
+      my $suffix = q(_).($s->{language} || LANG).$extn;
       my @parts  = ( $action->namespace || q(root), $action->name );
-      my $path   = $self->catfile( $self->template_dir, @parts );
+      my $path   = catfile( $self->template_dir, @parts );
       my $content;
 
       if (exists $self->templates->{ $path.$suffix }) {
-         try        { $content = $self->io( $path.$suffix )->slurp }
+         try        { $content = io( $path.$suffix )->slurp }
          catch ($e) { $content = exception( $e )->as_string }
       }
-      elsif (exists $self->templates->{ $path.$extension }) {
-         try        { $content = $self->io( $path.$extension )->slurp }
+      elsif (exists $self->templates->{ $path.$extn }) {
+         try        { $content = io( $path.$extn )->slurp }
          catch ($e) { $content = exception( $e )->as_string }
       }
 
@@ -215,20 +256,11 @@ sub _fix_stash {
    # Default the template if one is not already defined
    $s->{js_object}   = $self->js_object;
    $s->{skin     } ||= q(default);
-   $s->{template } or $s->{template}
-      = $self->catfile( $s->{skin}, $self->default_template.$extension );
    $s->{target   }   = $self->target
       and $c->res->headers->header( q(target) => $s->{target} );
-
-   $Template::Stash::SCALAR_OPS->{loc} = sub { shift; $self->loc( $s, @_ ) };
+   $s->{template } ||= catfile( $s->{skin}, $self->default_template.$extn );
 
    return;
-}
-
-sub _list_jscript {
-   my ($self, $dir) = @_;
-
-   return map { $self->basename( $_ ) } glob $self->catfile( $dir, q(*.js) );
 }
 
 sub _setup_css {
@@ -238,7 +270,7 @@ sub _setup_css {
 
    # Fixup the stashed CSS files as either primary or alternate
    for my $css (@{ $self->css_paths->{ $skin } }) {
-      (my $title = $self->basename( $css, qw(.css) )) =~ s{ \A colour- }{}mx;
+      (my $title = basename( $css, qw(.css) )) =~ s{ \A colour- }{}mx;
 
       push @{ $s->{css} }, { href  => $c->uri_for( $css ),
                              title => ucfirst $title,
@@ -252,7 +284,7 @@ sub _setup_css {
 sub _setup_jscript {
    my ($self, $c) = @_; my $s = $c->stash; $s->{dhtml} or return;
 
-   my $conf = $c->config; my $path;
+   my $lang_dir = $self->lang_dir; my $js_path = $self->jscript_path;
 
    # Stash the static JS loaded by every page. Batch 0
    $s->{scripts} = [ map { [ 0, $c->uri_for( $_ ) ] }
@@ -261,37 +293,44 @@ sub _setup_jscript {
    # Stash the optional JS. Batch 0
    push   @{ $s->{scripts} },
       map  { [ 0, $c->uri_for( $_ ) ] }
-      grep { (my $x = $self->basename( $_ )) =~ s{ \A (\d+) }{}mx;
+      grep { (my $x = basename( $_ )) =~ s{ \A (\d+) }{}mx;
              is_member $x, $s->{optional_js} }
           @{ $self->optional_js || [] };
 
    # Stash the language dependent JS files. Batch 1
    push   @{ $s->{scripts} },
-      map  { [ 1, $c->uri_for( $_ ) ] }
-      map  { join SEP, SEP.$self->jscript_path, $self->lang_dir, $_ }
+      map  { [ 1, $c->uri_for( join SEP, NUL, $js_path, $lang_dir, $_ ) ] }
       grep { exists $self->lang_dep_jscript->{ $_ } }
-      map  { $_.q(-).$s->{lang}.q(.js) }
+      map  { $_.q(-).$s->{language}.q(.js) }
       grep { is_member $_.q(.js), $s->{optional_js} }
           @{ $self->lang_dep_jsprefixs || [] };
 
    # Stash the font replacement JS files. Batch 1
    push   @{ $s->{scripts} },
       map  { [ 1, $c->uri_for( $_ ) ] }
-      map  { join SEP, SEP.$self->jscript_path, $self->fonts_dir,
-                       $self->fonts_jscript->{ $_ } }
+      map  { join SEP, NUL, $js_path, $self->fonts_dir,
+             $self->fonts_jscript->{ $_ } }
       grep { $self->fonts_jscript->{ $_ } }
           @{ $s->{fonts} || [] };
 
    # Stash the "use case" JS for the selected skin. Batch 2
    exists $self->js_for_skin->{ $s->{skin} } and push @{ $s->{scripts} },
-      [ 2, $c->uri_for( $self->js_for_skin->{ $s->{skin} }) ];
+      [ 2, $c->uri_for( $self->js_for_skin->{ $s->{skin} } ) ];
 
    # If true generate literal js to async download all the js files in batches
-   $path = $conf->{async_js} and
-      $s->{async_js} = $c->uri_for( join SEP, SEP.$self->jscript_path, $path );
+   my $path; $path = $c->config->{async_js} and
+      $s->{async_js} = $c->uri_for( join SEP, NUL, $js_path, $path );
 
    return;
 }
+
+# Private functions
+
+sub __list_jscript {
+   return map { basename( $_ ) } glob catfile( $_[ 0 ], q(*.js) );
+}
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -305,16 +344,124 @@ CatalystX::Usul::View::HTML - Render a page of HTML or XHTML
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   use base qw(CatalystX::Usul::View::HTML);
+   use CatalystX::Usul::Moose;
+
+   extends qw(CatalystX::Usul::View);
 
 =head1 Description
 
 Generate a page of HTML or XHTML using Template Toolkit and the contents
 of the stash
+
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item css_paths
+
+Defaults to an empty hash ref. Populated by L</COMPONENT>
+
+=item default_css
+
+Basename of the file containing the CSS for the generated
+page. Defaults to C<presentation>
+
+=item default_jscript
+
+Basename of the file containing the Javascript used to modify the
+default behaviour of the browser. Defaults to C<behaviour>
+
+=item default_template
+
+Basename of the L<Template::Toolkit> file used to generate the
+page. Defaults to C<layout>
+
+=item font_extension
+
+String appended to font names to create a font filename. Defaults to
+F<.typeface.js>
+
+=item fonts_dir
+
+Name of the directory that contains the JavaScript font replacement
+files. Defaults to C<fonts>
+
+=item fonts_jscript
+
+Defaults to an empty hash ref. Populated by L</COMPONENT> it maps font names
+to the pathnames
+
+=item form_sources
+
+An array ref the overrides the list in the parent class. Contains the stash
+keys that are searched for widget definitions
+
+=item js_for_skin
+
+Defaults to an empty hash ref. Populated by L</COMPONENT> it maps skin names
+onto paths for the behaviour class library
+
+=item jscript_dir
+
+A required directory that contains all of the JavaScript class
+libraries (except for the one in the skin directory)
+
+=item jscript_path
+
+A partial path used to construct uris to the JavaScript class
+libraries. Defaults to F<static/jscript>
+
+=item lang_dep_jsprefixs
+
+Defaults to an empty array ref. Populated in the component
+configuration it lists the additional directories to search for
+language dependent JavaScript files
+
+=item lang_dep_jscript
+
+Defaults to an empty hash ref. Populated by L</COMPONENT> it maps the
+language dependent JavaScript filenames to pathnames
+
+=item lang_dir
+
+A string which defaults to C<lang>. It is the name of the directory that
+contains the language dependent JavaScript files
+
+=item optional_js
+
+Defaults to an empty array ref. Populated by L</COMPONENT> it lists JavaScript
+class library files which can be optionally included on a page
+
+=item static_js
+
+Defaults to an empty array ref. Populated by L</COMPONENT> it lists JavaScript
+class library files which will be included on every page
+
+=item target
+
+A string which defaults to C<top>. The HTML window target
+
+=item template_extension
+
+String which defaults to F<.tt>. The extension applied to
+L<Template::Toolkit> files
+
+=item templates
+
+Defaults to an empty hash ref. Populated by L</COMPONENT> it caches the
+per page custom templates
+
+=item view_tt
+
+An instance of L<Catalyst::View::TT>
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -392,30 +539,6 @@ will be linked into the page
 
 None
 
-=head1 Configuration and Environment
-
-=over 3
-
-=item css
-
-Basename of the file containing the CSS for the generated
-page. Defaults to B<presentation>
-
-=item jscript
-
-Basename of the file containing the Javascript used to modify the
-default behaviour of the browser. Defaults to B<behaviour>
-
-=item default_template
-
-Basename of the TT file used to generate the page. Defaults to B<layout>
-
-=item template_extension
-
-Templage file extension. Defaults to B<tt>
-
-=back
-
 =head1 Dependencies
 
 =over 3
@@ -424,7 +547,17 @@ Templage file extension. Defaults to B<tt>
 
 =item L<CatalystX::Usul::View>
 
+=item L<CatalystX::Usul::Moose>
+
 =item L<Encode>
+
+=item L<CatalystX::Usul::Constraints>
+
+=item L<File::DataClass::IO>
+
+=item L<HTML::FillInForm>
+
+=item L<TryCatch>
 
 =back
 
@@ -444,7 +577,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

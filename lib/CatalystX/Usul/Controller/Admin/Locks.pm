@@ -1,44 +1,48 @@
-# @(#)$Id: Locks.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Locks.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Admin::Locks;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(throw);
+
+BEGIN { extends q(CatalystX::Usul::Controller) }
 
 __PACKAGE__->config( namespace => q(admin) );
 
 sub lock_table : Chained(common) Args(0) HasActions {
    my ($self, $c) = @_;
 
-   my $model = $c->model( $self->model_base_class );
-   my $data  = $self->lock->get_table;
+   my $model = $c->model( $self->config_class );
+   my $lockt = $model->lock->get_table;
 
-   $model->add_field( { data => $data, select => q(left), type => q(table) } );
+   $model->add_field( { data => $lockt, select => q(left), type => q(table) } );
    $model->group_fields( { id => q(lock_table.select) } );
-   $data->{count} > 0 and $model->add_buttons( qw(Delete) );
+   $lockt->{count} > 0 and $model->add_buttons( qw(Delete) );
    return;
 }
 
 sub lock_table_delete : ActionFor(lock_table.delete) {
-   my ($self, $c) = @_; my ($key, $nrows, $r_no, $text);
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   my $s = $c->stash; my $model = $c->model( $self->model_base_class );
+   my $model    = $c->model( $self->config_class );
+   my $selected = $model->query_array( 'table' );
 
-   $nrows = $model->query_value( q(_table_nrows) ) or throw 'Lock table empty';
+   $selected->[ 0 ] or throw 'Nothing selected';
 
-   for $r_no (0 .. $nrows) {
-      if ($key = $model->query_value( q(table_select).$r_no )) {
-         $self->lock->reset( k => $key )
-            and $self->log_info( 'User '.$s->{user}.' deleted lock '.$key );
-      }
+   for my $key (@{ $selected } ) {
+      $model->lock->reset( k => $key )
+         and $self->log->info
+            ( 'User '.$s->{user}->username." deleted lock ${key}" );
    }
 
-   return 1;
+   return TRUE;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -52,13 +56,15 @@ CatalystX::Usul::Controller::Admin::Locks - Manipulate the lock table
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Admin;
+   package YourApp::Controller::Admin;
 
-   use base qw(CatalystX::Usul::Controller::Admin);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Admin) }
 
    __PACKAGE__->build_subcontrollers;
 
@@ -109,7 +115,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

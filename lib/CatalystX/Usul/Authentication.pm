@@ -1,44 +1,44 @@
-# @(#)$Id: Authentication.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Authentication.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Authentication;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(Class::Accessor::Grouped);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-__PACKAGE__->mk_group_accessors( q(simple), qw(config) );
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
 
-sub new {
-   my ($self, $config, $app, $realm) = @_;
+has 'config' => is => 'ro', isa => HashRef, default => sub { {} };
 
-   return bless { config => $config }, ref $self || $self;
-}
+around 'BUILDARGS' => sub {
+   my ($next, $self, $config, $app, $realm) = @_;
+
+   return $self->$next( config => $config );
+};
 
 sub find_user {
    my ($self, $params, $c) = @_;
-   my $id_obj = $c->model( $self->config->{model_class} );
 
-   return $id_obj->find_user( $params->{ $self->config->{user_field} } );
+   my $user_model = $c->model( $self->config->{model_class} );
+
+   return $user_model->find_user( $params->{ $self->config->{user_field} } );
 }
 
 sub for_session {
-   my ($self, $c, $user) = @_; return $user->for_session;
+   my ($self, $c, $user) = @_; return $user ? $user->for_session : undef;
 }
 
 sub from_session {
-   my ($self, $c, $user) = @_;
-
-   return $user if (ref $user);
+   my ($self, $c, $user) = @_; $user and blessed $user and return $user;
 
    return $self->find_user( { $self->config->{user_field} => $user }, $c );
 }
 
 sub user_supports {
-   my ($self, @rest) = @_;
-
-   return $self->{config}->{model_class}->supports( @rest );
+   return shift->config->{model_class}->supports( @_ );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -52,7 +52,7 @@ CatalystX::Usul::Authentication - Use a Catalyst model as an authentication stor
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -99,26 +99,26 @@ L<Catalyst::Model> that implements the methods; C<find_user>,
 C<check_password>, C<for_session>, C<get>, C<get_object>, C<id>, and
 C<supports>
 
-=head1 Subroutines/Methods
+=head1 Configuration and Environment
 
-=head2 new
-
-Constructor options are passed as a list of scalars. Options are:
+Defined the following attributes
 
 =over 3
 
-=item $config
+=item C<config>
 
-The constructor stores a copy of the I<$config> on itself
+The constructor stores a copy of the C<config> on itself
 
 =back
+
+=head1 Subroutines/Methods
 
 =head2 find_user
 
 Uses the L<model|Catalyst/model> method to obtain a copy of the
 identity object. This identity object is instantiated by L<Catalyst> when
-the application restarts. In the example config the I<R01-Localhost>
-authentication realm uses C<MyApp::Model::IdentityUnix> as an identity
+the application restarts. In the example config the C<R01-Localhost>
+authentication realm uses C<MyApp::Model::UsersUnix> as an identity
 class (the C<MyApp::Model::> prefix is automatically applied to the
 store class value). The identity object's C<find_user> method returns
 a user object. The config for the authentication store defines the
@@ -133,7 +133,7 @@ serialisation on the session store
 =head2 from_session
 
 Return the user object if it already exists otherwise create one by
-calling our own C<find_user> method
+calling our own L</find_user> method
 
 =head2 user_supports
 
@@ -144,15 +144,11 @@ class to define which optional features it supports
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
-=item L<Class::Accessor::Grouped>
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -172,7 +168,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

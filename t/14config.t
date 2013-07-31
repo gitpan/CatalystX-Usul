@@ -1,8 +1,8 @@
-# @(#)$Id: 14config.t 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: 14config.t 1308 2013-04-19 22:09:25Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1308 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) ), catdir( $Bin, q(lib) );
@@ -20,51 +20,49 @@ BEGIN {
 
 use Catalyst::Test q(MyApp);
 
-my (undef, $context) = ctx_request( '' );
+my (undef, $context) = ctx_request( '/' );
 
-$context->stash( lang => q(de), newtag  => q(..New..) );
+$context->stash( language => q(de), newtag  => q(..New..) );
 
-my $model = $context->model( q(Config) );
+my $model = $context->model( q(MutableConfig) );
 
-isa_ok( $model, 'MyApp::Model::Config' );
+isa_ok $model, 'MyApp::Model::MutableConfig';
 
 my $cfg = $model->load( q(default) );
 
-ok( $cfg->{ '_vcs_default' } =~ m{ @\(\#\)\$Id: }mx,
-    'Has reference element 1' );
-ok( ref $cfg->{namespace}->{entrance}->{acl} eq q(ARRAY), 'Detects arrays' );
+like $cfg->{ '_vcs_default' }, qr{ @\(\#\)\$Id: }mx, 'Has reference element 1';
+
+is ref $cfg->{namespace}->{entrance}->{acl}, q(ARRAY), 'Detects arrays';
 
 eval { $model->create_or_update }; my $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e->as_string =~ m{ Result \s+ source \s+ not \s+ specified }msx,
-    'Result source not specified' );
+like $e->as_string, qr{ Result \s+ source \s+ not \s+ specified }msx,
+    'Result source not specified';
 
-$model->keys_attr( q(an_element_name) );
-
-eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
-
-ok( $e->as_string =~ m{ Result \s+ source \s+ an_element_name \s+ unknown }msx,
-    'Result source an_element_name unknown' );
-
-$model->keys_attr( q(globals) );
+$model->_set_keys_attr( q(an_element_name) );
 
 eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e->as_string =~ m{ Config \s+ file \s+ name \s+ not \s+ specified }msx,
-    'File path not specified' );
+like $e->as_string, qr{ Result \s+ source \s+ an_element_name \s+ unknown }msx,
+    'Result source an_element_name unknown';
 
-my $file = q(default);
+$model->_set_keys_attr( q(globals) );
 
-eval { $model->create_or_update( $file ) };
+eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
+
+like $e->as_string, qr{ Config \s+ file \s+ name \s+ not \s+ specified }msx,
+    'File path not specified';
+
+my $file = q(default); eval { $model->create_or_update( $file ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e->as_string =~ m{ No \s+ element \s+ name \s+ specified }msx,
-    'No element name specified' );
+like $e->as_string, qr{ No \s+ element \s+ name \s+ specified }msx,
+    'No element name specified';
 
 $model = $context->model( q(Config::Levels) );
 
-isa_ok( $model, 'MyApp::Model::Config::Levels' );
+isa_ok $model, 'MyApp::Model::Config::Levels';
 
 my $args = {}; my $name;
 
@@ -72,38 +70,38 @@ eval { $name = $model->create_or_update( $file, q(dummy) ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( !$e, 'Creates dummy level' );
-ok( $name eq q(dummy), 'Returns element name on create' );
+ok !$e, 'Creates dummy level';
+is $name, q(dummy), 'Returns element name on create';
 
 $cfg = $model->load( qw(default) );
 
 my $acl = $cfg->{namespace}->{dummy}->{acl}->[0];
 
-ok( $acl && $acl eq q(any), 'Dummy namespace defaults' );
+is $acl, q(any), 'Dummy namespace defaults';
 
 eval { $model->create_or_update( $file, q(dummy) ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e =~ m{ element \s+ dummy \s+ already \s+ exists }msx,
-    'Detects existing record' );
+like $e, qr{ element \s+ dummy \s+ already \s+ exists }msx,
+    'Detects existing record';
 
 eval { $model->delete( $file, $name ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( !$e, 'Deletes dummy namespace' );
+ok !$e, 'Deletes dummy namespace'; $e and warn "${e}\n";
 
 eval { $model->delete( $file, $name ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-ok( $e =~ m{ element \s+ dummy \s+ does \s+ not \s+ exist }msx,
-    'Detects non existance on delete' );
+like $e, qr{ element \s+ dummy \s+ does \s+ not \s+ exist }msx,
+    'Detects non existance on delete';
 
 my @res = $model->search( $file, { acl => q(@support) } );
 
-ok( $res[0] && $res[0]->{name} eq q(admin), 'Can search' );
+is $res[0]->{name}, q(admin), 'Can search';
 
 done_testing;
 

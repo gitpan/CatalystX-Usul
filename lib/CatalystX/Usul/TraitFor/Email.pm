@@ -1,25 +1,28 @@
-# @(#)$Id: Email.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Email.pm 1319 2013-06-23 16:21:01Z pjf $
 
-package CatalystX::Usul::Email;
+package CatalystX::Usul::TraitFor::Email;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use namespace::autoclean;
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use Moose::Role;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(throw);
+use CatalystX::Usul::Functions qw(is_hashref throw);
 use Email::MIME;
 use Encode;
+use File::Basename             qw(basename);
+use File::DataClass::IO;
 use MIME::Types;
 use Template;
 
-# requires qw(basename ensure_class_loaded io);
+requires qw(ensure_class_loaded loc);
 
 sub send_email {
    my ($self, $args) = @_;
 
-       $args         or throw 'Email parameters not specified';
-   ref $args eq HASH or throw 'Email parameters not a hash ref';
+              $args or throw 'Email parameters not specified';
+   is_hashref $args or throw 'Email parameters not a hash ref';
 
    $args->{email} = $self->_create_email( $args );
 
@@ -38,8 +41,8 @@ sub _add_attachments {
    $email->{parts} = [ $part ];
 
    while (my ($attachment, $path) = each %{ $args->{attachments} }) {
-      my $body  = $self->io( $path )->lock->all;
-      my $file  = $self->basename( $path );
+      my $body  = io( $path )->lock->all;
+      my $file  = basename( $path );
       my $mime  = $types->mimeTypeOf( $file );
       my $attrs = { content_type => $mime->type,
                     encoding     => $mime->encoding,
@@ -80,11 +83,15 @@ sub _get_email_body {
    $args->{template} or throw 'Message body not specified';
 
    my $conf  = $args->{template_attrs} || {};
+
+   $conf->{VARIABLES}->{loc} = sub { return $self->loc( @_ ) };
+
    my $tmplt = Template->new( $conf ) or throw $Template::ERROR;
 
    $tmplt->process( $args->{template}, $args->{stash}, \$text )
       or throw $tmplt->error();
 
+   delete $conf->{VARIABLES}->{loc};
    return $text;
 }
 
@@ -95,8 +102,7 @@ sub _transport_email {
 
    my $class = $args->{mailer} || q(SMTP);
 
-   substr $class, 0, 1 eq q(+)
-      or $class = q(Email::Sender::Transport::).$class;
+   substr $class, 0, 1 eq q(+) or $class = "Email::Sender::Transport::${class}";
 
    $self->ensure_class_loaded( $class );
 
@@ -109,8 +115,7 @@ sub _transport_email {
    my $result    = $mailer->send( $args->{email}, $send_args );
 
    $result->can( q(failure) ) and throw $result->message;
-
-   return 'Message accepted for delivery';
+   return $args->{to};
 }
 
 1;
@@ -121,33 +126,41 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Email - Domain model for sending emails
+CatalystX::Usul::TraitFor::Email - Role for sending emails
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    package YourApp::Model::YourModel;
 
-   use parent qw(CatalystX::Usul::Model CatalystX::Usul::Email);
+   use CatalystX::Usul::Moose;
+
+   extends qw(CatalystX::Usul::Model);
+   with    qw(CatalystX::Usul::TraitFor::Email);
 
    sub your_method {
-      my $self = shift; $result = $self->send_email( $args ); return;
+      my $self = shift; $recipient = $self->send_email( $args ); return;
    }
 
 =head1 Description
 
 Provides utility methods to the model and program base classes
 
+=head1 Configuration and Environment
+
+Requires the C<ensure_class_loaded> and C<loc> methods
+
 =head1 Subroutines/Methods
 
 =head2 send_email
 
-   $result = $self->send_email( $args );
+   $recipient = $self->send_email( $args );
 
-Sends emails. The C<$args> hash ref uses these keys:
+Sends emails. Returns the recipient address, throws on error. The
+C<$args> hash ref uses these keys:
 
 =over 3
 
@@ -201,10 +214,6 @@ Email address of the recipient
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
@@ -237,7 +246,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

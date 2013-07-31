@@ -1,19 +1,17 @@
-# @(#)$Id: Action.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Action.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Action;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(Catalyst::Action);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use MRO::Compat;
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(exception);
-use Scalar::Util qw(blessed);
+use CatalystX::Usul::Functions qw(exception is_arrayref is_hashref);
 
-sub execute {
-   # Action class for controller methods with the HasActions attribute
+extends q(Catalyst::Action);
+
+sub execute { # For controller methods with the HasActions attribute
    my ($self, @rest) = @_; my ($res, $verb);
 
    my @args = my ($controller, $c) = splice @rest, 0, 2;
@@ -32,7 +30,7 @@ sub execute {
 
    $verb eq q(options) and return $self->_set_options_response( $c );
 
-   # Use the persistant URI args if available
+   # This sets the args passed to the action from the uri
    $persistant and @rest = $controller->get_uri_args( $c );
 
    # Search for the action whose ActionFor attribute matches this verb
@@ -45,7 +43,6 @@ sub execute {
       $controller->validate_token( $c )
          or return $self->_invalid_token( @args, [ $verb, $action_path ] )
                  ? $self->next::method( @args, @rest ) : undef;
-      $controller->remove_token( $c );
    }
 
    # Authorize the users access to the action
@@ -68,6 +65,9 @@ sub execute {
    # The action may have changed the URI args
    $persistant and @rest = $controller->get_uri_args( $c );
 
+   # Either redirect or allow the request to proceed as if it were a get
+   $s->{redirect_after_execute} and return $self->_redirect( @args, @rest );
+
    return $self->next::method( @args, @rest );
 }
 
@@ -89,7 +89,7 @@ sub _bad_request {
       $e = exception 'error' => $e, 'args' => $args;
    }
 
-   $controller->log_error_message( $e, $s );
+   $controller->log->error_message( $s, $e );
 
    my $msg = $controller->loc( $s, $e->error, $e->args );
 
@@ -101,9 +101,9 @@ sub _error {
 
    # The stash override parameter triggers a call to FillInForm
    # in the HTML view which will preserve the contents of the form
-   $s->{override} = TRUE;
-   $c->error or $c->error( [] );
-   ref $c->error eq ARRAY or $c->error( [ $c->error ] );
+   $s->{override} = TRUE; $c->error or $c->error( [] );
+
+   is_arrayref $c->error or $c->error( [ $c->error ] );
 
    if ($c->error->[ 0 ]) {
       for my $e (@{ $c->error }) {
@@ -128,8 +128,8 @@ sub _error {
 sub _get_action_path {
    my ($self, $controller, $c, $verb) = @_;
 
-   my $s  = $c->stash;
-   my $ns = $c->action->namespace;
+   my $s  = $c->stash; my $ns = $c->action->namespace;
+
    my $id = $c->action->name.q(.).$verb;
 
    for my $container ($c->dispatcher->get_containers( $ns )) {
@@ -147,11 +147,9 @@ sub _get_action_path {
 }
 
 sub _get_allowed_methods {
-   my ($self, $c) = @_;
+   my ($self, $c) = @_; my @allowed = ( qw(get options) );
 
-   my @allowed = ( qw(get options) );
-   my $ns      = $c->action->namespace;
-   my $pattern = $c->action->name.q(.);
+   my $ns = $c->action->namespace; my $pattern = $c->action->name.q(.);
 
    for my $container ($c->dispatcher->get_containers( $ns )) {
       for my $action (values %{ $container->actions }) {
@@ -179,7 +177,7 @@ sub _log_info {
    my $sep = SEP; $leader =~ s{ \A $sep }{}mx; $s->{leader} = $leader;
 
    for my $line (map { $_->{content} } @{ $res->{items} }) {
-      $controller->log_info_message( $line, $s );
+      $controller->log->info_message( $s, $line );
    }
 
    return;
@@ -194,19 +192,34 @@ sub _not_implemented {
    my $key = 'Action [_2] method [_1] not implemented';
    my $e   = exception 'error' => $key, 'args' => $args;
 
-   $controller->log_error_message( $e, $s );
+   $controller->log->error_message( $s, $e );
 
    my $msg = $controller->loc( $s, $e->error, $e->args );
 
    return $c->view( $c->{current_view} )->not_implemented( $c, $verb, $msg );
 }
 
-sub _set_options_response {
-   my ($self, $c) = @_;
+sub _redirect {
+   my ($self, $controller, $c, @rest) = @_;
 
-   $c->res->content_type( q(text/plain) );
-   $c->res->header( 'Allow' => $self->_get_allowed_methods( $c ) );
-   $c->res->status( 200 );
+   my $res    = $c->stash->{result};
+   my $msg    = $res ? join NUL, map { $_->{content} } @{ $res->{items} || [] }
+                     : undef;
+   my $path   = $c->action->namespace.SEP.$c->action->name;
+   my $params = ($rest[ 0 ] && is_hashref $rest[ -1 ]) ? pop @rest : {};
+
+   $msg and $params->{mid} = $c->set_status_msg( $msg );
+
+   $controller->redirect_to_path( $c, $path, @rest, $params );
+   return;
+}
+
+sub _set_options_response {
+   my ($self, $c) = @_; my $res = $c->res;
+
+   $res->content_type( q(text/plain) );
+   $res->header( 'Allow' => $self->_get_allowed_methods( $c ) );
+   $res->status( 200 );
    return;
 }
 
@@ -220,6 +233,8 @@ sub __should_validate {
    return $c->stash->{token} && $will_validate{ $method };
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -232,11 +247,13 @@ CatalystX::Usul::Action - A generic action class
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   use base qw(CatalystX::Usul::Controller);
+   package YourApp::Controller::YourController;
+
+   BEGIN { extends q(CatalystX::Usul::Controller) }
 
    sub some_method : Chained('/') PathPart('') Args(0) HasActions {
       my ($self, $c) = @_;
@@ -256,9 +273,9 @@ CatalystX::Usul::Action - A generic action class
 
 The C<_parse_HasActions_attr> method in the base controller class causes
 L<Catalyst> to chain this execute method when a form is posted to an end
-point the sets the HasActions attribute
+point the sets the C<HasActions> attribute
 
-Actions should define one or more I<ActionFor> attributes whose
+Actions should define one or more C<ActionFor> attributes whose
 argument takes the form; method name dot lower case button name, where
 the button name was also passed to
 L<add_buttons|CatalystX::Usul::Plugin::Model::StashHelper/add_buttons>
@@ -275,16 +292,15 @@ subroutine map for this action by introspection and forward to that
 method. Log an error if one occurred and add it's text to the result
 block. In the event that an error occurred, set the I<override>
 attribute in the stash which causes the HTML view to call
-L<Catalyst::Plugin::FillInForm> to preserve the form's state
-
-=head1 Diagnostics
-
-Errors are logged to C<< $controller->log_error >>
+L<HTML::FillInForm> to preserve the form's state
 
 =head1 Configuration and Environment
 
-Expects C<< $c->stash->{buttons} >> to be a hash that
-contains display text for errors, prompts and tips
+None
+
+=head1 Diagnostics
+
+Errors are logged to C<< $controller->log->error >>
 
 =head1 Dependencies
 
@@ -310,7 +326,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This library is free software, you can redistribute it and/or modify
 it under the same terms as Perl itself

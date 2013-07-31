@@ -1,22 +1,23 @@
-# @(#)$Id: Levels.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Levels.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Levels;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use MRO::Compat;
+use CatalystX::Usul::Moose;
 
-__PACKAGE__->config
-   ( create_msg_key => 'Namespace [_1] created',
-     delete_msg_key => 'Namespace [_1] deleted',
-     file           => q(default),
-     keys_attr      => q(namespace),
-     update_msg_key => 'Namespace [_1] updated', );
+extends q(CatalystX::Usul::Model::Config);
 
-__PACKAGE__->mk_accessors( qw(file) );
+has '+create_msg_key' => default => 'Namespace [_1] created';
+
+has '+delete_msg_key' => default => 'Namespace [_1] deleted';
+
+has 'filename'        => is => 'ro', isa => Str, default => q(default);
+
+has '+keys_attr'      => default => q(namespace);
+
+has '+update_msg_key' => default => 'Namespace [_1] updated';
 
 sub create_or_update {
    my ($self, $ns, $name) = @_;
@@ -33,7 +34,7 @@ sub delete {
 }
 
 sub list {
-   my ($self, $name) = @_; return $self->next::method( $self->file, $name );
+   my ($self, $name) = @_; return $self->next::method( $self->filename, $name );
 }
 
 sub set_state {
@@ -44,13 +45,15 @@ sub set_state {
    $self->update( $ns, { name => $name, state => $state } );
    $self->clear_result;
 
-   my $user   = $self->context->stash->{user};
+   my $user   = $self->context->stash->{user}->username;
    my $msg    = 'Namespace [_1] state set to [_2] by [_3]';
    my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
 
    $self->add_result_msg( $msg, $name, $states{ $state }, $user );
    return;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -64,7 +67,7 @@ CatalystX::Usul::Model::Config::Levels - Class definition for the namespace conf
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -74,19 +77,19 @@ CatalystX::Usul::Model::Config::Levels - Class definition for the namespace conf
 
 Defines the <namespace> configuration element
 
-Defines three language independent attributes: I<acl>, I<name> and  I<state>
+Defines three language independent attributes: C<acl>, C<name> and  C<state>
 
-Defines two language dependent attributes: I<text> and  I<tip>
+Defines two language dependent attributes: C<text> and  C<tip>
 
 =head1 Subroutines/Methods
 
 =head2 create_or_update
 
-Creates or updates the specified I<namespace> element
+Creates or updates the specified C<namespace> element
 
 =head2 delete
 
-Deletes the specified I<namespace> element from the configuration
+Deletes the specified C<namespace> element from the configuration
 
 =head2 list
 
@@ -95,7 +98,7 @@ of the specified namespace
 
 =head2 set_state
 
-Toggles the I<state> attribute which has the effect of opening (false) or
+Toggles the C<state> attribute which has the effect of opening (false) or
 closing (true) the namespace to the application
 
 =head1 Diagnostics

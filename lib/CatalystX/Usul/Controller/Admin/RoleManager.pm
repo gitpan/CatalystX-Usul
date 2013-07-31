@@ -1,13 +1,17 @@
-# @(#)$Id: RoleManager.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: RoleManager.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Admin::RoleManager;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
+
+BEGIN { extends q(CatalystX::Usul::Controller) }
+
+with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
 
 __PACKAGE__->config( namespace => q(admin), );
 
@@ -16,7 +20,7 @@ sub role_base : Chained(common) PathPart(users) CaptureArgs(0) {
 
    $c->stash->{role_params} = $self->get_uri_query_params( $c );
 
-   return $self->set_identity_model( $c );
+   return $self->stash_identity_model( $c );
 }
 
 sub role_manager : Chained(role_base) Args HasActions {
@@ -41,6 +45,8 @@ sub role_manager_update : ActionFor(role_manager.update) {
    my ($self, $c) = @_; return $c->stash->{role_model}->update_users;
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -53,13 +59,15 @@ CatalystX::Usul::Controller::Admin::RoleManager - Maintains role membership
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Admin;
+   package YourApp::Controller::Admin;
 
-   use base qw(CatalystX::Usul::Controller::Admin);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Admin) }
 
    __PACKAGE__->build_subcontrollers;
 
@@ -105,6 +113,10 @@ None
 
 =item L<CatalystX::Usul::Controller>
 
+=item L<CatalystX::Usul::TraitFor::Controller::ModelHelper>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
+
 =back
 
 =head1 Incompatibilities
@@ -123,7 +135,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

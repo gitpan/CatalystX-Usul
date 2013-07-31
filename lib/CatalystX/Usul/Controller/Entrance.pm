@@ -1,59 +1,56 @@
-# @(#)$Id: Entrance.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Entrance.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Entrance;
 
-use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use MRO::Compat;
+use CatalystX::Usul::Moose;
 
-__PACKAGE__->config( docs_uri         => q(/html/index.html),
-                     register_class   => q(IdentityDBIC),
-                     register_profile => q(users), );
+BEGIN { extends q(CatalystX::Usul::Controller) }
 
-__PACKAGE__->mk_accessors( qw(docs_uri register_class register_profile) );
+with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+
+has 'default_action'   => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(reception);
+
+has 'docs_uri'         => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(/html/index.html);
+
+has 'register_class'   => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(UsersDBIC);
+
+has 'register_profile' => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(users);
 
 sub begin : Private {
    return shift->next::method( @_ );
 }
 
-sub base : Chained(/) CaptureArgs(0) {
-   # PathPart set in global configuration
-   my ($self, $c) = @_;
-
-   $self->can( q(persist_state) )
-      and $self->init_uri_attrs( $c, $self->model_base_class );
-
-   return;
+sub base : Chained(/) CaptureArgs(0) { # PathPart set in global configuration
+   return $_[ 0 ]->init_uri_attrs( $_[ 1 ], $_[ 0 ]->config_class );
 }
 
 sub common : Chained(base) PathPart('') CaptureArgs(0) {
-   my ($self, $c) = @_; my $s = $c->stash; my $nav = $s->{nav_model};
+   my $nav = $_[ 1 ]->stash->{nav_model};
 
-   $nav->add_header; $nav->add_footer; $nav->add_sidebar_panel;
-
+   $nav->add_footer; $nav->add_nav_header; $nav->add_navigation_sidebar;
+   $nav->load_status_msgs;
    return;
 }
 
 sub activate_account : Chained(register_base) Args(1) Public {
-   my ($self, $c, $key) = @_; my $s = $c->stash;
+   my ($self, $c, @args) = @_; my $s = $c->stash; my $nav = $s->{nav_model};
 
-   my $nav = $s->{nav_model}; $nav->clear_menus; $nav->add_menu_blank;
-
-   $s->{register_model}->activate_account( $key );
+   $nav->clear_menus; $nav->add_menu_blank; $s->{register_model}->form( @args );
    return;
 }
 
 sub auth : Chained(common) PathPart(authentication) CaptureArgs(0) {
-   my ($self, $c) = @_;
-
-   $self->can( q(persist_state) )
-      and $c->stash->{user_params} = $self->get_uri_query_params( $c );
-
-   return $self->set_identity_model( $c );
+   $_[ 1 ]->stash( user_params => $_[ 0 ]->get_uri_query_params( $_[ 1 ] ) );
+   $_[ 0 ]->stash_identity_model( $_[ 1 ] );
+   return;
 }
 
 sub authentication : Chained(auth) PathPart('') Args HasActions Public {
@@ -61,12 +58,11 @@ sub authentication : Chained(auth) PathPart('') Args HasActions Public {
 }
 
 sub authentication_login : ActionFor(authentication.login) {
-   my ($self, $c) = @_; my $s = $c->stash; $s->{user_model}->authenticate;
+   my ($self, $c) = @_; my $s = $c->stash;
 
-   $self->can( q(persist_state) )
-      and $self->set_uri_query_params( $c, { realm => $s->{realm} } );
-
-   $self->redirect_to_path( $c, $s->{wanted} );
+   $s->{user_model}->authenticate;
+   $self->set_uri_query_params( $c, { realm => $s->{realm} } );
+   $self->redirect_to_path( $c, $s->{wanted}, @{ $s->{redirect_params} } );
    return TRUE;
 }
 
@@ -75,42 +71,41 @@ sub change_password : Chained(auth) Args HasActions {
 }
 
 sub change_password_set : ActionFor(change_password.set) {
-   my ($self, $c) = @_; return $c->stash->{user_model}->change_password;
+   my ($self, $c) = @_; my $s = $c->stash;
+
+   $s->{user_model}->change_password;
+   $self->redirect_to_path( $c, $s->{wanted}, @{ $s->{redirect_params} } );
+   return TRUE;
 }
 
-sub check_field : Chained(base) Args(0) HasActions NoToken Public {
-   return shift->next::method( @_ );
+sub check_field : Chained(base) Args(0) NoToken Public {
+   return shift->check_field_wrapper( @_ );
 }
 
 sub doc_base : Chained(common) PathPart(documentation) CaptureArgs(0) {
-   my ($self, $c) = @_;
-
-   $c->stash( help_model => $c->model( $self->help_class ) );
-   return;
+   return $_[ 1 ]->stash( help_model => $_[ 1 ]->model( $_[ 0 ]->help_class ) );
 }
 
 sub documentation : Chained(doc_base) PathPart('') Args(0) {
-   my ($self, $c) = @_;
-
-   return $c->stash->{help_model}->documentation( $self->docs_uri );
+   return $_[ 1 ]->stash->{help_model}->form( $_[ 0 ]->docs_uri );
 }
 
 sub footer : Chained(base) Args(0) NoToken Public {
-   my ($self, $c) = @_; return $c->model( $self->help_class )->add_footer;
+   return $_[ 1 ]->model( $_[ 0 ]->help_class )->form( q(select_language) );
 }
 
 sub module_docs : Chained(doc_base) Args {
    my ($self, $c, @args) = @_;
 
-   return $c->stash->{help_model}->module_docs( @args );
+   return $self->set_popup( $c, q(close) )->help_form( @args );
 }
 
 sub modules : Chained(doc_base) Args(0) {
-   my ($self, $c) = @_; return $c->stash->{help_model}->module_list;
+   return $_[ 1 ]->stash->{help_model}->form;
 }
 
 sub navigation_sidebar : Chained(base) Args NoToken Public {
-   my ($self, $c) = @_; return $c->stash->{nav_model}->add_tree_panel;
+   return $_[ 1 ]->stash->{nav_model}->form;
 }
 
 sub reception_base : Chained(common) PathPart(reception) CaptureArgs(0) {
@@ -120,29 +115,29 @@ sub reception : Chained(reception_base) PathPart('') Args(0) Public {
 }
 
 sub redirect_to_default : Chained(base) PathPart('') Args(0) {
-   my ($self, $c) = @_; return $self->redirect_to_path( $c, SEP.q(reception) );
+   my ($self, $c) = @_; my $action_path = SEP.$self->default_action;
+
+   return $self->redirect_to_path( $c, $action_path, $c->req->query_params );
 }
 
 sub register_base : Chained(common) PathPart('') CaptureArgs(0) {
    my ($self, $c) = @_; my $s = $c->stash;
 
    $s->{register}->{profile} = $self->register_profile;
-   $s->{register_model} = $c->model( $self->register_class )->users;
+   $s->{register_model} = $c->model( $self->register_class );
    return;
 }
 
 sub register : Chained(register_base) Args(0) HasActions {
-   my ($self, $c) = @_;
-
-   return $c->stash->{register_model}->form( SEP.q(captcha) );
+   return $_[ 1 ]->stash->{register_model}->form;
 }
 
 sub register_create : ActionFor(register.insert) {
-   my ($self, $c) = @_; return $c->stash->{register_model}->register;
+   return $_[ 1 ]->stash->{register_model}->register;
 }
 
 sub sitemap : Chained(common) Args(0) {
-   my ($self, $c) = @_; return $c->stash->{nav_model}->sitemap;
+   return $_[ 1 ]->stash->{nav_model}->form;
 }
 
 sub tutorial : Chained(reception_base) Args {
@@ -150,6 +145,8 @@ sub tutorial : Chained(reception_base) Args {
 
    return $model->stash_para_col_class( q(n_columns), $n_cols );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -163,18 +160,49 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Entrance;
+   package YourApp::Controller::Entrance;
 
-   use base qw(CatalystX::Usul::Controller::Entrance);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Entrance) }
 
 =head1 Description
 
 Provides controller methods that are common to multiple applications. The
-methods include welcome pages, authentication, sitemap and documentation
+methods include welcome pages, authentication, sitemap, documentation, and
+user registration
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item C<default_action>
+
+A non empty simple string which defaults to C<reception>. The default
+action for this controller
+
+=item C<docs_uri>
+
+A non empty simple string which defaults to C</html/index.html>. Relative path
+to the applications documentation
+
+=item C<register_class>
+
+A non empty simple string which defaults to C<UsersDBIC>. Name of the model
+class used to perform user registrations
+
+=item C<register_profile>
+
+A non empty simple string which defaults to C<users>. The name of the
+user profile used when creating a registered user
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -259,8 +287,8 @@ Action for the Ajax call that puts a navigation tree in a sidebar panel
 
 =head2 reception_base
 
-Intermediate subroutine maps to the reception path part. Both receptionView
-and the tutorial chain to this controller
+Intermediate subroutine maps to the reception path part. Both reception landing
+page and the tutorial chain to this controller
 
 =head2 reception
 
@@ -295,15 +323,17 @@ Guides you through the elements common to all rooms on this site
 
 Debug can be turned on/off from the tools menu
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Controller>
+
+=item L<CatalystX::Usul::TraitFor::Controller::ModelHelper>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -323,7 +353,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

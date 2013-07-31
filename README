@@ -2,13 +2,24 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    This document describes CatalystX::Usul version 0.7.$Revision: 1184 $
+    This document describes CatalystX::Usul version 0.8.$Revision: 1315 $
 
 Synopsis
-       use parent qw(CatalystX::Usul);
+       package MyApp::Controller;
+
+       use Moose;
+
+       BEGIN { extends qw(CatalystX::Usul::Controller) }
+
+
+       package MyApp::Model;
+
+       use Moose;
+
+       extends qw(CatalystX::Usul::Model);
 
 Description
-    These modules provide a set of base classes for a Catalyst web
+    These modules provide a set of extension base classes for a Catalyst web
     application. Features include:
 
     Targeted at intranet applications
@@ -21,7 +32,7 @@ Description
        the view to render the page
 
     No further view programing required
-       A single template tookit instance is used to render all pages as
+       A single template toolkit instance is used to render all pages as
        either HTML or XHTML. The template forms one component of the "skin",
        the other components are: a Javascript file containing the use cases
        for the Javascript libraries, a primary CSS file with support for
@@ -32,7 +43,7 @@ Description
        example application, Munchies, whilst the programmers write the
        "real" application in parallel with the designers work
 
-    Flexable development methodology
+    Flexible development methodology
        These base classes are used by an example application, Munchies,
        which can be deployed to staging and production servers at the
        beginning of the project. Setting up the example application allows
@@ -40,123 +51,18 @@ Description
        "real" application is being written. The example application can be
        deleted leaving these base classes for the "real" application to use
 
-Configuration and Environment
-    Catalyst will set the $config argument passed to the constructor to the
-    section of the configuration appropriate for the component being
-    initialised
-
 Subroutines/Methods
-    This module provides methods common to
-    "controllers|CatalystX::Usul::Controller" and
-    "models|CatalystX::Usul::Model" which both inherit from this class. This
-    means that you should probably inherit from one of them instead
+    This package is a placeholder for POD and contains no methods or
+    functions
 
-  new
-       $self = CatalystX::Usul->new( $app, $attrs );
-
-    Constructor. Inherits from the base and the encoding classes. The
-    Catalyst application context is $app and $attrs is a hash ref containing
-    the object attributes. Defines the following attributes:
-
-    config
-       Hash of attributes read from the config file
-
-    debug
-       The application context debug is used to set this. Defaults to false
-
-    encoding
-       Which character encoding to use, defaults to "UTF-8"
-
-    lock
-       The lock object. This is readonly and instantiates on first use
-
-    log
-       The application context log. Defaults to a null object
-
-    prefix
-       The prefix applied to executable programs in the *bin* directory.
-       This is extracted from the *suid* key in the config hash
-
-    secret
-       This applications secret key as set by the administrators in the
-       configuration. It is used to perturb the encryption methods. Defaults
-       to the *prefix* attribute value
-
-    suid
-       Supplied by the config hash, it is the name of the setuid root
-       program in the *bin* directory. Defaults to the null string
-
-    tempdir
-       Location of any temporary files created by the application. Defaults
-       to the system tempdir
-
-  BUILDARGS
-    Preprocesses the are passed to the constructor
-
-  build_attributes
-       $self->build_attributes( [ qw(a list of attributes names) ], $force );
-
-    For each attribute in the list, if it is undefined or $force is true,
-    this method calls the builder method "_build_attribute_name" and sets
-    the attribute with the result
-
-  build_subcomponents
-       __PACKAGE__->build_subcomponents( $base_class );
-
-    Class method that allows us to define components that inherit from the
-    base class at runtime
-
-  loc
-       $local_text = $self->loc( $args, $key, $params );
-
-    Localizes the message. Calls "localize" in CatalystX::Usul::L10N
-
-  setup_plugins
-       @plugins = __PACKAGE__->setup_plugins( $config_ref );
-
-    Load the given list of plugins and have the supplied class inherit from
-    them. Returns an array ref of available plugins
-
-  supports
-       $bool = $self->supports( @spec );
-
-    Returns true if the hash returned by our *get_features* attribute
-    contains all the elements of the required specification
-
-  _build_lock
-    A lock object which is used to single thread the application where
-    required. This is a singleton object. Provides defaults for and returns
-    a new set/reset lock object. The keys of the $attrs hash are:
-
-    debug
-       Debug status. Defaults to "$self->debug"
-
-    log
-       Logging object. Defaults to "$self->log"
-
-    tempdir
-       Directory used to store the lock file and lock table if the "fcntl"
-       backend is used. Defaults to "$self->tempdir"
-
-  _load_component
-       $self->_load_component( $child, @parents );
-
-    Ensures that each component is loaded then fixes @ISA for the child so
-    that it inherits from the parents
+Configuration and Environment
+    None
 
 Diagnostics
-    Setting the *debug* attribute to true causes messages to be logged at
-    the debug level
+    None
 
 Dependencies
-    CatalystX::Usul::Base
-    CatalystX::Usul::Constants
-    CatalystX::Usul::File
-    CatalystX::Usul::Functions
-    CatalystX::Usul::L10N
-    CatalystX::Usul::Log
-    IPC::SRLock
-    Module::Pluggable::Object
+    Class::Usul
 
     To make the Captchas work GD::SecurityImage needs to be installed which
     has a documented dependency on "libgd" which should be installed first
@@ -168,17 +74,17 @@ Bugs and Limitations
     There are no known bugs in this module. Please report problems to the
     address below. Patches are welcome
 
-Author
-    Peter Flanigan, "<Support at RoxSoft.co.uk>"
-
 Acknowledgements
     Larry Wall - For the Perl programming language
 
+Author
+    Peter Flanigan, "<pjfl@cpan.org>"
+
 License and Copyright
-    Copyright (c) 2012 Peter Flanigan. All rights reserved
+    Copyright (c) 2013 Peter Flanigan. All rights reserved
 
     This program is free software; you can redistribute it and/or modify it
-    under the same terms as Perl itself. See the Perl Artistic License
+    under the same terms as Perl itself. See perlartistic
 
     This program is distributed in the hope that it will be useful, but
     WITHOUT WARRANTY; without even the implied warranty of MERCHANTABILITY

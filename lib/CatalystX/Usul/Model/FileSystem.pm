@@ -1,34 +1,37 @@
-# @(#)$Id: FileSystem.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: FileSystem.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::FileSystem;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use CatalystX::Usul::FileSystem;
-use MRO::Compat;
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Functions qw(find_source);
+
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+
+has '+domain_class' => default => q(CatalystX::Usul::FileSystem);
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $s = $c->stash;
+   my ($self, $c, @args) = @_; my $clone = $self->next::method( $c, @args );
 
-   my $new   = $self->next::method( $c, @rest );
-   my $attrs = { %{ $new->domain_attributes || {} } };
+   my $attr = { %{ $clone->domain_attributes || {} }, builder => $self->usul, };
 
-   $attrs->{debug  } ||= $s->{debug};
-   $attrs->{lang   } ||= $s->{lang};
-   $attrs->{fs_type} ||= $s->{os}->{fs_type}->{value};
-   $attrs->{fuser  } ||= $s->{os}->{fuser  }->{value};
-   $attrs->{logsdir} ||= $c->config->{logsdir};
+   my $os_deps = $c->stash->{os};
 
-   $new->domain_model( CatalystX::Usul::FileSystem->new( $c, $attrs ) );
+   defined $os_deps->{fs_type}
+          and $attr->{fs_type} ||= $os_deps->{fs_type}->{value};
+   defined $os_deps->{fuser  }
+          and $attr->{fuser  } ||= $os_deps->{fuser  }->{value};
 
-   return $new;
+   $clone->domain_model( $self->domain_class->new( $attr ) );
+
+   return $clone;
 }
 
 sub get_file_systems {
-   return shift->domain_model->get_file_systems( @_ );
+   return shift->domain_model->file_systems( @_ );
 }
 
 sub list_subdirectory {
@@ -38,7 +41,7 @@ sub list_subdirectory {
 sub view_file {
    my ($self, $subtype, $id) = @_; $id or return;
 
-   my $path = $subtype eq q(source) ? $self->find_source( $id ) : $id;
+   my $path = $subtype eq q(source) ? find_source $id : $id;
 
    $self->add_field(  { path    => $path,
                         subtype => $subtype, type => q(file) } );
@@ -47,6 +50,8 @@ sub view_file {
                         type    => q(label) } );
    return;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -60,28 +65,25 @@ CatalystX::Usul::Model::FileSystem - File system related methods
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Model::FileSystem;
+   package YourApp;
 
-   use base qw(CatalystX::Usul::Model::FileSystem);
+   use Catalyst qw(ConfigComponents...);
 
-   1;
-
-   package MyApp::Controller::Foo;
-
-   sub bar {
-      my ($self, $c) = @_;
-
-      $c->model( q(FileSystem) )->list_subdirectory( { dir => q(/path) } );
-      return;
-   }
+   __PACKAGE__->config(
+     'Model::FileSystem' => {
+        parent_classes   => q(CatalystX::Usul::Model::FileSystem) }, );
 
 =head1 Description
 
 This model provides methods for manipulating files and directories
+
+=head1 Configuration and Environment
+
+Defines no attributes
 
 =head1 Subroutines/Methods
 
@@ -91,14 +93,20 @@ Creates an instance of L<CatalystX::Usul::Filesystem>
 
 =head2 get_file_systems
 
+   $self->get_file_systems( $args );
+
 Returns the file systems on the local host
 
 =head2 list_subdirectory
 
-Returns the contents of the selected directory as a L<CatalystX::Usul::Table>
-object
+   $self->list_subdirectory( $directory );
+
+Returns the contents of the selected directory as a
+L<Class::Usul::Response::Table> object
 
 =head2 view_file
+
+   $self->view_file( $subtype, $id );
 
 Stash the data used by L<HTML::FormWidgets> to view a file of a given type
 
@@ -106,17 +114,17 @@ Stash the data used by L<HTML::FormWidgets> to view a file of a given type
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
+=item L<CatalystX::Usul::FileSystem>
+
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::FileSystem>
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -136,7 +144,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,180 +1,72 @@
-# @(#)$Id: Model.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Model.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model;
 
-use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(Catalyst::Model CatalystX::Usul CatalystX::Usul::Encoding);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(app_prefix is_arrayref throw);
-use Data::Validation;
-use MRO::Compat;
-use Scalar::Util qw(blessed refaddr weaken);
-use TryCatch;
+use CatalystX::Usul::Functions qw( is_arrayref is_hashref throw );
+use CatalystX::Usul::Moose;
+use Scalar::Util               qw( refaddr );
 
-__PACKAGE__->config( scrubbing => FALSE, scrub_chars => q([\'\"/\:]) );
+extends q(Catalyst::Model);
+with    q(CatalystX::Usul::TraitFor::BuildingUsul);
 
-__PACKAGE__->mk_accessors( qw(context domain_attributes domain_class
-                              domain_model scrubbing scrub_chars) );
+has 'context'           => is => 'rwp',  isa => Object, weak_ref => TRUE;
 
-__PACKAGE__->mk_encoding_methods( qw(_get_req_array _get_req_value) );
+has 'domain_attributes' => is => 'lazy', isa => HashRef,
+   default              => sub { { encoding => $_[ 0 ]->encoding } };
 
-sub COMPONENT {
-   my ($class, $app, $config) = @_; $class->_setup_plugins( $app );
+has 'domain_class'      => is => 'lazy', isa => NullLoadingClass,
+   coerce               => TRUE, default => sub {};
 
-   my $comp = $class->next::method( $app, $config );
-   my $usul = CatalystX::Usul->new( $app, {} );
+has 'domain_model'      => is => 'rw',   isa => Object;
 
-   for (grep { not defined $comp->{ $_ } } keys %{ $usul }) {
-      $comp->{ $_ } = $usul->{ $_ }; # Attribute mixin
-   }
+has 'encoding'          => is => 'lazy', isa => CharEncoding, coerce => TRUE,
+   default              => sub { $_[ 0 ]->usul->config->encoding };
 
-   return $comp;
-}
+has 'table_class'       => is => 'lazy', isa => LoadableClass, coerce => TRUE,
+   default              => sub { 'Class::Usul::Response::Table' };
+
+has 'usul'              => is => 'lazy', isa => BaseClass,
+   handles              => [ qw(debug lock log) ];
 
 sub ACCEPT_CONTEXT {
-   my ($self, $c, @rest) = @_;
+   my ($self, $c, @args) = @_;
 
-   blessed $c or return $self->build_per_context_instance( $c, @rest );
+   blessed $c or return $self->build_per_context_instance( $c, @args );
 
    my $s   = $c->stash;
    my $key = q(__InstancePerContext_).(blessed $self ? refaddr $self : $self);
 
-   return $s->{ $key } ||= $self->build_per_context_instance( $c, @rest );
+   return $s->{ $key } ||= $self->build_per_context_instance( $c, @args );
 }
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_;
+   my ($self, $c) = @_;
 
-   my $attrs = { ref $self ? %{ $self } : () }; # Clone self
-   my $new   = bless $attrs, blessed $self || $self;
+   my $class = blessed $self or throw 'Not a class method';
+   my $clone = bless { %{ $self } }, $class; # Clone self
 
-   if (blessed $c) { $new->{context} = $c; weaken( $new->{context} ) }
+   blessed $c and $clone->_set_context( $c );
 
-   return $new;
-}
-
-sub check_field {
-   my ($self, $id, $value) = @_;
-
-   return $self->_validator->check_field( $id, $value );
-}
-
-sub check_form  {
-   my ($self, $form) = @_; my $c = $self->context; my $s = $c->stash;
-
-   my $prefix = ($s->{form}->{name} || app_prefix blessed $self).q(.);
-
-   try        { $form = $self->_validator->check_form( $prefix, $form ) }
-   catch ($e) {
-      my $last = pop @{ $e->args }; $c->error( $e->args ); throw $last;
-   }
-
-   return $form;
-}
-
-sub form {
-   my ($self, @rest) = @_; my $s = $self->context->stash;
-
-   my $method = $s->{form}->{name}.q(_form);
-
-   return $self->$method( @rest );
+   return $clone;
 }
 
 sub loc {
-   my ($self, @rest) = @_;
+   my ($self, $key, @args) = @_; my $car = $args[ 0 ];
 
-   return $self->next::method( $self->context->stash, @rest );
+   my $args = (is_hashref $car) ? { %{ $car } }
+            : { params => (is_arrayref $car) ? $car : [ @args ] };
+   my $s    = $self->context->stash;
+
+   $args->{domain_names} ||= [ DEFAULT_L10N_DOMAIN, $s->{ns} ];
+   $args->{locale      } ||= $s->{language};
+
+   return $self->usul->localize( $key, $args );
 }
 
-sub query_array {
-   my ($self, @rest) = @_; return $self->_query_by_type( q(array), @rest );
-}
-
-sub query_value {
-   my ($self, @rest) = @_; return $self->_query_by_type( q(value), @rest );
-}
-
-sub query_value_by_fields {
-   my ($self, @fields) = @_;
-
-   return { map  { $_->[ 0 ] => $_->[ 1 ]           }
-            grep { defined $_->[ 1 ]                }
-            map  { [ $_, $self->query_value( $_ ) ] } @fields };
-}
-
-sub scrub {
-   my ($self, $value) = @_; defined $value or return;
-
-   my $pattern = $self->scrub_chars; $value =~ s{ $pattern }{}gmx;
-
-   return $value;
-}
-
-# Private methods
-
-sub _get_req_array {
-   my ($self, $attr) = @_;
-
-   my $value = $self->context->req->params->{ $attr || NUL };
-
-   $value = defined $value ? $value : [];
-
-   is_arrayref $value or $value = [ $value ];
-
-   return $value;
-}
-
-sub _get_req_value {
-   my ($self, $attr) = @_;
-
-   my $value = $self->context->req->params->{ $attr || NUL };
-
-   is_arrayref $value and $value = $value->[ 0 ];
-
-   return $value;
-}
-
-sub _query_by_type {
-   my ($self, $type, @rest) = @_;
-
-   (my $enc   = lc ($self->encoding || q(guess))) =~ s{ [-] }{_}gmx;
-   my $method = q(_get_req_).$type.q(_).$enc.q(_encoding);
-   my $value  = $self->$method( @rest );
-
-   $self->scrubbing or return $value;
-
-   unless ($type eq q(array)) { $value = $self->scrub( $value ) }
-   else { @{ $value } = map { $self->scrub( $_ ) } @{ $value } }
-
-   return $value;
-}
-
-sub _setup_plugins {
-   my ($self, $app) = @_; my $plugins;
-
-   $plugins = __PACKAGE__->get_inherited( q(_m_plugins) ) and return $plugins;
-
-   my $config = { search_paths => [ q(::Plugin::Model) ],
-               %{ $app->config->{ setup_plugins } || {} } };
-
-   $plugins = __PACKAGE__->setup_plugins( $config );
-
-   return __PACKAGE__->set_inherited( q(_m_plugins), $plugins );
-}
-
-sub _validator {
-   my $self  = shift;
-   my $s     = $self->context->stash;
-   my $attrs = { exception   => EXCEPTION_CLASS,
-                 constraints => $s->{constraints} || {},
-                 fields      => $s->{fields     } || {},
-                 filters     => $s->{filters    } || {} };
-
-   return Data::Validation->new( $attrs );
-}
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -188,49 +80,60 @@ CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   package CatalystX::Usul;
-   use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
-
-   package CatalystX::Usul::Model;
-   use parent qw(Catalyst::Model CatalystX::Usul CatalystX::Usul::IPC);
-
    package YourApp::Model::YourModel;
-   use parent qw(CatalystX::Usul::Model);
+
+   use CatalystX::Usul::Moose;
+
+   extends qw(CatalystX::Usul::Model);
 
 =head1 Description
 
 Common core interface model methods
 
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item context
+
+A weakened copy of the L<Catalyst> object
+
+=item domain_attributes
+
+Hash ref which defaults to I<< {} >>
+
+=item domain_class
+
+A loadable class which defaults to I<Class::Null>
+
+=item domain_model
+
+The domain model object
+
+=item encoding
+
+The IO encoding used by the domain model. Defaults to
+L<Class::Usul::Config/encoding>
+
+=item table_class
+
+A loadable class which defaults to L<Class::Usul::Response::Table>. Contains
+a table of links used to display the site map
+
+=item usul
+
+A reference to the L<Class::Usul> object stored on the application by
+L<CatalystX::Usul::TraitFor::CreatingUsul>
+
+=back
+
 =head1 Subroutines/Methods
-
-=head2 COMPONENT
-
-Defines the following accessors:
-
-=over 3
-
-=item scrubbing
-
-Boolean used by L</query_array> and L</query_value> to determine if input
-value should be cleaned of potentially dangerous characters
-
-=item scrub_chars
-
-List of characters to scrub from input values. Defaults to '"/\;
-
-=back
-
-Loads model plugins including;
-
-=over 3
-
-=item L<CatalystX::Usul::Plugin::Model::StashHelper>
-
-=back
 
 =head2 ACCEPT_CONTEXT
 
@@ -238,91 +141,18 @@ Calls L</build_per_context_instance> for each new context
 
 =head2 build_per_context_instance
 
-Called by L</ACCEPT_CONTEXT>. Takes a copy of the Catalyst object so
-that we don't have to pass C<< $c->stash >> into L<CatalystX::Usul/loc>
-
-=head2 check_field
-
-   $self->check_field( $id, $val );
-
-Expose L<Data::Validation/check_field>
-
-=head2 check_form
-
-   $self->check_form( \%fields );
-
-Expose L<Data::Validation/check_form>
-
-=head2 form
-
-   $self->form( @rest );
-
-Calls the form method to stuff the stash with the data for the
-requested form. Uses the C<< $c->stash->{form}->{name} >> value to
-construct the method name
+Called by L</ACCEPT_CONTEXT>. Takes a copy of the L<Catalyst> object as
+C<< $self->context >>
 
 =head2 loc
 
-   $local_text = $self->loc( $key, $args );
+   $localized_text = $self->loc( $key, @options );
 
-Localizes the message. Calls L<CatalystX::Usul/loc>
-
-=head2 query_array
-
-   $array_ref = $self->query_array( $attr );
-
-Returns the requested parameter in a list context. Uses the
-B<encoding> attribute to generate the method call to decode the input
-values. The decode method is provided by
-L<CatalystX::Usul::Encoding>. Will try to guess the encoding if one is
-not provided
-
-=head2 query_value
-
-   $scalar_value = $self->query_value( $attr );
-
-Returns the requested parameter in a scalar context. Uses B<encoding>
-attribute to generate the method call to decode the input value. The
-decode method is provided by L<CatalystX::Usul::Encoding>. Will try to
-guess the encoding if one is not provided
-
-=head2 query_value_by_fields
-
-   $hash_ref = $self->query_value_by_fields( @fields );
-
-Returns a hash_ref of fields and their values if the values are
-defined by the request. Calls L</query_value> for each of supplied
-fields
-
-=head2 scrub
-
-   $value = $self->scrub( $value );
-
-Removes the C<< $self->scrub_chars >> from the value
-
-=head2 _get_req_array
-
-   my $array_ref = $self->_get_req_array( $attr );
-
-Takes a request object that must implement a C<params> method which
-returns a hash ref. The method returns the value for C<$attr> from
-that hash. This method will always return a array ref. This method is
-wrapped by L<Catalystx::Usul::Encoding/mk_encoding_methods>
-and as such is not called directly
-
-=head2 _get_req_value
-
-   my $value = $self->_get_req_value( $attr );
-
-Takes a request object that must implement a C<params> method which
-returns a hash ref. The method returns the value for C<$attr> from
-that hash. This method will always return a scalar. This method is
-wrapped by L<Catalystx::Usul::Encoding/mk_encoding_methods>
-and as such is not called directly
-
-=head1 Configuration and Environment
-
-None
+Localizes the message. Calls L<Class::Usul::L10N/localize>. Adds the
+constant C<DEFAULT_L10N_DOMAINS> to the list of domain files that are
+searched. Adds C<< $self->context->stash->language >> and
+C<< $self->context->stash->namespace >> (search domain) to the
+arguments passed to C<localize>
 
 =head1 Diagnostics
 
@@ -336,11 +166,11 @@ None
 
 =item L<CatalystX::Usul>
 
-=item L<CatalystX::Usul::Encoding>
+=item L<CatalystX::Usul::TraitFor::BuildingUsul>
 
-=item L<CatalystX::Usul::IPC>
+=item L<Class::Usul>
 
-=item L<Data::Validation>
+=item L<CatalystX::Usul::Moose>
 
 =item L<Scalar::Util>
 
@@ -362,7 +192,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008-2009 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

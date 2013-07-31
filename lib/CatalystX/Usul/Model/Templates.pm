@@ -1,24 +1,36 @@
-# @(#)$Id: Templates.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Templates.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model::Templates;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent q(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(escape_TT unescape_TT throw);
+use Class::Usul::File;
+use File::Spec::Functions      qw(catdir);
 use TryCatch;
 
-__PACKAGE__->config( blank_ns     => q(none),
-                     escape_chars => [ qw({ }) ],
-                     extension    => q(.tt),
-                     ns_key       => q(namespace),
-                     root_ns      => q(root), );
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
 
-__PACKAGE__->mk_accessors( qw(blank_ns ns_key escape_chars
-                              extension root_ns) );
+has 'blank_ns'     => is => 'ro', isa => NonEmptySimpleStr, default => 'none';
+
+has 'escape_chars' => is => 'ro', isa => ArrayRef[NonEmptySimpleStr],
+   default         => sub { [ qw({ }) ] };
+
+has 'extension'    => is => 'ro', isa => NonEmptySimpleStr, default => '.tt';
+
+has 'ns_key'       => is => 'ro', isa => NonEmptySimpleStr,
+   default         => 'namespace';
+
+has 'root_ns'      => is => 'ro', isa => NonEmptySimpleStr, default => 'root';
+
+has '_file' => is => 'lazy', isa => FileClass,
+   default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
 
 sub create_or_update {
    my ($self, $ns) = @_;
@@ -95,7 +107,7 @@ sub _get_dir_for {
 
    my $sep = SEP; my $templates = $self->context->config->{template_dir};
 
-   return $self->catdir( $templates, split m{ $sep }mx, $ns );
+   return catdir( $templates, split m{ $sep }mx, $ns );
 }
 
 sub _get_template_data {
@@ -113,6 +125,8 @@ sub _get_template_data {
             template => escape_TT $tt, $self->escape_chars };
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -125,21 +139,61 @@ CatalystX::Usul::Model::Templates - Edit page templates
 
 =head1 Version
 
-0.1.$Revision: 1181 $
+0.1.$Revision: 1320 $
 
 =head1 Synopsis
 
+   package YourApp;
+
+   use Catalyst qw(ConfigComponents...);
+
+   __PACKAGE__->config( 'Model::Templates' => {
+      parent_classes => 'CatalystX::Usul::Model::Templates' } );
+
 =head1 Description
 
-CRUD methods for TT files
+CRUD methods for L<Template::Toolkit> files
 
 =head1 Configuration and Environment
 
+Defines the following list of attributes
+
+=over 3
+
+=item blank_ns
+
+A non-empty simple string which defaults to C<none>. A marker to indicate
+an application wide template. One that does not belong to a specific
+namespace
+
+=item escape_chars
+
+An array ref of non-empty simple strings. Pair of fencepost characters
+used to replace C<[> and C<]> when escaping L<Template::Toolkit> templates
+
+=item extension
+
+A non-empty simple string which defaults to F<.tt>
+
+=item ns_key
+
+A non-empty simple string which defaults to C<namespace>
+
+=item root_ns
+
+A non-empty simple string which defaults to C<root>
+
+=back
+
 =head1 Subroutines/Methods
+
+=head2 build_per_context_instance
+
+Instantiates the query object. Returns a clone of the model object
 
 =head2 create_or_update
 
-   $name = $c->model( q(Templates) )->create_or_update( $namespace );
+   $name = $self->create_or_update( $namespace );
 
 Transforms C<$namespace> into the path to the template directory. Gets the
 template from the form. Writes the form content to the selected template
@@ -147,21 +201,21 @@ file and returns the template name
 
 =head2 delete
 
-   $c->model( q(Templates) )->delete( $namespace );
+   $c->self->delete( $namespace );
 
 Deletes the template specified by the form parameter and the selected
 namespace
 
 =head2 _get_template_data
 
-   $hashref = $c->model( q(Templates) )->_get_template_data( $namespace, $name );
+   $hashref = $self->_get_template_data( $namespace, $name );
 
 Returns a hashref containing a list of template names and the content of
 the selected template
 
 =head2 templates_view_form
 
-   $c->model( q(Templates) )->templates_view_form( $namespace, $name );
+   $self->templates_view_form( $namespace, $name );
 
 Calls L</_get_template_data> and stash the data used to build the
 template editing form
@@ -176,9 +230,13 @@ None
 
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::Functions>
+=item L<CatalystX::Usul::TraitFor::Model::QueryingRequest>
 
-=item L<TryCatch>
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<Class::Usul::File>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -202,7 +260,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2010 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,15 +1,14 @@
-# @(#)$Id: Config.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Config.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Config;
 
 use strict;
-use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use Moose;
-use File::DataClass::Constants;
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
 
-extends qw(File::DataClass::Schema::WithLanguage);
+extends q(File::Gettext::Schema);
 
 has '+result_source_attributes' =>
    default          => sub { {
@@ -29,15 +28,14 @@ has '+result_source_attributes' =>
       },
       fields        => {
          attributes => [ qw(type prompt clear width maxlength tip
-                            required validate container container_class
-                            stepno onchange height pclass
-                            atitle align checked class
-                            ctitle edit fhelp max_integer min_integer
-                            min_password_length onkeypress
+                            required validate label check_field container
+                            container_class stepno onchange height pclass
+                            atitle checked class ctitle edit fhelp max_integer
+                            min_integer min_password_length onkeypress
                             pwidth select sep subtype table_class text) ],
          defaults   => { prompt => NUL, stepno => -1 },
          lang_dep   => { qw(atitle 1 ctitle 1 fhelp 1
-                            prompt 1 text   1 tip   1) },
+                            label  1 prompt 1 text  1 tip 1) },
       },
       globals       => {
          attributes => [ qw(value) ],
@@ -54,6 +52,8 @@ has '+result_source_attributes' =>
       },
    } };
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -62,11 +62,11 @@ __END__
 
 =head1 Name
 
-CatalystX::Usul::Config - Schema defintions for config files
+CatalystX::Usul::Config - Schema definitions for config files
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -76,26 +76,19 @@ CatalystX::Usul::Config - Schema defintions for config files
 
 =head1 Description
 
-Inherits from L<File::DataClass::Schema> and defines the schema for the
+Inherits from L<File::Gettext::Schema> and defines the schema for the
 configuration files
+
+=head1 Configuration and Environment
+
+Overloads the I<result_source_attributes> attribute with the schema
+definitions for the configuration files
 
 =head1 Subroutines/Methods
 
-=head2 resultset
-
-   my $rs = $config_obj->resultset( $source_name, $lang );
-
-Returns a L<File::DataClass::ResultSet> object. The C<$source_name> is
-a key to the schema's result source attributes hash (these define the
-schemas for the different configuration files). The C<$lang> argument
-is the two character language code used to select locale specific
-configuration files
-
-=head1 Diagnostics
-
 None
 
-=head1 Configuration and Environment
+=head1 Diagnostics
 
 None
 
@@ -103,7 +96,7 @@ None
 
 =over 3
 
-=item L<File::DataClass::Schema>
+=item L<File::Gettext::Schema>
 
 =back
 
@@ -123,7 +116,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

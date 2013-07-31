@@ -1,19 +1,32 @@
-# @(#)$Id: Root.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Root.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Root;
 
-use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(env_prefix is_member);
-use MRO::Compat;
+use CatalystX::Usul::Functions qw( env_prefix is_member throw );
+use CatalystX::Usul::Moose;
 
-__PACKAGE__->config( imager_class => q(Imager), );
+BEGIN { extends q(CatalystX::Usul::Controller) }
 
-__PACKAGE__->mk_accessors( qw(default_namespace imager_class) );
+with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+
+has 'default_namespace' => is => 'ro', isa => SimpleStr, required => TRUE;
+
+has 'imager_class'      => is => 'ro', isa => NonEmptySimpleStr,
+   default              => q(Imager);
+
+
+has '_profiler_no_start'  => is => 'lazy', isa => Bool, default => sub {
+   ($ENV{NYTPROF} || NUL) =~ m{ start\=no }mx ? TRUE : FALSE },
+   init_arg               => undef;
+
+has '_trigger_profiler'   => is => 'lazy', isa => Bool,
+   default                => sub {
+      $_[ 0 ]->_profiler_no_start and DB::enable_profile(); TRUE },
+   init_arg               => undef, reader => 'trigger_profiler';
 
 sub auto : Private {
    return shift->next::method( @_ );
@@ -28,74 +41,67 @@ sub end : Private {
 }
 
 sub render : ActionClass(RenderView) {
+   $_[ 0 ]->trigger_profiler; return;
 }
 
-sub about : Chained(/) Args(0) Public {
+sub about : Chained(/) Args(0) NoToken Public {
    # Display license and authorship information
-   my ($self, $c) = @_; $self->set_popup( $c, q(close) );
-
-   return $c->model( $self->help_class )->form;
+   return $_[ 0 ]->set_popup( $_[ 1 ], q(close) )->form;
 }
 
 sub access_denied : Chained(/) Args Public {
    # The auto method has decided not to allow access to the requested room
-   my ($self, $c, $ns, @rest) = @_;
-
-   my $s = $c->stash; my $name = join SEP, @rest;
+   my ($self, $c, $ns, $name) = @_; my $s = $c->stash;
 
    unless ($s->{denied_namespace} = $ns and $s->{denied_action} = $name) {
-      my $msg = 'Action namespace and/or action name not specified';
+      my $msg  = 'Access was denied to an unspecified action. ';
+         $msg .= 'Namespace and/or action name not specified';
 
       return $self->error_page( $c, $msg );
    }
 
-   $self->add_header( $c ); $self->reset_nav_menu( $c, q(back) );
+   $self->reset_nav_menu( $c, q(back) ); $c->action->name( q(cracker) );
 
-   $c->action->name( q(cracker) );
+   my $msg = 'Access denied to [_1] for [_2]'; my $action = $ns.SEP.$name;
 
-   my $msg = 'Access denied to [_1] for [_2]';
-
-   $self->log_warn( $self->loc( $s, $msg, $ns.SEP.$name, $s->{user} ) );
+   $self->log->warn( $self->loc( $s, $msg, $action, $s->{user}->username ) );
    $c->res->status( 403 );
    return FALSE;
 }
 
 sub action_closed : Chained(/) Args Public {
    # Requested page exists but is temporarily unavailable
-   my ($self, $c, $ns, @rest) = @_;
-
-   my $s = $c->stash; my $name = join SEP, @rest;
+   my ($self, $c, $ns, $name) = @_; my $s = $c->stash;
 
    unless ($s->{closed_namespace} = $ns and $s->{closed_action} = $name) {
-      my $msg = 'Action namespace and/or action name not specified';
+      my $msg  = 'Unspecified action is closed. ';
+         $msg .= 'Namespace and/or action name not specified';
 
       return $self->error_page( $c, $msg );
    }
 
-   $self->add_header( $c ); $self->reset_nav_menu( $c, q(back) );
+   $self->reset_nav_menu( $c, q(back) );
 
-   $self->log_warn( $self->loc( $s, 'Action [_1]/[_2] closed', $ns, $name ) );
-   $c->res->status( 423 );
+   my $msg = $self->loc( $s, 'Action [_1]/[_2] closed', $ns, $name );
+
+   $self->log->warn_message( $s, $msg ); $c->res->status( 423 );
    return;
 }
 
 sub app_closed : Chained(/) Args HasActions {
    # Application has been closed by the administrators
-   my ($self, $c) = @_; $self->add_header( $c );
+   my ($self, $c, @args) = @_;
 
-   $self->reset_nav_menu( $c, q(blank) )->form;
-
-   return FALSE;
+   return $self->reset_nav_menu( $c, q(blank) )->form( @args );
 }
 
 sub app_reopen : ActionFor(app_closed.login) {
    # Open the application to users
    my ($self, $c) = @_; my $s = $c->stash; my $cfg = $c->config;
 
-   $self->set_identity_model( $c ); $s->{user_model}->authenticate;
+   $self->stash_identity_model( $c ); $s->{user_model}->authenticate;
 
-   $self->can( q(persist_state) )
-      and $self->set_uri_query_params( $c, { realm => $s->{realm} } );
+   $self->set_uri_query_params( $c, { realm => $s->{realm} } );
 
    if (is_member $cfg->{admin_role}, $c->user->roles) {
       $c->model( $self->global_class )->save;
@@ -105,50 +111,65 @@ sub app_reopen : ActionFor(app_closed.login) {
    return TRUE;
 }
 
-sub captcha : Chained(/) Args(0) NoToken Public {
-   # Dynamically generate a jpeg image displaying a random number
+sub base : Chained(/) PathPart('') CaptureArgs(0) {
    my ($self, $c) = @_;
 
-   return $c->model( $self->realm_class )->users->create_captcha;
+   $self->init_uri_attrs( $c, $self->config_class );
+   $c->stash->{nav_model}->load_status_msgs;
+   return;
 }
 
-sub company : Chained(/) Args(0) Public {
+sub captcha : Chained(/) Args(0) NoToken Public {
+   # Dynamically generate a jpeg image displaying a random number
+   return $_[ 1 ]->model( $_[ 0 ]->realm_class )->create_captcha;
+}
+
+sub company : Chained(/) Args(0) NoToken Public {
    # And now a short message from our sponsor
-   my ($self, $c) = @_; return $self->set_popup( $c, q(close) );
+   return $_[ 0 ]->set_popup( $_[ 1 ], q(close) )->form;
 }
 
-sub feedback : Chained(/) Args HasActions {
+sub feedback : Chained(base) Args HasActions {
    # Form to send an email to the site administrators
-   my ($self, $c, @rest) = @_;
+   my ($self, $c, @args) = @_;
 
-   $c->model( $self->help_class )->form( @rest );
-
-   return $self->set_popup( $c, q(close) );
+   return $self->set_popup( $c, q(close) )->form( @args );
 }
 
 sub feedback_send : ActionFor(feedback.send) {
    # Send an email to the site administrators
-   my ($self, $c) = @_; return $c->model( $self->help_class )->feedback_send;
+   return $_[ 1 ]->model( $_[ 0 ]->help_class )->feedback_send;
 }
 
 sub help : Chained(/) Args Public {
-   return shift->next::method( @_ );
+   # Generate the context sensitive help from the POD in the code
+   my ($self, $c, @args) = @_;
+
+   return $self->set_popup( $c, q(close) )->form( @args );
 }
 
 sub imager : Chained(/) Args NoToken Public {
    my ($self, $c, @args) = @_; my $model = $c->model( $self->imager_class );
 
-   my ($data, $type, $mtime)
+   my ($image, $type, $mtime)
       = $model->transform( [ @args ], $c->req->query_parameters );
 
-   $data or return $self->error_page( $c, 'No body data generated' );
+   $image or return $self->error_page( $c, 'No image data generated' );
 
-   $c->res->body( $data );
+   $c->res->body( $image );
    $c->res->content_type( $type );
    $mtime and $c->res->headers->last_modified( $mtime );
-# TODO: Work out what to do with expires header
-#    $c->res->headers->expires( time() );
+   # TODO: Work out what to do with expires header
+   # $c->res->headers->expires( time() );
    return;
+}
+
+sub logout : Chained(/) Args(0) Public {
+   my ($self, $c) = @_; my $s = $c->stash; my $ns = $self->default_namespace;
+
+   $c->model( $self->realm_class )->logout( { user => $s->{user} } );
+
+   return $self->redirect_to_path( $c, $ns, @{ $s->{redirect_params} } );
 }
 
 sub quit : Chained(/) Args(0) Public {
@@ -156,23 +177,20 @@ sub quit : Chained(/) Args(0) Public {
 
    $ENV{ (env_prefix $cfg->{name}).q(_QUIT_OK) } and exit 0;
 
-   $self->log_warn( $self->loc( $s, 'Quit attempted by [_1]', $s->{user} ) );
+   $self->log->warn( $self->loc( $s, 'User [_1 ] attempted to quit',
+                                 $s->{user}->username ) );
 
    return $self->redirect_to_path( $c, $self->default_namespace );
 }
 
 sub redirect_to_default : Chained(/) PathPart('') Args {
-   my ($self, $c) = @_;
-
-   return $self->redirect_to_path( $c, $self->default_namespace );
+   return $_[ 0 ]->redirect_to_path( $_[ 1 ], $_[ 0 ]->default_namespace );
 }
 
 sub select_language : Chained(/) Args(0) Public {
    my ($self, $c) = @_; my $params = $c->req->params;
 
-   if ($c->can( q(session) )) {
-      $c->session( language => $params->{select_language} );
-   }
+   $c->session( language => $params->{select_language} );
 
    return $self->redirect_to_path( $c, $params->{referer} );
 }
@@ -187,11 +205,12 @@ sub view_source : Chained(/) Args Public {
 
    $module or return $self->error_page( $c, 'Module not specified' );
 
-   $self->add_header( $c ); $self->reset_nav_menu( $c, q(close) );
+   $self->reset_nav_menu( $c, q(close) );
 
-   $c->model( $self->fs_class )->view_file( q(source), $module );
-   return;
+   return $c->model( $self->fs_class )->view_file( q(source), $module );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -205,23 +224,41 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-0.1$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Root;
+   package YourApp::Controller::Root;
 
-   use base qw(CatalystX::Usul::Controller::Root);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Root) }
 
 =head1 Description
 
 Exposes some generic endpoints implemented in the base class
 
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item C<default_namespace>
+
+A simple string which is required. The default namespace
+
+=item C<imager_class>
+
+A non empty simple string which defaults to C<Imager>
+
+=back
+
 =head1 Subroutines/Methods
 
 =head2 about
 
-Display a simple popop window containing the copyright and license information
+Display a simple popup window containing the copyright and license information
 
 =head2 access_denied
 
@@ -246,6 +283,10 @@ configuration attribute to false
 =head2 auto
 
 Calls method of same name in parent class
+
+=head2 base
+
+Initializes the persistent URI attributes and loads the status messages
 
 =head2 begin
 
@@ -276,13 +317,18 @@ This private method is the action for the feedback controller
 
 =head2 help
 
-Calls method of same name in parent class
+Generates a context sensitive help page by calling
+L<help_form|CatalystX::Usul::Model::Help>
 
 =head2 imager
 
 Generates transformations of any image under the document root. Calls
 L<transform|CatalystX::Usul::Model::Iamger/transform> and sets the
 response object directly
+
+=head2 logout
+
+Expires the user object in the session store
 
 =head2 quit
 
@@ -296,7 +342,7 @@ Redirects to default controller. Matches any uri not matched by another action
 
 =head2 render
 
-Use the renderview action class
+Call the C<RenderView> action class
 
 =head2 select_language
 
@@ -317,15 +363,17 @@ to display some source code with syntax highlighting
 
 Debug can be turned on/off from the tools menu
 
-=head1 Configuration and Environment
-
-Package variables contain the list of publicly accessible rooms
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Controller>
+
+=item L<CatalystX::Usul::TraitFor::Controller::ModelHelper>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -345,7 +393,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

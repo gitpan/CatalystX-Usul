@@ -1,20 +1,29 @@
-# @(#)$Id: Fields.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Fields.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Fields;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-__PACKAGE__->config
-   ( classes        => { fhelp => q(ifield autosize),
-                         tip   => q(ifield autosize), },
-     create_msg_key => 'Field [_1]/[_2] created',
-     delete_msg_key => 'Field [_1]/[_2] deleted',
-     keys_attr      => q(fields),
-     typelist       => { fhelp => q(textarea), tip => q(textarea) },
-     update_msg_key => 'Field [_1]/[_2] updated', );
+use CatalystX::Usul::Moose;
+
+extends q(CatalystX::Usul::Model::Config);
+
+has '+classes'        => default => sub { { fhelp => q(ifield autosize),
+                                            tip   => q(ifield autosize), } };
+
+has '+create_msg_key' => default => 'Field [_1]/[_2] created';
+
+has '+delete_msg_key' => default => 'Field [_1]/[_2] deleted';
+
+has '+keys_attr'      => default => q(fields);
+
+has '+typelist'       => default => sub { { fhelp => q(textarea),
+                                            tip   => q(textarea) } };
+
+has '+update_msg_key' => default => 'Field [_1]/[_2] updated';
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -28,7 +37,7 @@ CatalystX::Usul::Model::Config::Fields - Class definition for fields
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -38,15 +47,14 @@ CatalystX::Usul::Model::Config::Fields - Class definition for fields
 
 Defines the attributes of the <field> elements in the configuration files
 
-There are twenty one language independent attributes to the I<fields>
-element; I<type>, I<clear>, I<width>, I<maxlength>, I<required>,
-I<validate>, I<onchange>, I<height>, I<pclass>, I<align>,
-I<checked>, I<class>, I<max_integer>, I<min_integer>,
-I<min_password_length>, I<onkeypress>, I<pwidth>, I<sep>
-and I<subtype>
+There are twenty one language independent attributes to the C<fields>
+element; C<type>, C<clear>, C<width>, C<maxlength>, C<required>,
+C<validate>, C<onchange>, C<height>, C<pclass>, C<checked>, C<class>,
+C<max_integer>, C<min_integer>, C<min_password_length>, C<onkeypress>,
+C<pwidth>, C<sep> and C<subtype>
 
-There are six language dependent attributes to the I<fields>
-element; I<atitle>, I<ctitle>, I<fhelp>, I<prompt>, I<text> and I<tip>
+There are six language dependent attributes to the C<fields>
+element; C<atitle>, C<ctitle>, C<fhelp>, C<prompt>, C<text> and C<tip>
 
 =head1 Subroutines/Methods
 

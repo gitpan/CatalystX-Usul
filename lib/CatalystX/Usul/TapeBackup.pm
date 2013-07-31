@@ -1,43 +1,70 @@
-# @(#)$Id: TapeBackup.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: TapeBackup.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::TapeBackup;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul CatalystX::Usul::IPC);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(arg_list throw);
-use CatalystX::Usul::Time qw(str2time time2str);
-use English qw(-no_match_vars);
-use File::Spec::Functions qw(catdir catfile rootdir);
+use CatalystX::Usul::Functions   qw(throw);
+use Class::Usul::File;
+use Class::Usul::IPC;
+use Class::Usul::Time            qw(str2time time2str);
+use English                      qw(-no_match_vars);
+use CatalystX::Usul::Constraints qw(Directory Lock Path);
+use File::Spec::Functions        qw(catdir catfile rootdir);
 use TryCatch;
 
-__PACKAGE__->mk_accessors( qw(dev_dir default_tape dump_cmd dump_dates
-                              form lang level_map max_wait mt_cmd
-                              no_rew_pref no_rew_suff pattern tar_cmd) );
+has 'dev_dir'      => is => 'lazy', isa => Directory, coerce => TRUE,
+   default         => sub { [ NUL, q(dev) ] };
 
-sub new {
-   my ($self, $app, @rest) = @_; my $attrs = arg_list @rest;
+has 'default_tape' => is => 'ro',   isa => NonEmptySimpleStr, default => 'st0';
 
-   $attrs->{dev_dir     } ||= catdir( NUL, q(dev) );
-   $attrs->{default_tape} ||= q(st0);
-   $attrs->{dump_cmd    } ||= catfile( NUL, qw(sbin dump) ).q( -aqu -b 128);
-   $attrs->{dump_dates  } ||= catfile( NUL, qw(etc dumpdates) );
-   $attrs->{form        } ||= q(backup);
-   $attrs->{lang        } ||= LANG;
-   $attrs->{level_map   }   = { 0 => 1, 1 => 3, 2 => 5, 3 => 2, 4 => 7,
-                                5 => 4, 6 => 9, 7 => 6, 8 => 9, 9 => 8 };
-   $attrs->{max_wait    } ||= 43_200;
-   $attrs->{mt_cmd      } ||= q(mt -f);
-   $attrs->{no_rew_pref } ||= q(n);
-   $attrs->{no_rew_suff } ||= NUL;
-   $attrs->{pattern     } ||= q(st[0-9]+);
-   $attrs->{tar_cmd     } ||= q(tar -c -b 256);
+has 'dump_cmd'     => is => 'ro',   isa => NonEmptySimpleStr,
+   default         => sub { catfile( NUL, qw(sbin dump) ).q( -aqu -b 128) };
 
-   return $self->next::method( $app, $attrs );
-}
+has 'dump_dates'   => is => 'lazy', isa => Path, coerce => TRUE,
+   default         => sub { [ NUL, qw(etc dumpdates) ] };
+
+has 'form'         => is => 'ro',   isa => NonEmptySimpleStr,
+   default         => 'backup';
+
+has 'language'     => is => 'ro',   isa => NonEmptySimpleStr, default => LANG;
+
+has 'level_map'    => is => 'ro',   isa => HashRef, init_arg => undef,
+   default         => sub { { 0 => 1, 1 => 3, 2 => 5, 3 => 2, 4 => 7,
+                              5 => 4, 6 => 9, 7 => 6, 8 => 9, 9 => 8 } };
+
+has 'max_wait'     => is => 'ro',   isa => PositiveInt, default => 43_200;
+
+has 'mt_cmd'       => is => 'ro',   isa => NonEmptySimpleStr,
+   default         => 'mt -f';
+
+has 'no_rew_pref'  => is => 'ro',   isa => SimpleStr, default => 'n';
+
+has 'no_rew_suff'  => is => 'ro',   isa => SimpleStr, default => NUL;
+
+has 'pattern'      => is => 'ro',   isa => NonEmptySimpleStr,
+   default         => 'st[0-9]+';
+
+has 'static_data'  => is => 'lazy', isa => HashRef, init_arg => undef;
+
+has 'tar_cmd'      => is => 'ro',   isa => NonEmptySimpleStr,
+   default         => 'tar -c -b 256';
+
+
+has '_file' => is => 'lazy', isa => FileClass,
+   default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+
+has '_ipc'  => is => 'lazy', isa => IPCClass,
+   default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(run_cmd) ], init_arg => undef, reader => 'ipc';
+
+has '_usul' => is => 'ro',   isa => BaseClass,
+   handles  => [ qw(config debug lock log) ], init_arg => 'builder',
+   reader   => 'usul', required => TRUE, weak_ref => TRUE;
 
 sub eject {
    my ($self, $args) = @_;
@@ -50,13 +77,13 @@ sub eject {
 }
 
 sub get_status {
-   my ($self, $args) = @_; my $s = __get_static_data_hash();
+   my ($self, $args) = @_; my $stat = $self->static_data;
 
-   $s->{device    } = $args->{device    } || $self->default_tape;
-   $s->{dump_type } = $args->{type      } || q(daily);
-   $s->{format    } = $args->{format    } || q(dump);
-   $s->{operation } = $args->{operation } || 1;
-   $s->{next_level} = $args->{next_level} || 0;
+   $stat->{device    } = $args->{device    } || $self->default_tape;
+   $stat->{dump_type } = $args->{type      } || q(daily);
+   $stat->{format    } = $args->{format    } || q(dump);
+   $stat->{operation } = $args->{operation } || 1;
+   $stat->{next_level} = $args->{next_level} || 0;
 
    my $volume = $args->{volume};
    my $form   = $self->form;
@@ -65,36 +92,38 @@ sub get_status {
       return (-c $_->pathname) && ($_->filename =~ m{ \A $pat \z }mx) } );
 
    for my $device (map { $_->filename } $io->all_files) {
-      push @{ $s->{devices} }, $device;
+      push @{ $stat->{devices} }, $device;
 
-      $device eq $s->{device} or next; $s->{working} = FALSE;
+      $device eq $stat->{device} or next; $stat->{working} = FALSE;
 
       for my $lock (@{ $self->lock->list }) {
-         if ($lock->{key} =~ m{ $device }mx) { $s->{working} = TRUE; last }
+         if ($lock->{key} =~ m{ $device }mx) { $stat->{working} = TRUE; last }
       }
 
-      if ($s->{working}) { $s->{position} = $form.'.tapeInProgress'; next }
+      if ($stat->{working}) {
+         $stat->{position} = "${form}.tapeInProgress"; next;
+      }
 
-      $self->_stash_device_position( $s, $device );
+      $self->_read_device_position( $stat, $device );
    }
 
-   ($s->{format} eq q(dump) and $volume) or return $s;
+   ($stat->{format} eq q(dump) and $volume) or return $stat;
 
-   ($s->{last_dump}, $s->{last_level}) = $self->_get_last( $volume );
+   ($stat->{last_dump}, $stat->{last_level}) = $self->_get_last( $volume );
 
-   my $type  = $s->{dump_type};
+   my $type  = $stat->{dump_type};
    my $level = { complete => 0,
                  weekly   => 1,
-                 daily    => $self->level_map->{ $s->{last_level} } || 0,
-                 specific => $s->{next_level} }->{ $type };
+                 daily    => $self->level_map->{ $stat->{last_level} } || 0,
+                 specific => $stat->{next_level} }->{ $type };
 
-   $s->{next_level} = $level;
+   $stat->{next_level} = $level;
    $level == 0 and $type ne q(specific) and $type = q(complete);
    $level == 1 and $type ne q(specific) and $type = q(weekly);
-   $s->{dump_type } = $type;
-   $s->{dump_msg  } = $form.($s->{last_dump} ? '.dumpedBefore'
-                                             : '.neverDumped');
-   return $s;
+   $stat->{dump_type } = $type;
+   $stat->{dump_msg  } = $stat->{last_dump} ? "${form}.dumpedBefore"
+                                            : "${form}.neverDumped";
+   return $stat;
 }
 
 sub process {
@@ -104,8 +133,8 @@ sub process {
            ? $self->_dev_path( $args->{device} )
            : $self->_dev_path( $self->_no_rewind( $args->{device} ) );
 
-   -c $dev
-      or throw error => 'Path [_1] not a character device', args => [ $dev ];
+   -c $dev or throw error => 'Path [_1] not a character device',
+                    args  => [ $dev ];
 
    defined $paths[ 0 ] or $paths[ 0 ] = rootdir;
 
@@ -122,8 +151,8 @@ sub start {
    my ($self, $args, $paths) = @_; my $cmd;
 
    $paths or throw 'No file path specified';
-   $cmd  = $self->suid.q( -c tape_backup).($self->debug ? q( -D) : q( -n));
-   $cmd .= q( -L ).$self->lang;
+   $cmd  = $self->config->suid.q( -c tape_backup ).$self->debug_flag;
+   $cmd .= q( -L ).$self->language;
 
    while (my ($k, $v) = each %{ $args }) {
       $cmd .= q( -o ).$k.'="'.$v.'"';
@@ -134,13 +163,32 @@ sub start {
    return $self->run_cmd( $cmd, { async => 1,
                                   debug => $self->debug,
                                   err   => q(out),
-                                  out   => $self->tempname } );
+                                  out   => $self->file->tempname } );
 }
 
 # Private methods
 
+sub _build_static_data {
+   my $sd = {};
+
+   $sd->{devices   } = [];
+   $sd->{dump_msg  } = NUL;
+   $sd->{dump_types} = [ qw(complete weekly daily specific) ];
+   $sd->{f_labels  } = { dump => 'Filesystem Dump', tar => 'Tape Archive' };
+   $sd->{file_no   } = 0;
+   $sd->{formats   } = [ qw(dump tar) ];
+   $sd->{last_dump } = NUL;
+   $sd->{last_level} = 0;
+   $sd->{o_labels  } = { 1 => 'Status', 2 => 'Rewind' };
+   $sd->{online    } = FALSE;
+   $sd->{p_labels  } = { 1 => 'EOD (norewind)', 2 => 'BOT (rewind)' };
+   $sd->{position  } = NUL;
+   $sd->{working   } = FALSE;
+   return $sd;
+}
+
 sub _dev_path {
-   my ($self, $device) = @_; return $self->catfile( $self->dev_dir, $device );
+   my ($self, $device) = @_; return catfile( $self->dev_dir, $device );
 }
 
 sub _get_last {
@@ -196,8 +244,8 @@ sub _process {
    return $text;
 }
 
-sub _stash_device_position {
-   my ($self, $s, $device) = @_; my $posn;
+sub _read_device_position {
+   my ($self, $stat, $device) = @_; my $posn;
 
    my $form = $self->form;
    my $path = $self->_dev_path( $self->_no_rewind( $device ) );
@@ -205,45 +253,26 @@ sub _stash_device_position {
    my $out  = eval { $self->run_cmd( $cmd, { err => q(out) } )->out } || NUL;
 
    for my $line (split m{ \n }mx, $out) {
-      $s->{online } = TRUE if ($line =~ m{ ONLINE }mx ||
-                               $line =~ m{ resource \s+ busy }mx);
-      $s->{file_no} = $1   if ($line =~ m{ \A File \s+ number= (\d+)}mx);
-      $posn = 1            if ($line =~ m{ BOT }mx);
-      $posn = 2            if ($line =~ m{ EOF }mx);
-      $posn = 3            if ($line =~ m{ resource \s+ busy }mx);
+      $stat->{online } = TRUE if ($line =~ m{ ONLINE }mx ||
+                                  $line =~ m{ resource \s+ busy }mx);
+      $stat->{file_no} = $1   if ($line =~ m{ \A File \s+ number= (\d+) }mx);
+      $posn = 1               if ($line =~ m{ BOT }mx);
+      $posn = 2               if ($line =~ m{ EOF }mx);
+      $posn = 3               if ($line =~ m{ resource \s+ busy }mx);
    }
 
-   if ($s->{online}) {
-      if    ($posn == 3) { $s->{position} = $form.'.tapeBusy' }
-      elsif ($posn == 2) { $s->{position} = $form.'.tapeEOF' }
-      elsif ($posn == 1) { $s->{position} = $form.'.tapeBOT' }
-      else               { $s->{position} = $form.'.tapeUnknown' }
+   if ($stat->{online}) {
+      if    ($posn == 3) { $stat->{position} = "${form}.tapeBusy" }
+      elsif ($posn == 2) { $stat->{position} = "${form}.tapeEOF" }
+      elsif ($posn == 1) { $stat->{position} = "${form}.tapeBOT" }
+      else               { $stat->{position} = "${form}.tapeUnknown" }
    }
-   else { $s->{position} = $form.'.tapeNotOnline' }
+   else { $stat->{position} = "${form}.tapeNotOnline" }
 
    return;
 }
 
-# Private subroutines
-
-sub __get_static_data_hash {
-   my $s = {};
-
-   $s->{devices   } = [];
-   $s->{dump_msg  } = NUL;
-   $s->{dump_types} = [ qw(complete weekly daily specific) ];
-   $s->{f_labels  } = { dump => 'Filesystem Dump', tar => 'Tape Archive' };
-   $s->{file_no   } = 0;
-   $s->{formats   } = [ qw(dump tar) ];
-   $s->{last_dump } = NUL;
-   $s->{last_level} = 0;
-   $s->{o_labels  } = { 1 => 'Status', 2 => 'Rewind' };
-   $s->{online    } = FALSE;
-   $s->{p_labels  } = { 1 => 'EOD (norewind)', 2 => 'BOT (rewind)' };
-   $s->{position  } = NUL;
-   $s->{working   } = FALSE;
-   return $s;
-}
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -257,54 +286,113 @@ CatalystX::Usul::TapeBackup - Provides tape device methods
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::TapeBackup;
+   use Class::Usul;
+
+   my $attr     = { builder  => Class::Usul->new, };
+
+   my $tape_obj = CatalystX::Usul::TapeBackup->new( $attr );
+
+   my $status_hash_ref = $tape_obj->get_status( {} );
+
+   my $ipc_response_obj = $tape_obj->start( $args, $paths );
+
+   my $tape_device = $tape_obj->eject( { device => $tape_device } );
 
 =head1 Description
 
 Provides methods to perform tape backups using either C<dump> or C<tar>
 
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item dev_dir
+
+Directory path which defaults to F</dev>
+
+=item default_tape
+
+String which defaults to C<st0>
+
+=item dump_cmd
+
+String which defaults to C</sbin/dump -aqu -b 128>
+
+=item dump_dates
+
+Path which defaults to F</etc/dumpdates>
+
+=item form
+
+String which defaults to C<backup>
+
+=item language
+
+String which defaults to C<en>
+
+=item max_wait
+
+Integer which defaults to C<43_200>
+
+=item mt_cmd
+
+String which defaults to C<mt -f>
+
+=item no_rew_pref
+
+String which defaults to C<n>
+
+=item no_rew_suff
+
+String which defaults to null
+
+=item pattern
+
+String which defaults to C<st[0-9]+>
+
+=item tar_cmd
+
+String which defaults to C<tar -c -b 256>
+
+=back
+
 =head1 Subroutines/Methods
 
-=head2 new
-
-Constructor
-
 =head2 eject
+
+   $tape_device = $self->eject( { device => $tape_device } );
 
 Ejects the tape in the selected drive
 
 =head2 get_status
 
-For the given filesystem volume, looks up all the data used by the
-C<backup_view> method
+   $status_hash_ref = $self->get_status( $args );
+
+Returns a hash ref of information about the selected tape device
 
 =head2 process
+
+   $display_message = $self->process( $options, $paths );
 
 Called from a command line wrapper this method executes the actual C<dump>
 or C<tar> command
 
 =head2 start
 
+   $ipc_response_obj = $self->start( $args, $paths );
+
 Calls the external command line wrapper which performs the
 backup. Runs the command asynchronously so that it can return
 immediately to the action that called it
 
-=head2 _get_last
-
-For the given filesystem volume this method stashes values for
-I<last_dump> and I<last_level> which it parses from the data in the
-file pointed to by the I<dump_dates> attribute (defaults to
-F</etc/dumpdates>). Called by the L</retrieve> method
-
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -312,9 +400,17 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul>
+=item L<Class::Usul::File>
 
-=item L<CatalystX::Usul::Constants>
+=item L<Class::Usul::IPC>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::Time>
+
+=item L<CatalystX::Usul::Constraints>
+
+=item L<TryCatch>
 
 =back
 
@@ -334,7 +430,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

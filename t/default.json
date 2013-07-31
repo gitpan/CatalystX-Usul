@@ -1,0 +1,94 @@
+{
+   "_vcs_default" : "@(#)$Id: default.xml 474 2008-09-01 22:48:04Z pjf$",
+   "action" : {
+      "feedback" : {
+         "acl" : [
+            "@users"
+         ],
+         "state" : "1"
+      },
+      "lock_display" : {
+         "acl" : [
+            "@support"
+         ],
+         "state" : "1"
+      }
+   },
+   "fields" : {
+      "app_closed.passwd" : {
+         "type" : "password"
+      },
+      "app_closed.user" : {
+         "width" : "20"
+      },
+      "feedback.body" : {
+         "height" : "24",
+         "palign" : "left",
+         "sep" : "&#160;&#160;&#160;",
+         "type" : "textarea",
+         "width" : "72"
+      },
+      "overview" : {
+         "type" : "template"
+      }
+   },
+   "globals" : {
+      "addtag" : {
+         "value" : "..Add.."
+      },
+      "app_closed" : {},
+      "application" : {
+         "value" : "MyApp"
+      },
+      "company" : {
+         "value" : "RoxSoft"
+      },
+      "copyright" : {
+         "value" : "Copyright (c) 2010 Peter Flanigan"
+      },
+      "feedback_email" : {
+         "value" : "support@roxsoft.co.uk"
+      },
+      "logo" : {
+         "value" : "logo.png"
+      },
+      "mailer" : {
+         "value" : "SMTP"
+      },
+      "mailer_host" : {
+         "value" : "rolling.roxsoft.group"
+      },
+      "max_sess_time" : {
+         "value" : "7200"
+      },
+      "newtag" : {
+         "value" : "..New.."
+      },
+      "pwidth" : {
+         "value" : "40"
+      },
+      "ssh_id" : {
+         "value" : "/opt/app-munchies/.ssh/id_rsa"
+      }
+   },
+   "namespace" : {
+      "admin" : {
+         "acl" : [
+            "@support"
+         ],
+         "state" : "0"
+      },
+      "entrance" : {
+         "acl" : [
+            "any"
+         ],
+         "state" : "0"
+      },
+      "library" : {
+         "acl" : [
+            "any"
+         ],
+         "state" : "0"
+      }
+   }
+}

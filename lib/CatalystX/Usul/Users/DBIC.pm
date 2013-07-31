@@ -1,131 +1,139 @@
-# @(#)$Id: DBIC.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: DBIC.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Users::DBIC;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Users);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(say sub_name throw);
-use CatalystX::Usul::Time;
-use MRO::Compat;
+use CatalystX::Usul::Functions qw( emit sub_name throw );
+use CatalystX::Usul::Moose;
+use Class::Usul::Time;
 use TryCatch;
 
-my %FEATURES  = ( roles => [ q(roles) ], session => TRUE, );
-my %FIELD_MAP =
-   ( active        => q(active),        crypted_password => q(password),
-     email_address => q(email_address), first_name       => q(first_name),
-     home_phone    => q(home_phone),    last_name        => q(last_name),
-     location      => q(location),      project          => q(project),
-     uid           => q(id),            username         => q(username),
-     work_phone    => q(work_phone), );
+extends q(CatalystX::Usul::Users);
 
-__PACKAGE__->mk_accessors( qw(dbic_user_class dbic_user_model) );
+has 'dbic_role_model'       => is => 'ro', isa => Object, required => TRUE;
 
-sub new {
-   my ($class, $app, $attrs) = @_;
+has 'dbic_user_model'       => is => 'ro', isa => Object, required => TRUE;
 
-   my $new = $class->next::method( $app, $attrs );
+has 'dbic_user_roles_model' => is => 'ro', isa => Object, required => TRUE;
 
-   $new->dbic_user_model( $app->model( $new->dbic_user_class ) );
+has 'get_features'          => is => 'ro', isa => HashRef,
+   default                  => sub { { roles   => [ q(roles) ],
+                                       session => TRUE, } };
 
-   return $new;
-}
+
+has '_field_map' => is => 'ro', isa => HashRef,
+   default       => sub { { password => q(crypted_password), id => q(uid), } };
 
 # Interface methods
-
 sub activate_account {
-   my ($self, $user) = @_;
+   my ($self, $file) = @_;
 
-   return $self->_execute( sub {
-      my $user_obj = $self->assert_user( $user );
+   my $username = $self->dequeue_activation_file( $file );
 
-      $user_obj->active( TRUE ); $user_obj->update;
+   $self->_execute( sub {
+      my $user = $self->assert_user( $username ); $user->active( TRUE );
+
+      $user->update; $self->_update_cache( $user ); return;
    } );
+
+   return ('User [_1] account activated', $username);
 }
 
 sub assert_user {
    my $self     = shift;
-   my $user     = shift or throw 'User not specified';
-   my $rs       = $self->dbic_user_model->search( { username => $user } );
-   my $user_obj = $rs->first
-      or throw error => 'User [_1] unknown', args => [ $user ];
+   my $username = shift or throw 'User not specified';
+   my $rs       = $self->dbic_user_model->search( { username => $username } );
+   my $user     = $rs->first
+      or throw error => 'User [_1] unknown', args => [ $username ];
 
-   return $user_obj;
+   return $user;
 }
 
 sub create {
    my ($self, $fields) = @_;
 
-   return $self->_execute( sub {
-      my $user    = $fields->{username};
-      my $pname   = delete $fields->{profile};
-      my $profile = $self->profiles->find( $pname );
-      my $passwd  = $fields->{password}
-                 || $profile->passwd || $self->def_passwd;
+   $self->_execute( sub {
+      my $username = $fields->{username};
+      my $p_name   = delete $fields->{profile};
+      my $profile  = $self->profiles->find( $p_name );
+      my $passwd   = $fields->{password}
+                  || $profile->passwd || $self->def_passwd;
+      my $src      = $self->dbic_user_model->result_source;
+      my $cols;
 
       $passwd !~ m{ [*!] }msx
          and $fields->{password} = $self->_encrypt_password( $passwd );
 
-      my $cols; $cols->{ $_ } = $fields->{ $_ } for (values %FIELD_MAP);
+      for ($src->columns) {
+         defined $fields->{ $_ } and $cols->{ $_ } = $fields->{ $_ };
+      }
 
       $self->dbic_user_model->create( $cols );
 
-      $self->roles->is_member_of_role( $pname, $user )
-         or $self->roles->add_user_to_role( $pname, $user );
+      $self->roles->is_member_of_role( $p_name, $username )
+         or $self->roles->add_user_to_role( $p_name, $username );
 
       if ($profile->roles) {
          for my $role (split m{ , }mx, $profile->roles) {
-            $self->roles->is_member_of_role( $role, $user )
-               or $self->roles->add_user_to_role( $role, $user );
+            $self->roles->is_member_of_role( $role, $username )
+               or $self->roles->add_user_to_role( $role, $username );
          }
       }
+
+      $self->_update_cache( $self->assert_user( $username ) );
+      return;
    } );
+
+   return ('User [_1] account created', $fields->{username});
 }
 
 sub delete {
-   my ($self, $user) = @_;
+   my ($self, $username) = @_;
 
-   return $self->_execute( sub { $self->assert_user( $user )->delete } );
-}
+   $self->_execute( sub {
+      $self->assert_user( $username )->delete;
+      $self->_delete_user_from_cache( $username );
+      return;
+   } );
 
-sub get_features {
-   return \%FEATURES;
-}
-
-sub get_field_map {
-   return \%FIELD_MAP;
+   return ('User [_1] account deleted', $username);
 }
 
 sub update {
    my ($self, $fields)  = @_;
 
-   return $self->_execute( sub {
-      my $user     = $fields->{username};
-      my $user_obj = $self->assert_user( $user );
+   $self->_execute( sub {
+      my $username = $fields->{username};
+      my $user     = $self->assert_user( $username );
       my $src      = $self->dbic_user_model->result_source;
 
-      for my $field (values %FIELD_MAP) {
-         $src->has_column( $field ) and exists $fields->{ $field }
-            and $user_obj->$field( $fields->{ $field } );
+      for my $col ($src->columns) {
+         defined $fields->{ $col } and $user->$col( $fields->{ $col } );
       }
 
-      $user_obj->update;
+      $user->update; $self->_update_cache( $user );
+      return;
    } );
+
+   return ('User [_1] account updated', $fields->{username});
 }
 
 sub update_password {
-   my ($self, @rest) = @_;
+   my ($self, @rest) = @_; my ($force, $username) = @rest;
 
-   return $self->_execute( sub {
-      my ($force, $user) = @rest; my $user_obj = $self->assert_user( $user );
+   $self->_execute( sub {
+      my $user = $self->assert_user( $username );
 
-      $user_obj->password( $self->encrypt_password( @rest ) );
-      $user_obj->pwlast( $force ? 0 : int time / 86_400 );
-      $user_obj->update;
+      $user->password( $self->encrypt_password( @rest ) );
+      $user->pwlast( $force ? 0 : int time / 86_400 );
+      $user->update; $self->_update_cache( $user );
+      return;
    } );
+
+   return ('User [_1] password updated', $username);
 }
 
 sub user_report {
@@ -133,9 +141,9 @@ sub user_report {
 
    my $fmt = $args && $args->{type} ? $args->{type} : q(text);
 
-   for my $user (@{ $self->retrieve->user_list }) {
-      my $user_ref = $self->get_user( $user );
-      my $passwd   = $user_ref->{password} || NUL;
+   for my $username (@{ $self->list }) {
+      my $user_ref = $self->_get_user_ref( $username );
+      my $passwd   = $user_ref->{crypted_password} || NUL;
 
       @flds = ( q(C) );
    TRY: {
@@ -146,7 +154,7 @@ sub user_report {
       if ($passwd =~ m{ [*!] }msx)      { $flds[ 0 ] = q(N); last TRY }
       } # TRY
 
-      $flds[ 1 ] = $user;
+      $flds[ 1 ] = $username;
       $flds[ 2 ] = $user_ref->{first_name}.q( ).$user_ref->{last_name};
       $flds[ 3 ] = $user_ref->{location};
       $flds[ 4 ] = $user_ref->{work_phone};
@@ -184,59 +192,75 @@ sub user_report {
       push @lines, "Total users $count";
    }
 
-   unless ($fmt eq q(csv)) { say @lines }
+   unless ($fmt eq q(csv)) { emit @lines }
    else { $self->io( $args->{path} )->println( join "\n", @lines  ) }
 
-   return;
+   return 'Here ends the user report';
 }
 
 # Private methods
+sub _delete_user_from_cache {
+   return delete $_[ 0 ]->cache->{users}->{ $_[ 1 ] };
+}
 
 sub _execute {
    my ($self, $f) = @_; my $key = __PACKAGE__.q(::_execute); my $res;
 
-   $self->debug and $self->log_debug( __PACKAGE__.q(::).(sub_name 1) );
+   $self->debug and $self->log->debug( __PACKAGE__.q(::).(sub_name 1) );
    $self->lock->set( k => $key );
-   $self->cache->{dirty} = TRUE;
 
    try        { $res = $f->() }
    catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
-   $self->cache->{dirty} = TRUE;
    $self->lock->reset( k => $key );
    return $res;
 }
 
 sub _load {
-   my $self = shift; my $key = __PACKAGE__.q(::_load); my $user_obj;
+   my ($self, $wanted) = @_;
 
-   $self->lock->set( k => $key );
+   my $key; $self->lock->set( k => $key = __PACKAGE__.q(::_load) );
 
-   $self->cache->{dirty} or return $self->_cache_results( $key );
+   my $cache = $self->cache; my $users = $cache->{users} ||= {};
 
-   my @keys = keys %{ $self->cache }; delete $self->cache->{ $_ } for (@keys);
+   if ($wanted) {
+      exists $users->{ $wanted } and defined $users->{ $wanted }
+         and return $self->_cache_results( $key );
 
-   try {
-      my $user_col = $FIELD_MAP{username};
-      my $rs       = $self->dbic_user_model->search;
-      my $src      = $rs->result_source;
+      try { $self->_update_cache( $self->assert_user( $wanted ) ) } catch {}
+   }
+   elsif (delete $cache->{_dirty}) {
+      $cache->{users} = {};
 
-      while (defined ($user_obj = $rs->next)) {
-         my $user = $user_obj->$user_col;
+      try {
+         my $rs = $self->dbic_user_model->search( undef, {
+            columns => [ qw(username) ] } );
 
-         for my $field (values %FIELD_MAP) {
-            $src->has_column( $field )
-               and $self->cache->{users}->{ $user }->{ $field }
-                      = $user_obj->$field;
+         for my $username (map { $_->username } $rs->all) {
+            $cache->{users}->{ $username } = $users->{ $username };
          }
       }
-
-      $self->cache->{dirty} = FALSE;
+      catch ($e) { $self->lock->reset( k => $key ); throw $e }
    }
-   catch ($e) { $self->lock->reset( k => $key ); throw $e }
 
    return $self->_cache_results( $key );
 }
+
+sub _update_cache {
+   my ($self, $user) = @_;
+
+   my $map = $self->_field_map;
+   my $src = $self->dbic_user_model->result_source;
+   my $mcu = $self->cache->{users}->{ $user->username } ||= {};
+
+   for my $col ($src->columns) {
+      $mcu->{ $map->{ $col } || $col } = $user->$col;
+   }
+
+   return;
+}
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -250,7 +274,7 @@ CatalystX::Usul::Users::DBIC - Database user storage
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
@@ -258,24 +282,48 @@ CatalystX::Usul::Users::DBIC - Database user storage
 
    my $class = CatalystX::Usul::Users::DBIC;
 
-   my $user_obj = $class->new( $attrs, $app );
+   my $user = $class->new( $attr );
 
 =head1 Description
 
 User storage model for relational databases. This model makes use of
-L<DBIx::Class>. It inherits from
-L<CatalystX::Usul::Model::Identity::Users> and implements the required
-list of factory methods
+L<DBIx::Class>. It inherits from L<CatalystX::Usul::Users> and
+implements the required list of factory methods
+
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item dbic_role_model
+
+Required schema object which represents roles
+
+=item dbic_user_model
+
+Required schema object which represents users
+
+=item dbic_user_roles_model
+
+Required schema object which represents the user / roles join table
+
+=item field_map
+
+A hash ref which maps the field names used by the user model onto the field
+names used by this data store
+
+=item get_features
+
+A hash ref which details the features supported by the DBIC user data store
+
+=back
 
 =head1 Subroutines/Methods
 
-=head2 new
-
-Constructor
-
 =head2 activate_account
 
-Searches the user model for the supplies user name and if it exists sets
+Searches the user store for the supplied user name and if it exists sets
 the active column to true
 
 =head2 assert_user
@@ -302,15 +350,6 @@ roles appropriate to the user profile
 =head2 delete
 
 Deletes a user object from the user model
-
-=head2 get_features
-
-Returns a hashref of features supported by this store. Can be checked using
-the C<supports> method implemented in C<CatalystX::Usul::Model>
-
-=head2 get_field_map
-
-Returns a reference to the package scoped variable C<%FIELD_MAP>
 
 =head2 get_primary_rid
 
@@ -356,15 +395,17 @@ Generate a report from the data in the user database
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
-=item L<CatalystX::Usul::Model::Identity::Users>
+=item L<CatalystX::Usul::Users>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::Time>
+
+=item L<TryCatch>
 
 =back
 
@@ -384,7 +425,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

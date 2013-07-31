@@ -1,155 +1,167 @@
-# @(#)$Id: Simple.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Simple.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Users::Simple;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Users);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(throw);
-use File::DataClass::Schema;
-use Scalar::Util qw(blessed);
+use CatalystX::Usul::Functions   qw(throw);
+use CatalystX::Usul::Constraints qw(File);
 
-my %FEATURES  = ( roles => [ q(roles) ], session => TRUE, );
-my %FIELD_MAP =
-   ( active           => q(active),        crypted_password => q(password),
-     email_address    => q(email_address), first_name       => q(first_name),
-     home_phone       => q(home_phone),    last_name        => q(last_name),
-     location         => q(location),      project          => q(project),
-     username         => q(username),      work_phone       => q(work_phone),
-   );
+extends q(CatalystX::Usul::Users);
 
-__PACKAGE__->mk_accessors( qw(ctrldir file path schema) );
+has 'field_map'    => is => 'ro',   isa => HashRef, default => sub { {} };
 
-sub new {
-   my ($class, $app, $attrs) = @_; my $ac = $app->config || {};
+has 'filename'     => is => 'ro',   isa => Str, default => q(users-simple.json);
 
-   $attrs->{ctrldir} ||= $ac->{ctrldir};
-   $attrs->{file   } ||= q(users-simple.json);
+has 'get_features' => is => 'ro',   isa => HashRef,
+   default         => sub { { roles => [ q(roles) ], session => TRUE, } };
 
-   my $new = $class->next::method( $app, $attrs );
+has 'path'         => is => 'lazy', isa => File;
 
-   $new->path  ( $new->_build_path   );
-   $new->schema( $new->_build_schema );
-   return $new;
-}
+has 'schema'       => is => 'lazy', isa => Object;
 
 # Interface methods
 
+sub activate_account {
+   my ($self, $file) = @_;
+
+   my $username = $self->dequeue_activation_file( $file );
+
+   $self->_execute( sub {
+      my $user = $self->assert_user( $username ); $user->active( TRUE );
+
+      $user->update; return;
+   } );
+
+   return ('User [_1] account activated', $username);
+}
+
 sub assert_user {
    my $self     = shift;
-   my $user     = shift or throw 'User not specified';
-   my $user_obj = $self->_users->find( { name => $user } )
-      or throw error => 'User [_1] unknown', args => [ $user ];
+   my $username = shift or throw 'User not specified';
+   my $user = $self->_users->find( { name => $username } )
+      or throw error => 'User [_1] unknown', args => [ $username ];
 
-   return $user_obj;
+   return $user;
 }
 
 sub create {
    my ($self, $args) = @_; my $fields;
 
-   my $user    = $args->{username};
-   my $pname   = delete $args->{profile};
-   my $profile = $self->profiles->find( $pname );
-   my $passwd  = $args->{password} || $profile->passwd || $self->def_passwd;
+   my $username = $args->{username};
+   my $p_name   = delete $args->{profile};
+   my $profile  = $self->profiles->find( $p_name );
+   my $passwd   = $args->{password} || $profile->passwd || $self->def_passwd;
+   my $src      = $self->_source;
 
-   $passwd !~ m{ [*!] }msx
-      and $args->{password} = $self->_encrypt_password( $passwd );
+   $args->{crypted_password} = $passwd !~ m{ [*!] }msx
+                             ? $self->_encrypt_password( $passwd ) : $passwd;
 
-   $fields->{ $_ } = $args->{ $_ } for (values %FIELD_MAP);
-   $fields->{name} = $user;
-
-   $self->_users->create( $fields );
-
-   $self->roles->is_member_of_role( $pname, $user )
-      or $self->roles->add_user_to_role( $pname, $user );
-
-   $profile->roles or return;
-
-   for my $role (split m{ , }mx, $profile->roles) {
-      $self->roles->is_member_of_role( $role, $user )
-         or $self->roles->add_user_to_role( $role, $user );
+   for (@{ $src->attributes }) {
+      defined $args->{ $_ } and $fields->{ $_ } = $args->{ $_ };
    }
 
-   return;
+   $fields->{name} = $username; $self->_users->create( $fields );
+
+   $self->roles->is_member_of_role( $p_name, $username )
+      or $self->roles->add_user_to_role( $p_name, $username );
+
+   if ($profile->roles) {
+      for my $role (split m{ , }mx, $profile->roles) {
+         $self->roles->is_member_of_role( $role, $username )
+            or $self->roles->add_user_to_role( $role, $username );
+      }
+   }
+
+   return ('User [_1] account created', $username);
 }
 
 sub delete {
-   my ($self, $user) = @_; $self->assert_user( $user )->delete; return;
-}
+   $_[ 0 ]->assert_user( $_[ 1 ] )->delete;
 
-sub get_features {
-   return \%FEATURES;
-}
-
-sub get_field_map {
-   return \%FIELD_MAP;
+   return ('User [_1] account deleted', $_[ 1 ]);
 }
 
 sub update {
-   my ($self, $args) = @_;
+   my ($self, $args) = @_; my $src = $self->_source;
 
-   my $user_obj = $self->assert_user( $args->{username} );
+   my $user = $self->assert_user( $args->{username} );
 
-   for (values %FIELD_MAP) {
-      exists $args->{ $_ } and $user_obj->$_( $args->{ $_ } );
+   for (grep { exists $args->{ $_ } } @{ $src->attributes }) {
+      $user->$_( $args->{ $_ } );
    }
 
-   $user_obj->update;
-   return;
+   $user->update; return ('User [_1] account updated', $user->username);
 }
 
 sub update_password {
-   my ($self, @rest) = @_; my ($force, $user) = @rest;
+   my ($self, @rest) = @_; my ($force, $username) = @rest;
 
-   my $user_obj = $self->assert_user( $user );
+   my $user = $self->assert_user( $username );
 
-   $user_obj->password( $self->encrypt_password( @rest ) );
-#   $user_obj->pwlast( $force ? 0 : int time / 86_400 );
-   $user_obj->update;
-   return;
+   $user->crypted_password( $self->encrypt_password( @rest ) );
+   $user->pwlast( $force ? 0 : int time / 86_400 );
+   $user->update; return ('User [_1] password updated', $username);
 }
 
 sub user_report {
-   my ($self, $args) = @_; return;
+   my ($self, $args) = @_; my $class = blessed $self;
+
+   throw error => 'Class [_1] user report not supported', args => [ $class ];
+
+   return;
 }
 
 # Private methods
 
 sub _build_path {
    my $self = shift;
-   my $path = $self->path || $self->catfile( $self->ctrldir, $self->file );
+   my $path = $self->io( [ $self->config->ctrldir, $self->filename ] );
 
-   $path          or throw 'Path not specified';
-   blessed $path  or $path = $self->io( $path );
    $path->is_file or $path->touch;
    $path->is_file or throw error => 'Path [_1] not found', args => [ $path ];
    return $path;
 }
 
 sub _build_schema {
-   my $self    = shift;
-   my $attrs   = {
-      ioc_obj  => $self,
-      path     => $self->path,
+   my $attr    = {
+      path     => $_[ 0 ]->path,
       result_source_attributes => {
-         users => { attributes => [ values %FIELD_MAP ],
+         users => { attributes => [ $_[ 0 ]->user_attributes ],
                     defaults   => {}, }, },
       storage_class => q(JSON),
    };
 
-   return File::DataClass::Schema->new( $attrs );
+   return $_[ 0 ]->file->dataclass_schema( $attr );
 }
 
 sub _load {
-   my $self = shift; return ({ %{ $self->schema->load->{users} || {} } });
+   my $self  = shift;
+   my $cache = $self->cache;
+   my $mtime = $self->path->stat->{mtime};
+   my $updt  = delete $cache->{_dirty} ? TRUE : FALSE;
+
+   $updt or $updt = $mtime == ($cache->{_mtime} || 0) ? FALSE : TRUE;
+
+   $updt or return ($cache->{users}); $cache->{_mtime} = $mtime;
+
+   $cache->{users} = { %{ $self->schema->load->{users} || {} } };
+
+   return ($cache->{users});
+}
+
+sub _source {
+   return $_[ 0 ]->schema->source( q(users) );
 }
 
 sub _users {
-   return shift->schema->resultset( q(users) );
+   return $_[ 0 ]->schema->resultset( q(users) );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -163,78 +175,87 @@ CatalystX::Usul::Users::Simple - User data store in local files
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Users::Unix;
+   use CatalystX::Usul::Users::Simple;
 
-   my $class = CatalystX::Usul::Users::Unix;
+   my $class = CatalystX::Usul::Users::Simple;
 
-   my $user_obj = $class->new( $attrs, $app );
+   my $user = $class->new( $attr );
 
 =head1 Description
 
-User storage model for the Unix operating system. This model makes use
-of a B<setuid> wrapper to read and write the files; F</etc/passwd>,
-F</etc/shadow> and F</etc/group>. It inherits from
-L<CatalystX::Usul::Model::Identity::Users> and implements the required
-list of factory methods
+Stores user account information in a JSON file in the control directory
+
+=head1 Configuration and Environment
+
+Defined the following attributes
+
+=over 3
+
+=item field_map
+
+A hash ref which maps the field names used by the user model onto the field
+names used by the data store
+
+=item filename
+
+The name of the file containing the user accounts. A string which
+defaults to I<users-simple.json>
+
+=item get_features
+
+A hash ref which details the features supported by this user data store
+
+=item path
+
+A path to a file that contains the user accounts
+
+=item schema
+
+An instance of L<File::DataClass::Schema> using the JSON storage class
+
+=back
 
 =head1 Subroutines/Methods
 
-=head2 new
-
-Constructor defined four attributes; I<binsdir> the path to the programs,
-I<ppath> the path to the passwd file, I<profdir> the path to the directory
-which contains boilerplate "dot" file for populating the home directory,
-and I<spath> the path to the shadow password file
-
-=head2 get_features
-
-Returns a hashref of features supported by this store. Can be checked using
-L<supports|CatalystX::Usul::Model>
-
 =head2 activate_account
 
-Activation is not currently supported by this store
+Searches the user store for the supplied user name and if it exists sets
+the active column to true
 
 =head2 assert_user
 
-Returns a L<File::DataClass> user object for the specified user or
-throws an exception if the user does not exist
+Returns a L<CatalystX::Usul::Response::User> object for the
+specified user or throws an exception if the user does not exist
 
 =head2 change_password
 
-Calls the setuserid wrapper to change the users password
+Changes the users password
 
 =head2 check_password
 
-Calls the setuserid wrapper to check the users password
+Checks the users password
 
 =head2 create
 
-Calls the setuserid wrapper to create a new user account, populate the
-home directory and create a mail alias for the users email address to
-the new account
+Create a new user account, populate the home directory and create a
+mail alias for the users email address to the new account
 
 =head2 delete
 
-Calls the setuserid wrapper to delete the users mail alias and then delete
-the account
-
-=head2 get_field_map
-
-Returns a reference to the package scoped variable C<%FIELD_MAP>
+Delete the users mail alias and then delete the account
 
 =head2 get_primary_rid
 
-Returns the users primary role (group) id from the F</etc/passwd> file
+Returns the users primary role (group) id from the user account file
 
 =head2 get_user
 
 Returns a hashref containing the data fields for the requested user. Maps
-the field name specific to the store to those used by the identity model
+the field name specific to the store to those used by the user model
 
 =head2 get_users_by_rid
 
@@ -250,11 +271,11 @@ Returns the list of usernames matching the given pattern
 
 =head2 set_password
 
-Calls the setuserid wrapper to set the users password to a given value
+Sets the users password to a given value
 
 =head2 update
 
-Calls the setuserid wrapper to update the user account information
+Updates the user account information
 
 =head2 update_password
 
@@ -262,14 +283,9 @@ Updates the users password in the database
 
 =head2 user_report
 
-Calls the setuserid wrapper to create a report about the user accounts
-in this store
+Creates a report about the user accounts in this store
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -277,9 +293,11 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Model::Identity::Users>
+=item L<CatalystX::Usul::Users>
 
-=item L<Unix::PasswdFile>
+=item L<CatalystX::Usul::Moose>
+
+=item L<CatalystX::Usul::Constraints>
 
 =back
 
@@ -299,7 +317,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

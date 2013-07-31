@@ -1,14 +1,16 @@
-# @(#)$Id: DumpInfo.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: DumpInfo.pm 1305 2013-04-02 14:51:23Z pjf $
 
 package CatalystX::Usul::TraitFor::Engine::DumpInfo;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use namespace::autoclean;
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1305 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use Data::Dumper;
 use HTML::Entities;
+
+requires q(finalize_error);
 
 before 'finalize_error' => sub {
    my ($self, $c) = @_;
@@ -53,7 +55,7 @@ CatalystX::Usul::TraitFor::Engine::DumpInfo - Prettier debug information dump
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1305 $
 
 =head1 Synopsis
 
@@ -66,7 +68,7 @@ CatalystX::Usul::TraitFor::Engine::DumpInfo - Prettier debug information dump
 
    # Start the development server with
 
-   bin/munchies_server -d -r -rd 1 -rr "\\.xml\$|\\.pm\$" \
+   bin/munchies_server -d -r -rd 1 -rr "\\.json\$|\\.pm\$" \
       --restart_directory lib
 
 =head1 Description
@@ -76,19 +78,38 @@ dump info output
 
 =head1 Subroutines/Methods
 
+=head2 finalize_error
+
+Uses a method modifier to execute this before L<Catalyst/finalize_error>. Sets
+the packaged scoped variables in the L<Data::Dumper> api
+
+=head2 _dump_error_page_element
+
+Replaces the Catalyst method of the same name. Calls <Data::Dumper/Dumper>
+
 =head1 Diagnostics
 
+None
+
 =head1 Configuration and Environment
+
+None
 
 =head1 Dependencies
 
 =over 3
 
-=item L<Catalyst::Runtime>
+=item L<Data::Dumper>
+
+=item L<HTML::Entites>
+
+=item L<Moose::Role>
 
 =back
 
 =head1 Incompatibilities
+
+There are no known incompatibilities in this module
 
 =head1 Bugs and Limitations
 
@@ -106,7 +127,7 @@ Larry Wall - For the Perl programming language
 
 =head1 License and Copyright
 
-Copyright (c) 2012 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

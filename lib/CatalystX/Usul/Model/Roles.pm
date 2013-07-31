@@ -1,37 +1,28 @@
-# @(#)$Id: Roles.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Roles.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Roles;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(is_member throw);
-use MRO::Compat;
 use TryCatch;
 
-__PACKAGE__->mk_accessors( qw(auth_realms domain_cache users) );
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
 
-sub COMPONENT {
-   my ($class, $app, $config) = @_;
-
-   my $new = $class->next::method( $app, $config );
-
-   $new->ensure_class_loaded( $new->domain_class );
-   $new->domain_cache( { dirty => TRUE } );
-   return $new;
-}
+has 'user_model_class' => is => 'ro', isa => NonEmptySimpleStr,
+   required            => TRUE;
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $class;
+   my ($self, $c, @rest) = @_; my $clone = $self->next::method( $c, @rest );
 
-   my $clone = $self->next::method( $c, @rest );
-   my $attrs = { %{ $clone->domain_attributes || {} },
-                 cache => $clone->domain_cache };
+   my $users = $c->model( $clone->user_model_class );
 
-   $clone->domain_model( $clone->domain_class->new( $c, $attrs ) );
+   $clone->domain_model( $users->domain_model->roles );
    return $clone;
 }
 
@@ -42,8 +33,7 @@ sub add_roles_to_user {
 
    for my $role (@{ $args->{items} || [] }) {
       $self->domain_model->add_user_to_role( $role, $user );
-      $roles .= $roles ? q(, ).$role : $role;
-      $count++;
+      $roles .= $roles ? q(, ).$role : $role; $count++;
    }
 
    $count and
@@ -60,8 +50,7 @@ sub add_users_to_role {
 
    for my $user (@{ $args->{items} || [] }) {
       $self->domain_model->add_user_to_role( $role, $user );
-      $users .= $users ? q(, ).$user : $user;
-      $count++;
+      $users .= $users ? q(, ).$user : $user; $count++;
    }
 
    $count and
@@ -113,8 +102,7 @@ sub remove_roles_from_user {
 
    for my $role (@{ $args->{items} || [] }) {
       $self->domain_model->remove_user_from_role( $role, $user );
-      $roles .= $roles ? q(, ).$role : $role;
-      $count++;
+      $roles .= $roles ? q(, ).$role : $role; $count++;
    }
 
    $count and
@@ -131,8 +119,7 @@ sub remove_users_from_role {
 
    for my $user (@{ $args->{items} || [] }) {
       $self->domain_model->remove_user_from_role( $role, $user );
-      $users .= $users ? q(, ).$user : $user;
-      $count++;
+      $users .= $users ? q(, ).$user : $user; $count++;
    }
 
    $count and
@@ -145,45 +132,45 @@ sub role_manager_form {
    my ($self, $role) = @_; my (@members, @roles, @users);
 
    try {
-      @members = $self->get_member_list( $role );
       @roles   = $self->get_roles( q(all) );
+      @members = $self->get_member_list( $role );
       @users   = grep { not is_member $_, @members }
-                     @{ $self->users->retrieve( q([^\?]+), NUL )->user_list };
+                     @{ $self->domain_model->users->list( q([^\?]+) ) };
    }
    catch ($e) { return $self->add_error( $e ) }
 
-   my $s      = $self->context->stash; $s->{pwidth} -= 10;
-   my $realm  = $s->{role_params}->{realm} || NUL;
+   my $c      = $self->context;
+   my $s      = $c->stash; $s->{pwidth} -= 10;
    my $form   = $s->{form}->{name};
+   my $realm  = $s->{role_params}->{realm} || NUL;
    my $first  = $role && $role eq $s->{newtag} ? q(.name) : q(.role);
-   my $values = [ NUL, sort keys %{ $self->auth_realms } ];
+   my @realms = grep { $_ ne q(default) } sort keys %{ $c->auth_realms };
 
    unshift @roles, NUL, $s->{newtag};
 
    $self->clear_form  ( { firstfld => $form.$first } );
    $self->add_field   ( { default  => $realm,
-                          id       => $form.q(.realm),
-                          values   => $values } );
+                          id       => "${form}.realm",
+                          values   => [ NUL, @realms ] } );
    $self->add_field   ( { default  => $role,
-                          id       => $form.q(.role),
+                          id       => "${form}.role",
                           values   => \@roles } );
-   $self->group_fields( { id       => $form.q(.select), nitems => 2 } );
+   $self->group_fields( { id       => "${form}.select" } );
 
    $role or return;
 
    if ($role eq $s->{newtag}) {
-      $self->add_field   ( { ajaxid  => $form.q(.name) } );
-      $self->group_fields( { id      => $form.q(.create), nitems => 1 } );
+      $self->add_field   ( { id      => "${form}.name" } );
+      $self->group_fields( { id      => "${form}.create" } );
       $self->add_buttons ( qw(Insert) );
-   }
-   else {
-      $self->add_field   ( { all     => \@users,
-                             current => \@members,
-                             id      => $form.q(.users) } );
-      $self->group_fields( { id      => $form.q(.add_remove), nitems => 1 } );
-      $self->add_buttons ( qw(Update Delete) );
+      return;
    }
 
+   $self->add_field   ( { all     => \@users,
+                          current => \@members,
+                          id      => "${form}.users" } );
+   $self->group_fields( { id      => "${form}.add_remove" } );
+   $self->add_buttons ( qw(Update Delete) );
    return;
 }
 
@@ -215,6 +202,8 @@ sub update_users {
    return TRUE;
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -227,29 +216,39 @@ CatalystX::Usul::Model::Roles - Manage the roles and their members
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    package YourApp::Model::Roles;
 
-   use CatalystX::Usul::Model::Roles;
+   use CatalystX::Usul::Moose;
 
-   sub new {
-      my ($self, $app, $config) = @_;
-
-      my $role_obj = CatalystX::Usul::Model::Roles->new( $app, $config );
-   }
+   extends q(CatalystX::Usul::Model::Roles);
 
 =head1 Description
 
+Manage the roles and their members
+
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item user_model_class
+
+A required non empty simple string. Passed by L</build_per_context_instance>
+to the Catalyst L<model|Catalyst/model> method
+
+=back
+
 =head1 Subroutines/Methods
 
-=head2 COMPONENT
-
-Constructor
-
 =head2 build_per_context_instance
+
+Sets our domain model to that of our user model's, domain model's roles
+object
 
 =head2 add_roles_to_user
 
@@ -346,15 +345,15 @@ L</add_users_to_role> and/or L</remove_users_from_role> as appropriate
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Model>
+
+=item L<CatalystX::Usul::TraitFor::Model::QueryingRequest>
+
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
 
 =back
 
@@ -374,7 +373,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

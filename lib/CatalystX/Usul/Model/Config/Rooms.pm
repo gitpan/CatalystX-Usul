@@ -1,19 +1,21 @@
-# @(#)$Id: Rooms.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Rooms.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Rooms;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use MRO::Compat;
+use CatalystX::Usul::Moose;
 
-__PACKAGE__->config
-   ( create_msg_key => 'Action [_1] / [_2] created',
-     delete_msg_key => 'Action [_1] / [_2] deleted',
-     keys_attr      => q(action),
-     update_msg_key => 'Action [_1] / [_2] updated', );
+extends q(CatalystX::Usul::Model::Config);
+
+has '+create_msg_key' => default => 'Action [_1] / [_2] created';
+
+has '+delete_msg_key' => default => 'Action [_1] / [_2] deleted';
+
+has '+keys_attr'      => default => q(action);
+
+has '+update_msg_key' => default => 'Action [_1] / [_2] updated';
 
 sub create_or_update {
    my ($self, $ns, $name) = @_;
@@ -37,13 +39,15 @@ sub set_state {
    $self->update( $ns, { name => $name, state => $state } );
    $self->clear_result;
 
-   my $user   = $self->context->stash->{user};
+   my $user   = $self->context->stash->{user}->username;
    my $msg    = 'Action [_1] / [_2] state set to [_3] by [_4]';
    my %states = ( 0 => q(open), 1 => q(hidden), 2 => q(closed) );
 
    $self->add_result_msg( $msg, $ns, $name, $states{ $state }, $user );
    return;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -57,33 +61,39 @@ CatalystX::Usul::Model::Config::Rooms - Class definition for the action configur
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   # Instantiated by Catalyst when the application starts
+   package YourApp;
+
+   use Catalyst qw(ConfigComponents...);
+
+   __PACKAGE__->config(
+     'Model::Config::Rooms' => {
+        parent_classes      => q(CatalystX::Usul::Model::Config::Rooms) }, );
 
 =head1 Description
 
 Defines the attributes for the <action> configuration element
 
-Defines three language independent attributes: I<acl>, I<name> and  I<state>
+Defines three language independent attributes: C<acl>, C<name> and  C<state>
 
-Defines two language dependent attributes: I<text> and  I<tip>
+Defines two language dependent attributes: C<text> and  C<tip>
 
 =head1 Subroutines/Methods
 
 =head2 create_or_update
 
-Creates or updates the specified I<action> element
+Creates or updates the specified C<action> element
 
 =head2 delete
 
-Deletes the specified I<action> element from the configuration
+Deletes the specified C<action> element from the configuration
 
 =head2 set_state
 
-Toggles the I<state> attribute which has the effect of opening (false) or
+Toggles the C<state> attribute which has the effect of opening (false) or
 closing (true) the action to the application
 
 =head1 Diagnostics
@@ -118,7 +128,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

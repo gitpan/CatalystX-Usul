@@ -1,19 +1,26 @@
-# @(#)$Id: UnixAdmin.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: UnixAdmin.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Users::UnixAdmin;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Users::Unix);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(throw);
-use CatalystX::Usul::Time;
-use English qw(-no_match_vars);
+use CatalystX::Usul::Constraints qw( Path);
+use CatalystX::Usul::Functions   qw( throw untaint_path );
+use CatalystX::Usul::Moose;
+use Class::Usul::Time;
+use English                      qw( -no_match_vars );
 use File::Copy;
-use File::Path qw(remove_tree);
+use File::Path                   qw( remove_tree );
+use File::Spec::Functions        qw( catdir catfile );
 use TryCatch;
+
+extends q(CatalystX::Usul::Users::Unix);
+
+has 'def_perms' => is => 'ro',   isa => Num, default => oct q(0755);
+
+has 'profdir'   => is => 'lazy', isa => Path, coerce => TRUE;
 
 # Called from suid wrapper program
 
@@ -65,7 +72,7 @@ sub create_account {
       }
    }
 
-   return "User $user account created";
+   return 'User [_1] account created';
 }
 
 sub delete_account {
@@ -82,18 +89,19 @@ sub delete_account {
 
    $self->_update_shadow( q(delete), { name => $user } ) if ($self->spath);
    $self->_update_passwd( q(delete), { name => $user } );
-   return "User $user account deleted";
+   return 'User [_1] account deleted';
 }
 
 sub populate_account {
    my ($self, $path) = @_;
 
-   my $pat      = $self->common_home || q(dont_match_this);
    my $params   = $self->_read_params( $path );
    my $user     = $params->{username};
    my $user_obj = $self->assert_user( $user );
    my $home     = $user_obj->homedir
       or throw error => 'User [_1] no home directory', args => [ $user ];
+   my $profile  = $self->profiles->find( $params->{profile} );
+   my $pat      = $profile->common_home || q(dont_match_this);
 
    $home =~ m{ \A $pat }mx and return;
 
@@ -102,7 +110,6 @@ sub populate_account {
    my $group    = $self->roles->get_name( $gid )
       or throw error => 'User [_1] invalid primary group [_2]',
                args  => [ $user, $gid || q(NULL) ];
-   my $profile  = $self->profiles->find( $params->{profile} );
    my $mode     = $profile->permissions
                 ? oct $profile->permissions : oct $self->def_perms;
 
@@ -118,50 +125,50 @@ sub populate_account {
                                   or $s_flds->{gid} <=> $gid);
 
       chmod $mode, $home;
-      $path = $self->catfile( $self->profdir, $group.'.profile' );
+      $path = catfile( $self->profdir, $group.'.profile' );
 
       if (-f $path) {
-         $self->_backup( 'file', $self->catfile( $home, '.profile' ),
+         $self->_backup( 'file', catfile( $home, '.profile' ),
                          $path, $uid, $gid, q(0644) );
       }
 
-      $path = $self->catfile( $self->profdir, 'kshrc' );
+      $path = catfile( $self->profdir, 'kshrc' );
 
       if (-f $path) {
-         $self->_backup( 'file', $self->catfile( $home, '.kshrc' ),
+         $self->_backup( 'file', catfile( $home, '.kshrc' ),
                          $path, $uid, $gid, q(0644) );
       }
 
-      $path = $self->catfile( $self->profdir, 'logout' );
+      $path = catfile( $self->profdir, 'logout' );
 
       if (-f $path) {
-         $self->_backup( 'file', $self->catfile( $home, '.logout' ),
+         $self->_backup( 'file', catfile( $home, '.logout' ),
                          $path, $uid, $gid, q(0755) );
       }
 
-      $path = $self->catfile( $self->profdir, 'Xdefaults' );
+      $path = catfile( $self->profdir, 'Xdefaults' );
 
       if (-f $path) {
-         $self->_backup( 'file', $self->catfile( $home, '.Xdefaults' ),
+         $self->_backup( 'file', catfile( $home, '.Xdefaults' ),
                          $path, $uid, $gid, q(0644) );
       }
 
-      $path = $self->catfile( $self->profdir, 'exrc' );
+      $path = catfile( $self->profdir, 'exrc' );
 
       if (-f $path) {
-         $self->_backup( 'file', $self->catfile( $home, '.exrc' ),
+         $self->_backup( 'file', catfile( $home, '.exrc' ),
                          $path, $uid, $gid, q(0644) );
       }
 
-      $path = $self->catfile( $self->profdir, 'emacs' );
+      $path = catfile( $self->profdir, 'emacs' );
 
       if (-f $path) {
-         $self->_backup( 'file', $self->catfile( $home, '.emacs' ),
+         $self->_backup( 'file', catfile( $home, '.emacs' ),
                          $path, $uid, $gid, q(0644) );
       }
 
       if ($params->{project}) {
-         $self->_backup( 'text', $self->catfile( $home, '.project' ),
+         $self->_backup( 'text', catfile( $home, '.project' ),
                          $params->{project}."\n", $uid, $gid, q(0644) );
       }
 
@@ -169,7 +176,7 @@ sub populate_account {
    }
    catch ($e) { $self->lock->reset( k => $home ); throw $e }
 
-   return "Home directory $home populated";
+   return "Home directory ${home} populated";
 }
 
 sub update_account {
@@ -203,7 +210,7 @@ sub update_account {
       else { $io->unlink }
    }
 
-   return "User $user account updated";
+   return 'User [_1] account updated';
 }
 
 sub update_password {
@@ -224,7 +231,7 @@ sub update_password {
       $self->_update_passwd( q(update), { %{ $mcu }, name => $user } );
    }
 
-   return "User $user password updated";
+   return 'User [_1] password updated';
 }
 
 sub user_report {
@@ -251,7 +258,7 @@ sub user_report {
       }
    }
 
-   for my $user (@{ $self->retrieve->user_list }) {
+   for my $user (@{ $self->list }) {
       my $user_obj = $self->get_user( $user, TRUE );
       my $passwd   = $user_obj->crypted_password;
       my $trunc    = substr $user, 0, 8;
@@ -297,7 +304,7 @@ sub user_report {
       $line  = 'S Login    Full Name            Location    ';
       $line .= 'Extn Role           Last Login';
       unshift @lines, $line;
-      $line  = 'Host: '.$self->host.' History Begins: '.$sdate;
+      $line  = 'Host: '.$self->config->host.' History Begins: '.$sdate;
       $line .= ' Printed: '.time2str();
       unshift @lines, $line;
 
@@ -306,13 +313,13 @@ sub user_report {
       $line  = 'Status field key: C = Current, D = Disabled, ';
       $line .= 'E = Expired, L = Left, N = NOLOGIN';
       push @lines, $line, '                  U = Unused';
-      push @lines, "Total users $count";
+      push @lines, "Total users ${count}";
    }
 
    if ($path eq q(-)) { $out = (join "\n", @lines)."\n" }
    else {
       $self->io( $path )->perms( oct q(0640) )->println( join "\n", @lines  );
-      $out = "Report $path contains $count users";
+      $out = "Report ${path} contains ${count} users";
    }
 
    return $out;
@@ -326,9 +333,9 @@ sub _backup {
    $mode = oct $mode.NUL; my $cnt = 1;
 
    if (-e $path and $type ne q(link)) {
-      $cnt++ while (-e $path.'.OLD-'.$cnt);
+      $cnt++ while (-e "${path}.OLD-${cnt}");
 
-      move( $path, $path.'.OLD-'.$cnt ) or throw $ERRNO;
+      move( $path, "${path}.OLD-${cnt}" ) or throw $ERRNO;
    }
 
  TRY: {
@@ -364,12 +371,16 @@ sub _backup {
    return;
 }
 
+sub _build_profdir {
+   return untaint_path catdir( $_[ 0 ]->config->ctrldir, q(profiles) );
+}
+
 sub _get_homedir {
    my ($self, $profile, $params) = @_;
 
    my $home = $profile->homedir;
-      $home = $home ne $self->common_home
-            ? $self->catdir( $home, $params->{username} ) : $home;
+      $home = $home ne $profile->common_home
+            ? catdir( $home, $params->{username} ) : $home;
       $home = $params->{homedir} || $home;
 
    return $home;
@@ -378,9 +389,9 @@ sub _get_homedir {
 sub _get_new_uid {
    my ($self, $base_id, $inc) = @_; $base_id ||= 100; $inc ||= 1;
 
-   my ($cache) = $self->_load; my $new_id = $base_id; my @uids = ();
+   my ($cached_users) = $self->_load; my $new_id = $base_id; my @uids = ();
 
-   push @uids, $cache->{ $_ }->{id} for (keys %{ $cache });
+   push @uids, $cached_users->{ $_ }->{uid} for (keys %{ $cached_users });
 
    for my $uid (sort { $a <=> $b } @uids) {
       if ($uid >= $base_id) { last if ($uid > $new_id); $new_id = $uid + $inc }
@@ -390,13 +401,13 @@ sub _get_new_uid {
 }
 
 sub _list_previous {
-   my $self = shift; return $self->popen( q(last) );
+   my $self = shift; return $self->ipc->popen( q(last) );
 }
 
 sub _read_params {
    my ($self, $path) = @_;
 
-   my $params = $self->file_dataclass_schema->load( $path );
+   my $params = $self->file->dataclass_schema->load( $path );
    my $user   = $params->{username} or throw 'User not specified';
 
    $user =~ m{ [ :] }mx and throw error => 'User [_1] invalid name',
@@ -419,6 +430,8 @@ sub _update_shadow {
    return;
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -431,36 +444,33 @@ CatalystX::Usul::Users::UnixAdmin - Set uid root methods for account manipulatio
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   # In a module executing setuid root
-   use base qw(CatalystX::Usul::Programs);
-   use CatalystX::Usul::Model::Identity;
-
-   __PACKAGE__->mk_accessors( qw(identity) );
-
-   sub new {
-      my ($class, @rest) = @_;
-      my $config   = { role_class => q(Unix), user_class => q(UnixAdmin) };
-      my $id_class = q(CatalystX::Usul::Model::Identity);
-
-      $self->{identity} = $id_class->new( $self, $config );
-      return $self;
-   }
-
-   sub create_account {
-      my $self = shift;
-
-      $self->output( $self->users->create_account( @ARGV ) );
-      return 0;
-   }
+   use CatalystX::Usul::Users::UnixAdmin;
 
 =head1 Description
 
 The public methods are called from a program running setuid root. The
 methods enable the management of OS accounts
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item C<def_perms>
+
+The default permissions applied to new home directories, C<0755>
+
+=item C<profdir>
+
+A path coerced from an array ref that contains the files used to provision
+a new account
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -470,16 +480,16 @@ methods enable the management of OS accounts
 
 Creates an OS account. The given path is an XML file containing the
 account parameters. Account profiles are obtained from the
-C<< $self->profile_domain >> object. New entries are added to the I<passwd>
-file, the I<shadow> file (if it is being used) and the I<group> file
+C<< $self->profile_domain >> object. New entries are added to the C<passwd>
+file, the C<shadow> file (if it is being used) and the C<group> file
 
 =head2 delete_account
 
    $self->delete_account( $user ):
 
 Deletes an OS account. The accounts home directory is removed, the users
-entries in the I<group> file are removed as are the entries in the
-I<passwd> and I<shadow> files
+entries in the C<group> file are removed as are the entries in the
+C<passwd> and C<shadow> files
 
 =head2 populate_account
 
@@ -487,8 +497,8 @@ I<passwd> and I<shadow> files
 
 Creates the new users home directory and populates it with some "dot"
 files if templates for such exist in the C<< $self->profdir >>
-directory. Does not create a directory if the users homedir matches
-C<< $self->common_home >>. Account parameters are read from the XML file
+directory. Does not create a directory if the users home directory matches
+C<< $profile->common_home >>. Account parameters are read from the XML file
 given by C<$path>
 
 =head2 update_account
@@ -496,9 +506,11 @@ given by C<$path>
    $self->update_account( $path );
 
 Account parameters are read from the XML file given by C<$path>. Updates
-entries in the I<passwd> file
+entries in the C<passwd> file
 
 =head2 update_password
+
+   $self->update_password( $force, $user, $old_pw, $new_pw, $encrypted );
 
 Updates the users password only if the new one has not been used
 before or there is an administrative override. Updates the
@@ -508,14 +520,10 @@ F<shadow> file file if it is used, or the F<passwd> file otherwise
 
    $self->user_report( $path, $format );
 
-Creates a report of user accounts. Outputs to C<$path> or I<STDOUT> if
-C<$path> is I<->. Format is either I<text> or I<csv>
+Creates a report of user accounts. Outputs to C<$path> or C<STDOUT> if
+C<$path> is C<->. Format is either C<text> or C<csv>
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -525,7 +533,15 @@ None
 
 =item L<CatalystX::Usul::Users::Unix>
 
-=item L<CatalystX::Usul::Time>
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::Time>
+
+=item L<CatalystX::Usul::Constraints>
+
+=item L<File::Path>
+
+=item L<TryCatch>
 
 =back
 
@@ -545,7 +561,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

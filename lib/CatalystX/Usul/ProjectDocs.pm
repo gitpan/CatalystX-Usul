@@ -1,69 +1,111 @@
-# @(#)$Id: ProjectDocs.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: ProjectDocs.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::ProjectDocs;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use English qw(-no_match_vars);
+use CatalystX::Usul::Moose;
 use Class::Null;
+use CatalystX::Usul::Constants;
+use English qw(-no_match_vars);
+use File::Copy;
 use Text::Tabs;
 
-eval {
-   require Pod::ProjectDocs;
-   require Syntax::Highlight::Perl;
+has 'docs_class' => is => 'lazy', isa => ClassName;
 
-   my $shp    = Syntax::Highlight::Perl->new;
-   my %scheme =
-      ( Variable_Scalar   => [ '<font color="#CC6600">', '</font>' ],
-        Variable_Array    => [ '<font color="#FFCC00">', '</font>' ],
-        Variable_Hash     => [ '<font color="#990099">', '</font>' ],
-        Variable_Typeglob => [ '<font color="#000000">', '</font>' ],
-        Subroutine        => [ '<font color="#339933">', '</font>' ],
-        Quote             => [ '<font color="#000000">', '</font>' ],
-        String            => [ '<font color="#3399FF">', '</font>' ],
-        Comment_Normal    => [ '<font color="#ff0000"><i>', '</i></font>' ],
-        Comment_POD       => [ '<font color="#ff9999">', '</font>' ],
-        Bareword          => [ '<font color="#000000">', '</font>' ],
-        Package           => [ '<font color="#000000">', '</font>' ],
-        Number            => [ '<font color="#003333">', '</font>' ],
-        Operator          => [ '<font color="#999999">', '</font>' ],
-        Symbol            => [ '<font color="#000000">', '</font>' ],
-        Keyword           => [ '<font color="#0000ff"><b>', '</b></font>' ],
-        Builtin_Operator  => [ '<font color="#000000">', '</font>' ],
-        Builtin_Function  => [ '<font color="#000000">', '</font>' ],
-        Character         => [ '<font color="#3399FF"><b>', '</b></font>' ],
-        Directive         => [ '<font color="#000000"><i><b>',
-                               '</b></i></font>' ],
-        Label             => [ '<font color="#000000">', '</font>' ],
-        Line              => [ '<font color="#000000">', '</font>' ], );
+has '_args'      => is => 'ro',   isa => HashRef, default => sub { {} };
 
-   $shp->set_format( \%scheme );
-   $shp->define_substitution( q(<) => q(&lt;),
-                              q(>) => q(&gt;),
-                              q(&) => q(&amp;) );
-
-   no warnings q(redefine); ## no critic
-
-   *Pod::ProjectDocs::Parser::PerlPod::highlighten = sub {
-      my ($self, $type, $text) = @_; $tabstop = 3; # Text::Tabs
-
-      return $shp->format_string( expand( $text ) );
-   };
+around 'BUILDARGS' => sub {
+   my ($next, $self, @args) = @_; return { _args => $self->$next( @args ) };
 };
 
-my $docs_class = $EVAL_ERROR ? q(Class::Null) : q(Pod::ProjectDocs);
-
-sub new {
-   my ($class, @args) = @_;
-
-   return bless { _docs => $docs_class->new( @args ) }, $class;
-}
-
 sub gen {
-   return shift->{_docs}->gen;
+   my $self = shift; my $css = delete $self->_args->{cssfile};
+
+   $self->docs_class->new( %{ $self->_args } )->gen;
+
+   $css and -f $css and copy( $css, $self->_args->{outroot} );
+
+   return;
 }
+
+# Private methods
+
+sub _build_docs_class {
+   eval {
+      require PPI;
+      require PPI::HTML;
+      require Pod::ProjectDocs;
+
+      my $highlight = PPI::HTML->new( line_numbers => 1 );
+
+      no warnings q(redefine); ## no critic
+
+      *Pod::ProjectDocs::Parser::PerlPod::highlighten = sub {
+         my ($self, $type, $text) = @_; $tabstop = 3; # Text::Tabs
+
+         $text = expand( $text );
+
+         return $highlight->html( PPI::Document->new( \$text ) );
+      };
+   };
+
+   $EVAL_ERROR or return q(Pod::ProjectDocs); $EVAL_ERROR = undef;
+
+   eval {
+      require Pod::ProjectDocs;
+      require Syntax::Highlight::Perl;
+
+      my $shp    = Syntax::Highlight::Perl->new;
+      my %scheme =
+         ( Variable_Scalar   => [ '<font color="#CC6600">', '</font>' ],
+           Variable_Array    => [ '<font color="#FFCC00">', '</font>' ],
+           Variable_Hash     => [ '<font color="#990099">', '</font>' ],
+           Variable_Typeglob => [ '<font color="#000000">', '</font>' ],
+           Subroutine        => [ '<font color="#339933">', '</font>' ],
+           Quote             => [ '<font color="#000000">', '</font>' ],
+           String            => [ '<font color="#3399FF">', '</font>' ],
+           Comment_Normal    => [ '<font color="#ff0000"><i>', '</i></font>' ],
+           Comment_POD       => [ '<font color="#ff9999">', '</font>' ],
+           Bareword          => [ '<font color="#000000">', '</font>' ],
+           Package           => [ '<font color="#000000">', '</font>' ],
+           Number            => [ '<font color="#003333">', '</font>' ],
+           Operator          => [ '<font color="#999999">', '</font>' ],
+           Symbol            => [ '<font color="#000000">', '</font>' ],
+           Keyword           => [ '<font color="#0000ff"><b>', '</b></font>' ],
+           Builtin_Operator  => [ '<font color="#000000">', '</font>' ],
+           Builtin_Function  => [ '<font color="#000000">', '</font>' ],
+           Character         => [ '<font color="#3399FF"><b>', '</b></font>' ],
+           Directive         => [ '<font color="#000000"><i><b>',
+                                  '</b></i></font>' ],
+           Label             => [ '<font color="#000000">', '</font>' ],
+           Line              => [ '<font color="#000000">', '</font>' ], );
+
+      $shp->set_format( \%scheme );
+      $shp->define_substitution( q(<) => q(&lt;),
+                                 q(>) => q(&gt;),
+                                 q(&) => q(&amp;) );
+
+      no warnings q(redefine); ## no critic
+
+      *Pod::ProjectDocs::Parser::PerlPod::highlighten = sub {
+         my ($self, $type, $text) = @_; $tabstop = 3; # Text::Tabs
+
+         return $shp->format_string( expand( $text ) );
+      };
+   };
+
+   $EVAL_ERROR or return q(Pod::ProjectDocs); $EVAL_ERROR = undef;
+
+   eval {
+      require Pod::ProjectDocs;
+   };
+
+   return $EVAL_ERROR ? q(Class::Null) : q(Pod::ProjectDocs);
+}
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -77,17 +119,18 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    use CatalystX::Usul::ProjectDocs;
 
-   my $pd = CatalystX::Usul::ProjectDocs->new( outroot => $htmldir,
-                                               libroot => $libroot,
-                                               title   => $meta->name,
+   my $pd = CatalystX::Usul::ProjectDocs->new( cssfile => $css,
                                                desc    => $meta->abstract,
-                                               lang    => q(en), );
+                                               lang    => q(en),
+                                               libroot => $libroot,
+                                               outroot => $htmldir,
+                                               title   => $meta->name, );
 
    $pd->gen();
 
@@ -99,14 +142,10 @@ it is available
 
 =head1 Subroutines/Methods
 
-=head2 new
-
-Constructor creates and stores either an instance of L<Pod::ProjectDocs> or
-L<Class::Null> depending on whether L<Pod::ProjectDocs> is installed
-
 =head2 gen
 
-Proxy for L<gen|Pod::ProjectDocs/gen>
+Proxy for L<gen|Pod::ProjectDocs/gen>. If the C<css> file exists copies this
+over the one created by L<Pod::ProjectDocs>
 
 =head1 Diagnostics
 
@@ -121,6 +160,10 @@ None
 =over 3
 
 =item L<Pod::ProjectDocs>
+
+=item L<PPI>
+
+=item L<PPI::HTML>
 
 =item L<Syntax::Highlight::Perl>
 

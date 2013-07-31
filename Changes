@@ -1,5 +1,29 @@
 Revision history for CatalystX::Usul
 
+0.8.1320 2013-07-31
+         - Internalized Moose exporter and constraints
+         - Changed logname to loginid in ::Admin
+         - Tightened ::TraitFor::ConnectInfo
+         - Split out decrypt_from_cfg to Class::Usul
+         - Updated inc::Bob to 1.14
+         - Updated Moose dependency
+         - CX::U::Schema::edit_credentials has bootstrap to create new ones
+         - Fixed TraitFor::ConnectInfo visiting attributes in config object
+         - Fixed bug in controller __want_app_closed function
+         - Added redirect after execute option to action class
+         - Updated inc::Bob to 1.6
+         - Bumped version from 0.7 to 0.8
+         - Added bsonid64 testing code to CLI
+         - Uses PPI::HTML for Perl source syntax highlighting
+         - C:U:Moose now imports CX:U:Constraints and MX:AS
+         - Updated inc::Bob to 1.5
+         - Added King's marin smoker to CPANTesting exceptions. See
+           9800a69a-bc95-11e1-b285-d2fa227e6607. 1 fail and 167 passes
+         - CX::U::Admin::_deploy_plack_server also copys env file to
+           /etc/default
+         - Fixed undefind value warning in Functions::app_prefix
+         - Refactored to use Class::Usul::Moose;
+
 0.7.1184 2012-04-21
          - Turned CPAN testing on. Sort::Naturally is installing again
 

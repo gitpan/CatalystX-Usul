@@ -1,45 +1,68 @@
-# @(#)$Id: Messages.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Messages.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Messages;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use File::Gettext;
+use CatalystX::Usul::Moose;
 
-__PACKAGE__->config
-   ( classes        => { translator_comment => q(ifield autosize), },
-     create_msg_key => 'Message [_1]/[_2] created',
-     delete_msg_key => 'Message [_1]/[_2] deleted',
-     domain_class   => q(File::Gettext),
-     fields         => [ qw(msgctxt msgstr msgid_plural translator_comment
-                            extracted_comment reference flags previous) ],
-     keys_attr      => q(msgid),
-     table_data     => {
-        msgstr      => {
-           classes  => { text => q(ifield autosize) },
-           flds     => [ qw(text) ],
-           labels   => { text => 'Text' },
-           typelist => { text => q(textarea) }, }, },
-     typelist       => { extracted_comment  => q(label),
-                         flags              => q(label),
-                         msgstr             => q(table),
-                         previous           => q(label),
-                         reference          => q(label),
-                         translator_comment => q(textarea), },
-     update_msg_key => 'Message [_1]/[_2] updated', );
+extends q(CatalystX::Usul::Model::Config);
+
+has '+classes'        => default => sub { {
+   translator_comment => q(ifield autosize), } };
+
+has '+create_msg_key' => default => 'Message [_1]/[_2] created';
+
+has '+delete_msg_key' => default => 'Message [_1]/[_2] deleted';
+
+has '+domain_attributes' => default => sub { {
+   storage_class      => q(+File::Gettext::Storage::PO) } };
+
+has '+domain_class'   => default => q(File::Gettext);
+
+has '+fields'         => default => sub {
+   [ qw(msgctxt msgstr msgid_plural translator_comment
+        extracted_comment reference flags previous) ] };
+
+has '+keys_attr'      => default => q(msgid);
+
+has '+table_data'     => default => sub { {
+   msgstr             => {
+      classes         => { text => q(ifield autosize) },
+      fields          => [ qw(text) ],
+      labels          => { text => 'Text' },
+      typelist        => { text => q(textarea) }, }, } };
+
+has '+typelist'       => default => sub { {
+   extracted_comment  => q(label),
+   flags              => q(label),
+   msgstr             => q(table),
+   previous           => q(label),
+   reference          => q(label),
+   translator_comment => q(textarea), } };
+
+has '+update_msg_key' => default => 'Message [_1]/[_2] updated';
+
+after 'create_or_update' => sub {
+   $_[ 0 ]->usul->l10n->invalidate_cache;
+};
+
+after 'delete' => sub {
+   $_[ 0 ]->usul->l10n->invalidate_cache;
+};
 
 # Private methods
 
 sub _resultset {
    my ($self, $ns) = @_; my $s = $self->context->stash;
 
-   my $dm = $self->domain_model; $dm->set_path( $s->{lang}, $ns );
+   my $dm = $self->domain_model; $dm->set_path( $s->{language}, $ns );
 
    return $dm->resultset;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -53,11 +76,17 @@ CatalystX::Usul::Model::Config::Messages - Class definition for the messages con
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   # Instatiated by Catalyst when the application starts
+   package YourApp;
+
+   use Catalyst qw(ConfigComponents...);
+
+   __PACKAGE__->config(
+     'Model::Config::Messages' => {
+        parent_classes => q(CatalystX::Usul::Model::Config::Messages) }, );
 
 =head1 Description
 
@@ -101,7 +130,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,34 +1,35 @@
-# @(#)$Id: Process.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Process.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model::Process;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model CatalystX::Usul::IPC);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
+use Class::Usul::IPC;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(throw);
 use TryCatch;
 
-__PACKAGE__->config( fs_class   => q(FileSystem),
-                     user_class => q(IdentityUnix) );
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
 
-__PACKAGE__->mk_accessors( qw(fs_class fs_model user_class user_model) );
+has '_fs_model'   => is => 'lazy', isa => Object,
+   default        => sub { $_[ 0 ]->context->model( q(FileSystem) ) },
+   init_arg       => undef, reader => 'fs_model';
 
-sub build_per_context_instance {
-   my ($self, $c, @rest) = @_;
+has '_ipc'        => is => 'lazy', isa => IPCClass,
+   default        => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
+   handles        => [ qw(process_table run_cmd) ], init_arg => undef,
+   reader         => 'ipc';
 
-   my $new = $self->next::method( $c, @rest );
-
-   $new->fs_model  ( $c->model( $self->fs_class )          );
-   $new->user_model( $c->model( $self->user_class )->users );
-
-   return $new;
-}
+has '_user_model' => is => 'lazy', isa => Object,
+   default        => sub { $_[ 0 ]->context->model( q(UsersUnix) ) },
+   init_arg       => undef, reader => 'user_model';
 
 sub proc_table_form {
-   my ($self, $ptype) = @_; $ptype ||= 1;
+   my ($self, $ptype) = @_; my ($data, $fss, $text, $users); $ptype ||= 1;
 
    my $s       = $self->context->stash;
    my $form    = $s->{form}->{name};
@@ -36,10 +37,8 @@ sub proc_table_form {
    my $fsystem = $s->{process_params}->{fsystem};
    my $signals = $s->{process_params}->{signals};
    my $pattern = $self->query_value( q(pattern) ) || NUL;
-   my ($data, $fss, $res, $text, $users);
 
-   # Retrieve data from model
-   try {
+   try { # Retrieve data from model
       $data = $self->process_table
          ( { fsystem => $fsystem,
              pattern => [ NUL, NUL, $pattern, NUL ]->[ $ptype ],
@@ -47,12 +46,12 @@ sub proc_table_form {
              user    => $user } );
 
       if ($ptype == 1) {
-         $res   = $self->user_model->retrieve( q([^\?]+), NUL );
-         $users = [ NUL, q(All), @{ $res->user_list } ];
+         $users = [ NUL, q(All), @{ $self->user_model->list } ];
       }
 
       if ($ptype == 3) {
-         $res = $self->fs_model->get_file_systems( $fsystem );
+         my $res = $self->fs_model->get_file_systems( $fsystem );
+
          $fss = [ NUL, @{ $res->file_systems } ];
       }
    }
@@ -150,15 +149,7 @@ sub proc_table_form {
 }
 
 sub signal_process {
-   my $self = shift; my $pids = []; my $pid;
-
-   my $nrows = $self->query_value( q(_processes_nrows) )
-      or throw 'Process not specified';
-
-   for my $row (0 .. $nrows) {
-      $pid = $self->query_value( q(processes_select).$row )
-         and push @{ $pids }, $pid;
-   }
+   my $self = shift; my $pids = $self->query_array( q(processes) );
 
    $pids->[ 0 ] or throw 'Processes not specified';
 
@@ -166,9 +157,11 @@ sub signal_process {
    my $ref  = { Abort => q(ABRT), Kill => q(KILL), Terminate => q(TERM) };
    my $sig  = $ref->{ $self->context->stash->{_method} || q(Terminate) };
 
-   $self->add_result( $self->next::method( $flag, $sig, $pids )->out );
+   $self->add_result( $self->ipc->signal_process( $flag, $sig, $pids )->out );
    return TRUE;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -182,17 +175,17 @@ CatalystX::Usul::Model::Process - View and signal processes
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
    package MyApp;
 
-   use Catalyst qw(ConfigComponents);
+   use Catalyst qw(ConfigComponents...);
 
    # In the application configuration file
    <component name="Model::Process">
-      <base_class>CatalystX::Usul::Model::Process</base_class>
+      <parent_classes>CatalystX::Usul::Model::Process</parent_classes>
    </component>
 
 =head1 Description
@@ -202,24 +195,23 @@ processes
 
 =head1 Subroutines/Methods
 
-=head2 build_per_context_instance
-
-Copies the file system model and user model instances. Creates an instance
-of L<CatalystX::Usul::Process>
-
 =head2 proc_table_form
+
+   $self->proc_table_form( $process_type );
 
 Stuffs the stash with the data for the process table screen
 
 =head2 signal_process
 
+   $bool = $self->signal_process;
+
 Send a signal the the selected processes
 
-=head1 Diagnostics
+=head1 Configuration and Environment
 
 None
 
-=head1 Configuration and Environment
+=head1 Diagnostics
 
 None
 
@@ -227,11 +219,15 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Constants>
-
 =item L<CatalystX::Usul::IPC>
 
 =item L<CatalystX::Usul::Model>
+
+=item L<CatalystX::Usul::TraitFor::Model::QueryingRequest>
+
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -251,7 +247,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

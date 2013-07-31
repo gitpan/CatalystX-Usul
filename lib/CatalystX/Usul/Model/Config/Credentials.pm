@@ -1,33 +1,35 @@
-# @(#)$Id: Credentials.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Credentials.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model::Config::Credentials;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions;
-use CatalystX::Usul::Schema;
-use MRO::Compat;
+use Class::Usul::Crypt::Util qw( get_cipher );
 use TryCatch;
 
-__PACKAGE__->config
-   ( create_msg_key         => 'Credentials [_1]/[_2] created',
-     delete_msg_key         => 'Credentials [_1]/[_2] deleted',
-     keys_attr              => q(credentials),
-     typelist               => {},
-     schema_class           => q(CatalystX::Usul::Schema),
-     update_msg_key         => 'Credentials [_1]/[_2] updated' );
+extends q(CatalystX::Usul::Model::Config);
+with    q(CatalystX::Usul::TraitFor::ConnectInfo);
 
-__PACKAGE__->mk_accessors( qw(schema_class) );
+has '+create_msg_key' => default => 'Credentials [_1]/[_2] created';
+
+has '+delete_msg_key' => default => 'Credentials [_1]/[_2] deleted';
+
+has '+keys_attr'      => default => q(credentials);
+
+has '+update_msg_key' => default => 'Credentials [_1]/[_2] updated';
 
 sub create_or_update {
-   my ($self, $ns, $args) = @_; my $req = $self->context->req; my $v;
+   my ($self, $ns, $args) = @_; my $c = $self->context; my $v;
 
    if (defined ($v = $self->query_value( q(password) ))) {
-      $v = $self->schema_class->encrypt( $self->_seed, $v );
-      $req->params->{password} = q(encrypt=).$v;
+      my $cipher = $self->query_value( q(cipher) );
+
+      $c->req->params->{password}
+         = $self->encrypt_for_cfg( $self->usul->config, $v, $cipher );
    }
 
    $self->next::method( $ns, $args );
@@ -35,25 +37,27 @@ sub create_or_update {
 }
 
 sub credentials_form {
-   my ($self, $ns, $acct) = @_; my ($config_obj, $def, $id);
+   my ($self, $ns, $acct) = @_; my ($config_obj, $def);
 
    try        { $config_obj = $self->list( $ns, $acct ) }
    catch ($e) { return $self->add_error( $e ) }
 
-   my $creds  = $config_obj->list;
-   my $fields = $config_obj->result;
-   my $s      = $self->context->stash;
-   my $form   = $s->{form}->{name};
-   my $spaces = [ sort keys %{ $s->{ $self->ns_key } } ];
+   my $c        = $self->context;
+   my $s        = $c->stash;
+   my $form     = $s->{form}->{name};
+   my $spaces   = [ sort keys %{ $s->{ $self->ns_key } } ];
+   my $id       = $ns ? "${form}.credentials" : q(config.).$self->ns_key;
+   my $creds    = $config_obj->list;
+   my $fields   = $config_obj->result;
+   my $usul_cfg = $self->usul->config;
+   my $password = $self->decrypt_from_cfg( $usul_cfg, $fields->password );
+   my $cipher   = get_cipher( $fields->password );
+   my $ciphers  = [ NUL, $self->get_cipher_list ];
 
-   unshift @{ $creds  }, q(), $s->{newtag};
-   unshift @{ $spaces }, q(), q(default);
+   unshift @{ $creds  }, NUL, $s->{newtag};
+   unshift @{ $spaces }, NUL, q(default);
 
-   if ($fields->password and $fields->password =~ m{ \A encrypt= (.+) \z }mx) {
-      $fields->password( $self->schema_class->decrypt( $self->_seed, $1 ) );
-   }
-
-   $self->clear_form(   { firstfld => $form.q(.credentials) } );
+   $self->clear_form(   { firstfld => $id } );
    $self->add_field(    { default  => $ns,
                           id       => q(config.).$self->ns_key,
                           stepno   => 0,
@@ -61,49 +65,42 @@ sub credentials_form {
 
    if ($ns) {
       $self->add_field( { default  => $acct,
-                          id       => $form.q(.credentials),
+                          id       => "${form}.credentials",
                           values   => $creds } );
    }
 
-   $self->group_fields( { id       => $form.q(.select) } );
+   $self->group_fields( { id       => "${form}.select" } );
 
    ($ns and $acct and is_member $acct, $creds) or return;
 
    if ($acct eq $s->{newtag}) {
-      $self->add_buttons( qw(Insert) ); $def = q(); $id = $form.'.nameNew';
+      $self->add_buttons( qw(Insert) ); $def = NUL; $id = "${form}.nameNew";
    }
    else {
-      $self->add_buttons( qw(Save Delete) ); $def = $acct; $id = $form.'.name';
+      $self->add_buttons( qw(Save Delete) ); $def = $acct; $id = "${form}.name";
    }
 
-   $self->add_field(    { ajaxid  => $form.'.name',
-                          default => $def,
+   $self->add_field(    { default => $def,
                           id      => $id,
                           name    => q(name) } );
-   $self->add_field(    { ajaxid  => $form.'.driver',
-                          default => $fields->driver } );
-   $self->add_field(    { ajaxid  => $form.'.host',
-                          default => $fields->host } );
-   $self->add_field(    { ajaxid  => $form.'.port',
-                          default => $fields->port } );
-   $self->add_field(    { ajaxid  => $form.'.user',
-                          default => $fields->user } );
-   $self->add_field(    { default => $fields->password,
-                          id      => $form.'.password' } );
-   $self->group_fields( { id      => $form.'.edit' } );
+   $self->add_field(    { default => $fields->driver,
+                          id      => "${form}.driver" } );
+   $self->add_field(    { default => $fields->host,
+                          id      => "${form}.host" } );
+   $self->add_field(    { default => $fields->port,
+                          id      => "${form}.port" } );
+   $self->add_field(    { default => $fields->user,
+                          id      => "${form}.user" } );
+   $self->add_field(    { default => $password,
+                          id      => "${form}.password" } );
+   $self->add_field(    { default => $cipher,
+                          id      => "${form}.cipher",
+                          values  => $ciphers } );
+   $self->group_fields( { id      => "${form}.edit" } );
    return;
 }
 
-# Private methods
-
-sub _seed {
-   my $self = shift; my ($args, $path);
-
-   $path = $self->catfile( $self->ctrldir, $self->prefix.q(.txt) );
-   $args = { seed => $self->secret };
-   $args->{data} = $self->io( $path )->all if (-f $path);
-   return $args;
-}
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -117,7 +114,7 @@ CatalystX::Usul::Model::Config::Credentials - Database connection definitions
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
@@ -135,7 +132,7 @@ Returns a L<CatalystX::Usul::Model::Config> object
 
 =head2 new
 
-Defined the I<ctrldir> attribute
+Defined the C<ctrldir> attribute
 
 =head2 create_or_update
 

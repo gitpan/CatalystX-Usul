@@ -1,4 +1,4 @@
-# @(#)$Id: Bob.pm 1177 2012-04-15 18:14:03Z pjf $
+# @(#)Ident: Bob.pm 2013-05-05 22:54 pjf ;
 
 package Bob;
 
@@ -8,123 +8,138 @@ use inc::CPANTesting;
 
 sub whimper { print {*STDOUT} $_[ 0 ]."\n"; exit 0 }
 
-BEGIN {
-   my $reason; $reason = CPANTesting::broken_toolchain and whimper $reason;
-}
+BEGIN { my $reason; $reason = CPANTesting::should_abort and whimper $reason; }
 
-use version; our $VERSION = qv( '1.3' );
+use version; our $VERSION = qv( '1.14' );
 
-use File::Spec::Functions;
+use File::Spec::Functions qw(catfile);
 use Module::Build;
 
 sub new {
-   my ($class, $params) = @_; $params ||= {}; $params->{requires} ||= {};
+   my ($class, $p) = @_; $p ||= {}; $p->{requires} ||= {};
 
-   my $perl_ver   = $params->{requires}->{perl} || 5.008_008;
+   my $perl_ver    = $p->{requires}->{perl} || 5.008_008;
 
    $] < $perl_ver and whimper "Perl minimum ${perl_ver}";
 
-   my $module      = $params->{module} or whimper 'No module name';
+   my $module      = $p->{module} or whimper 'No module name';
    my $distname    = $module; $distname =~ s{ :: }{-}gmx;
    my $class_path  = catfile( q(lib), split m{ :: }mx, $module.q(.pm) );
-   my $build_class = __get_build_class( $params );
 
-   return $build_class->new
-      ( add_to_cleanup     => [ q(Debian_CPANTS.txt), $distname.q(-*),
-                                map { ( q(*/) x $_ ).q(*~) } 0..5 ],
-        build_requires     => $params->{build_requires},
-        configure_requires => $params->{configure_requires},
+   return __get_build_class( $p )->new
+      ( add_to_cleanup     => __get_cleanup_list( $p, $distname ),
+        build_requires     => $p->{build_requires},
+        configure_requires => $p->{configure_requires},
         create_license     => 1,
         create_packlist    => 0,
         create_readme      => 1,
         dist_version_from  => $class_path,
-        license            => $params->{license} || q(perl),
-        meta_merge         => __get_resources( $params, $distname ),
+        license            => $p->{license} || q(perl),
+        meta_merge         => __get_resources( $p, $distname ),
         module_name        => $module,
-        no_index           => __get_no_index( $params ),
-        notes              => __get_notes( $params ),
-        recommends         => $params->{recommends},
-        requires           => $params->{requires},
-        sign               => defined $params->{sign} ? $params->{sign} : 1, );
+        no_index           => __get_no_index( $p ),
+        notes              => __get_notes( $p ),
+        recommends         => $p->{recommends},
+        requires           => $p->{requires},
+        sign               => defined $p->{sign} ? $p->{sign} : 1,
+        share_dir          => __get_share_dir( $p ), );
 }
 
-# Private subroutines
+# Private functions
 
-sub __cpan_testing { !! ($ENV{AUTOMATED_TESTING} || $ENV{PERL_CR_SMOKER_CURRENT}
-                     || ($ENV{PERL5OPT} || q()) =~ m{ CPAN-Reporter }mx) }
+sub __is_src { # Is this the developer authoring a module?
+   return -f q(MANIFEST.SKIP);
+}
 
-sub __get_build_class {
-   # Which subclass of M::B should we create?
-   my $params = shift;
+sub __get_build_class { # Which subclass of M::B should we create?
+   my $p = shift; exists $p->{build_class} and return $p->{build_class};
 
-   exists $params->{build_class} and return $params->{build_class};
+   my $path = catfile( qw(inc SubClass.pm) );
 
-   return Module::Build->subclass( code => q{
-      use Pod::Select;
+   -f $path or return 'Module::Build';
 
-      sub ACTION_distmeta {
-         my $self = shift;
+   open my $fh, '<', $path or whimper "File ${path} cannot open: ${!}";
 
-         $self->notes->{create_readme_pod} and podselect( {
-            -output => q(README.pod) }, $self->dist_version_from );
+   my $code = do { local $/ = undef; <$fh> }; close $fh;
 
-         return $self->SUPER::ACTION_distmeta;
-      }
-   }, );
+   return Module::Build->subclass( code => $code );
+}
+
+sub __get_cleanup_list {
+   my $p = shift; my $distname = shift;
+
+   return [ q(Debian_CPANTS.txt), q(MANIFEST.bak), "${distname}-*",
+            map { ( q(*/) x $_ ).q(*~) } 0..5 ];
+}
+
+sub __get_git_repository {
+   return (map  { s{ : }{/}mx; s{ @ }{://}mx; $_ }
+           grep { m{ \A git }mx }
+           map  { s{ \s+ }{ }gmx; (split ' ', $_)[ 1 ] }
+           grep { m{ \A origin }mx }
+           qx{ git remote -v 2>/dev/null })[ 0 ];
 }
 
 sub __get_no_index {
-   my $params = shift;
+   my $p = shift;
 
-   return { directory => $params->{no_index_dir} || [ qw(examples inc t) ] };
+   return { directory => $p->{no_index_dir} || [ qw(examples inc share t) ] };
 }
 
 sub __get_notes {
-   my $params = shift;
-   my $notes  = exists $params->{notes} ? $params->{notes} : {};
+   my $p = shift; my $notes = exists $p->{notes} ? $p->{notes} : {};
 
-   $notes->{create_readme_pod} = $params->{create_readme_pod} || 0;
-   $notes->{stop_tests       } = __stop_tests( $params );
-
+   # Optionally create README.md and / or README.pod files
+   $notes->{create_readme_md } = defined $p->{create_readme_md}
+                               ? $p->{create_readme_md } :  1;
+   $notes->{create_readme_pod} = $p->{create_readme_pod} || 0;
+   $notes->{is_cpan_testing  } = CPANTesting::is_testing();
+   # Add a note to stop CPAN testing if requested in Build.PL
+   $notes->{stop_tests       } = CPANTesting::test_exceptions( $p );
+   $notes->{url_prefix       } = defined $p->{url_prefix} ? $p->{url_prefix}
+                               : q(https://metacpan.org/module/);
+   $notes->{version          } = $VERSION;
    return $notes;
 }
 
-sub __get_repository {
-   # Accessor for the SVN repository information
-   require SVN::Class;
+sub __get_repository { # Accessor for the VCS repository information
+   my $repo;
 
-   my $file = SVN::Class->svn_dir( q(.) ) or return;
-   my $info = $file->info or return;
-   my $repo = $info->root !~ m{ \A file: }mx ? $info->root : undef;
+   -d q(.git) and $repo = __get_git_repository() and return $repo;
+   -d q(.svn) and $repo = __get_svn_repository() and return $repo;
 
-   return $repo;
+   return;
 }
 
 sub __get_resources {
-   my $params     = shift;
-   my $distname   = shift;
-   my $tracker    = defined $params->{bugtracker}
-                  ? $params->{bugtracker}
-                  : q(http://rt.cpan.org/NoAuth/Bugs.html?Dist=);
-   my $resources  = $params->{resources} || {};
-   my $repo;
+   my $p         = shift;
+   my $distname  = shift;
+   my $tracker   = defined $p->{bugtracker}
+                 ? $p->{bugtracker}
+                 : q(http://rt.cpan.org/NoAuth/Bugs.html?Dist=);
+   my $resources = $p->{resources} || {};
 
    $tracker and $resources->{bugtracker} = $tracker.$distname;
-   $params->{home_page} and $resources->{homepage} = $params->{home_page};
+   $p->{home_page} and $resources->{homepage} = $p->{home_page};
    $resources->{license} ||= q(http://dev.perl.org/licenses/);
 
-   -f q(MANIFEST.SKIP) and $repo = __get_repository
+   # Only get repository info when authoring a distribution
+   my $repo; __is_src and $repo = __get_repository
       and $resources->{repository} = $repo;
 
    return { resources => $resources };
 }
 
-sub __stop_tests {
-   my $params = shift; __cpan_testing() or return 0;
+sub __get_share_dir {
+   my $p = shift; defined $p->{share_dir} and return $p->{share_dir};
 
-   $params->{stop_tests} and return 'CPAN Testing stopped';
+   return -d q(share) ? q(share) : undef;
+}
 
-   return CPANTesting::exceptions;
+sub __get_svn_repository {
+   return (grep { ! m{ \A file: }mx }
+           (split q( ), (grep { m{ \A URL: }mx }
+                            qx{ svn info })[ 0 ])[ 1 ])[ 0 ];
 }
 
 1;

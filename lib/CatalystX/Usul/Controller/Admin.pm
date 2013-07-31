@@ -1,72 +1,73 @@
-# @(#)$Id: Admin.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Admin.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Admin;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use MRO::Compat;
+use File::Spec::Functions qw(catfile);
 
-__PACKAGE__->config( security_logfile => q(admin.log), );
+BEGIN { extends q(CatalystX::Usul::Controller) }
 
-__PACKAGE__->mk_accessors( qw(security_logfile) );
+with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+with q(Class::Usul::TraitFor::LoadingClasses);
 
-sub build_subcontrollers {
-   return shift->build_subcomponents( __PACKAGE__ );
-}
+has 'default_action'   => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(reception);
+
+has 'security_logfile' => is => 'ro', isa => NonEmptySimpleStr,
+   default             => q(admin.log);
 
 sub begin : Private {
    return shift->next::method( @_ );
 }
 
-sub base : Chained(/) CaptureArgs(0) {
-   # PathPart set in global configuration
-   my ($self, $c) = @_;
-
-   $self->can( q(persist_state) )
-      and $self->init_uri_attrs( $c, $self->model_base_class );
-   return;
+sub base : Chained(/) CaptureArgs(0) { # PathPart set in global configuration
+   $_[ 0 ]->init_uri_attrs( $_[ 1 ], $_[ 0 ]->config_class ); return;
 }
 
-sub check_field : Chained(base) Args(0) HasActions NoToken {
-   return shift->next::method( @_ );
+sub build_subcontrollers {
+   return shift->build_subcomponents( __PACKAGE__ );
+}
+
+sub check_field : Chained(base) Args(0) NoToken {
+   return shift->check_field_wrapper( @_ );
 }
 
 sub common : Chained(base) PathPart('') CaptureArgs(0) {
-   my ($self, $c) = @_; my $s = $c->stash;
+   my ($self, $c) = @_; my $nav = $c->stash->{nav_model};
 
-   my $nav   = $s->{nav_model}; $nav->add_header; $nav->add_footer;
-   my $model = $c->model( $self->model_base_class );
-
-   $model->add_sidebar_panel( { name => q(default)  } );
-   $model->add_sidebar_panel( { name => q(overview) } );
+   $nav->add_footer;
+   $nav->add_nav_header;
+   $nav->add_sidebar_panel( { name => q(default)  } );
+   $nav->add_sidebar_panel( { name => q(overview) } );
+   $nav->load_status_msgs;
    return;
 }
 
 sub footer : Chained(base) Args(0) NoToken {
-   my ($self, $c) = @_; return $c->model( $self->help_class )->add_footer;
+   return $_[ 1 ]->model( $_[ 0 ]->help_class )->form( q(select_language) );
 }
 
 sub logfile_menu : Chained(common) PathPart(logfiles) CaptureArgs(0) {
-   my ($self, $c) = @_;
-
-   $c->stash( fs_model => $c->model( $self->fs_class ) );
-   return;
+   $_[ 1 ]->stash( fs_model => $_[ 1 ]->model( $_[ 0 ]->fs_class ) ); return;
 }
 
 sub overview : Chained(base) Args(0) NoToken {
    # Respond to the ajax call for some info about the side bar accordion
-   my ($self, $c) = @_; return $c->model( $self->help_class )->overview;
+   return $_[ 1 ]->model( $_[ 0 ]->help_class )->overview;
 }
 
 sub reception : Chained(common) Args(0) {
 }
 
 sub redirect_to_default : Chained(base) PathPart('') Args(0) {
-   my ($self, $c) = @_; return $self->redirect_to_path( $c, SEP.q(reception) );
+   my ($self, $c) = @_; my $action = SEP.$self->default_action;
+
+   return $self->redirect_to_path( $c, $action, $c->req->query_params );
 }
 
 sub version {
@@ -76,7 +77,7 @@ sub version {
 sub view_security_log : Chained(logfile_menu) PathPart(security_log) Args(0) {
    my ($self, $c) = @_;
 
-   my $path = $self->catfile( $c->config->{logsdir}, $self->security_logfile );
+   my $path = catfile( $self->usul->config->logsdir, $self->security_logfile );
 
    return $c->stash->{fs_model}->view_file( q(logfile), $path );
 }
@@ -84,8 +85,12 @@ sub view_security_log : Chained(logfile_menu) PathPart(security_log) Args(0) {
 sub view_logfile : Chained(logfile_menu) PathPart('') Args(0) {
    my ($self, $c) = @_; my $path = $c->config->{logfile};
 
+   ($path and -f $path) or $path = $self->usul->config->logfile;
+
    return $c->stash->{fs_model}->view_file( q(logfile), $path );
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -99,13 +104,15 @@ CatalystX::Usul::Controller::Admin - Administration controller methods
 
 =head1 Version
 
-$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Admin;
+   package YourApp::Controller::Admin;
 
-   use base qw(CatalystX::Usul::Controller::Admin);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Admin) }
 
    __PACKAGE__->build_subcontrollers;
 
@@ -113,12 +120,30 @@ $Revision: 1181 $
 
 Controller actions that inherit from L<CatalystX::Usul::Controller>
 
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item C<default_action>
+
+A non empty simple string which defaults to C<reception>. The default
+action for this controller
+
+=item C<security_logfile>
+
+A non empty simple string which defaults to C<admin.log>. The name of
+the logfile for the suid administration program
+
+=back
+
 =head1 Subroutines/Methods
 
 =head2 base
 
 A midpoint in the URI that does nothing except act as a placeholder
-for the namespace which is I<admin>
+for the namespace which is C<admin>
 
 =head2 begin
 
@@ -128,8 +153,9 @@ specific data
 
 =head2 build_subcontrollers
 
-Exposes method of the same name in the base class which defines some
-subcontrollers at runtime
+Exposes method of the same name in the role
+L<Class::Usul::TraitFor::LoadingClasses> which defines some
+sub-controllers at runtime
 
 =head2 check_field
 
@@ -184,15 +210,19 @@ Endpoint that displays the application server log file
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Controller>
+
+=item L<CatalystX::Usul::TraitFor::Controller::ModelHelper>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::TraitFor::LoadingClasses>
 
 =back
 
@@ -212,7 +242,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

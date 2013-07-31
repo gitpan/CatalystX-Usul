@@ -1,39 +1,44 @@
-# @(#)$Id: TapeBackup.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: TapeBackup.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::TapeBackup;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions;
-use CatalystX::Usul::TapeBackup;
 use TryCatch;
 
-__PACKAGE__->config( domain_class => q(CatalystX::Usul::TapeBackup),
-                     fs_class     => q(FileSystem) );
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
 
-__PACKAGE__->mk_accessors( qw(fs_class fs_model) );
+has '+domain_class' => default => q(CatalystX::Usul::TapeBackup);
+
+has '_fs_model'     => is => 'lazy', isa => Object,
+   default          => sub { $_[ 0 ]->context->model( q(FileSystem) ) },
+   init_arg         => undef, reader => 'fs_model';
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_; my $s = $c->stash;
+   my ($self, $c, @rest) = @_; my $clone = $self->next::method( $c, @rest );
 
-   my $new   = $self->next::method( $c, @rest );
-   my $attrs = { %{ $new->domain_attributes || {} } };
+   my $s       = $c->stash;
+   my $os_deps = $s->{os_deps};
+   my $attr    = { %{ $clone->domain_attributes },
+                   builder  => $clone->usul,
+                   form     => $s->{form}->{name},
+                   language => $s->{language}, };
 
-   $attrs->{debug       } ||= $s->{debug};
-   $attrs->{default_tape} ||= $s->{os}->{default_tape}->{value};
-   $attrs->{dump_cmd    } ||= $s->{os}->{dump_cmd}->{value};
-   $attrs->{dump_dates  } ||= $s->{os}->{dump_dates}->{value};
-   $attrs->{form        } ||= $s->{form}->{name};
-   $attrs->{lang        } ||= $s->{lang};
+   defined $os_deps->{default_tape}
+          and $attr->{default_tape} ||= $os_deps->{default_tape}->{value};
+   defined $os_deps->{dump_cmd    }
+          and $attr->{dump_cmd    } ||= $os_deps->{dump_cmd    }->{value};
+   defined $os_deps->{dump_dates  }
+          and $attr->{dump_dates  } ||= $os_deps->{dump_dates  }->{value};
 
-   $new->domain_model( $new->domain_class->new( $c, $attrs ) );
-   $new->fs_model    ( $c->model( $self->fs_class ) );
+   $clone->domain_model( $clone->domain_class->new( $attr ) );
 
-   return $new;
+   return $clone;
 }
 
 sub backup_form {
@@ -44,65 +49,64 @@ sub backup_form {
    my $params  = $s->{device_params};
    my $fsystem = $paths ? (split SPC, $paths)[ 0 ] : NUL;
 
-   # Retrieve data from model
-   try {
-      my $fs_obj = $self->fs_model->get_file_systems( $fsystem );
+   try { # Retrieve data from the domain model
+      my $filesys = $self->fs_model->get_file_systems( $fsystem );
 
-      $fsystems         = [ NUL, @{ $fs_obj->file_systems} ];
-      $params->{volume} = $fs_obj->volume;
+      $fsystems         = [ NUL, @{ $filesys->file_systems } ];
+      $params->{volume} = $filesys->volume;
       $tape_status      = $self->domain_model->get_status( $params );
    }
    catch ($e) { return $self->add_error( $e ) }
 
    # Add fields to form
-   $self->clear_form( { firstfld => $form.q(.format) } );
+   $self->clear_form( { firstfld => "${form}.format" } );
    $self->add_field ( { default  => $tape_status->{format},
-                        id       => $form.q(.format),
+                        id       => "${form}.format",
                         labels   => $tape_status->{f_labels},
                         values   => [ NUL, @{ $tape_status->{formats} } ] } );
 
    if ($tape_status->{format} eq q(tar)) {
       $self->add_field( { default => $paths,
-                          id      => $form.q(.pathsTar),
+                          id      => "${form}.pathsTar",
                           name    => q(paths) } );
    }
    else {
       $self->add_field( { default => $fsystem,
-                          id      => $form.q(.pathsDump),
+                          id      => "${form}.pathsDump",
                           name    => q(paths),
                           values  => $fsystems } );
 
       $fsystem and is_member $fsystem, $fsystems
-         or return $self->group_fields( { id => $form.q(.select) } );
+         or return $self->group_fields( { id => "${form}.select" } );
 
       $self->add_field( { default => $tape_status->{dump_type},
-                          id      => $form.q(.type),
+                          id      => "${form}.type",
                           values  => $tape_status->{dump_types} } );
 
       if ($tape_status->{dump_type} eq q(specific)) {
          $self->add_field( { default => $tape_status->{next_level},
-                             id      => $form.q(.next_level),
+                             id      => "${form}.next_level",
                              values  => [ NUL, 0 .. 9 ] } );
       }
       else { $self->add_hidden( q(next_level), $tape_status->{next_level} ) }
    }
 
    $self->add_field( { default => $tape_status->{device},
-                       id      => $form.q(.device),
+                       id      => "${form}.device",
                        values  => [ NUL, @{ $tape_status->{devices} } ] } );
    $self->add_field( { default => $tape_status->{operation},
-                       id      => $form.q(.operation),
+                       id      => "${form}.operation",
                        labels  => $tape_status->{o_labels},
                        values  => [ 1, 2 ] } );
    $self->add_field( { default => $params->{position} || 1,
-                       id      => $form.q(.position),
+                       id      => "${form}.position",
                        labels  => $tape_status->{p_labels},
                        values  => [ 1, 2 ] } );
 
    $tape_status->{format} eq q(dump)
-      and $self->add_field( { id => $form.q(.except_inodes) } );
+      and $self->add_field( { id => "${form}.except_inodes" } );
 
-   $self->group_fields( { id => $form.q(.select) } );
+   $self->group_fields( { id => "${form}.select" } );
 
    if ($tape_status->{format} eq q(dump)) {
       my $text = $self->loc( $tape_status->{dump_msg},
@@ -125,7 +129,7 @@ sub backup_form {
                           text   => $text } );
    }
 
-   $self->group_fields( { id => $form.q(.status) } );
+   $self->group_fields( { id => "${form}.status" } );
 
    # Add buttons to form
    if ($tape_status->{device}
@@ -154,6 +158,8 @@ sub start {
    return TRUE;
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -166,47 +172,58 @@ CatalystX::Usul::Model::TapeBackup - Provides tape backup methods
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp;
+   package YourApp;
 
-   use Catalyst qw(ConfigComponents);
+   use Catalyst qw(ConfigComponents...);
 
-   # In the application configuration file
-   <component name="Model::TapeBackup">
-      <base_class>CatalystX::Usul::Model::TapeBackup</base_class>
-   </component>
+   __PACKAGE__->config( 'Model::TapeBackup' => {
+      parent_classes => 'CatalystX::Usul::Model::TapeBackup' } );
 
 =head1 Description
 
 Provides methods to perform tape backups using either C<dump> or C<tar>
 
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item domain_class
+
+Overrides the default domain class. Sets it to I<CatalystX::Usul::TapeBackup>
+
+=back
+
 =head1 Subroutines/Methods
 
 =head2 build_per_context_instance
 
-Creates a new instance of L<CatalystX::Usul::TapeBackup> and stores a
-cloned copy of L<CatalystX::Usul::Model::FileSystem>
+Creates a new instance of the I<domain_class>
 
 =head2 backup_form
+
+   $self->backup_form( $paths );
 
 Stuffs the stash with data to render the backup form
 
 =head2 eject
 
+   $bool = $self->eject;
+
 Eject the tape
 
 =head2 start
 
+   $bool = $self->start( $paths );
+
 Start a backup
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -215,6 +232,10 @@ None
 =over 3
 
 =item L<CatalystX::Usul::Model>
+
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -234,7 +255,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

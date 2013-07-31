@@ -1,31 +1,29 @@
-# @(#)$Id: Schema.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Schema.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Schema;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(Catalyst::Model::DBIC::Schema
-              CatalystX::Usul::Model
-              CatalystX::Usul::Schema);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-use MRO::Compat;
-use Scalar::Util qw(blessed);
+use CatalystX::Usul::Moose;
+use Scalar::Util qw(refaddr);
 
-__PACKAGE__->config( conf_extn => q(.xml) );
+extends qw(Catalyst::Model::DBIC::Schema CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::ConnectInfo);
 
-sub COMPONENT {
-   my ($class, $app, $config) = @_;
+around 'BUILDARGS' => sub {
+   my ($next, $self, $app, @rest) = @_; my $attr = $self->$next( $app, @rest );
 
-   my $comp = $class->next::method( $app, $config );
-   my $usul = CatalystX::Usul::Model->COMPONENT( $app, $config );
+   my $model = CatalystX::Usul::Model->new( $app, $attr );
 
-   for (grep { not defined $comp->{ $_ } } keys %{ $usul }) {
-      $comp->{ $_ } = $usul->{ $_ }; # Attribute mixin
+   for (grep { not exists $attr->{ $_ } } keys %{ $model }) {
+      $attr->{ $_ } = $model->{ $_ }; # Attribute mixin
    }
 
-   return $comp;
-}
+   return $attr;
+};
 
 sub ACCEPT_CONTEXT {
    # Prevents the ACCEPT_CONTEXT in C::M::DBIC::Schema from being called
@@ -39,6 +37,8 @@ sub ACCEPT_CONTEXT {
    return $s->{ $key } ||= $self->build_per_context_instance( $c, @rest );
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -51,13 +51,15 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    package YourApp::Model::YourModel;
 
-   use parent qw(CatalystX::Usul::Model::Schema);
+   use CatalystX::Usul::Moose;
+
+   extends q(CatalystX::Usul::Model::Schema);
 
    __PACKAGE__->config( database     => q(library),
                         schema_class => q(YourApp::Schema::YourSchema) );
@@ -74,26 +76,24 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Description
 
-Aggregates the methods from the three classes it inherits from
+Aggregates the methods from the two classes it inherits from
+
+=head1 Configuration and Environment
+
+=head2 BUILDARGS
+
+Adds the attributes from L<CatalystX::Usul::Model> to the ones from
+L<Catalyst::Model::DBIC::Schema>
 
 =head1 Subroutines/Methods
 
 =head2 ACCEPT_CONTEXT
 
 Copy of the one in L<CatalsytX::Usul::Model> which is much more useful
-than the pointless one we are overridding in
-L<Catalyst::Model::DBIC::Schema>
-
-=head2 COMPONENT
-
-Adds the attributes from L<CatalystX::Usul::Model> to the ones from
+than the pointless one we are overriding in
 L<Catalyst::Model::DBIC::Schema>
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -105,7 +105,11 @@ None
 
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::Schema>
+=item L<CatalystX::Usul::TraitFor::ConnectInfo>
+
+=item L<CatalystX::Usul::TraitFor::Model::QueryingRequest>
+
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
 
 =back
 
@@ -125,7 +129,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

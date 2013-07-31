@@ -1,34 +1,75 @@
-# @(#)$Id: FileSystem.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: FileSystem.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::FileSystem;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul CatalystX::Usul::IPC);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(arg_list throw);
-use CatalystX::Usul::Table;
-use CatalystX::Usul::Time;
-use Fcntl qw(:mode);
+use CatalystX::Usul::Functions   qw(arg_list throw);
+use Class::Usul::File;
+use Class::Usul::IPC;
+use Class::Usul::Time;
+use Fcntl                        qw(:mode);
+use File::Basename               qw(basename dirname);
 use File::Copy;
+use CatalystX::Usul::Constraints qw(Path);
 use File::Find;
-use MRO::Compat;
+use File::Spec::Functions        qw(catfile);
 
-__PACKAGE__->mk_accessors( qw(ctldata file_systems fs_type fuser
-                              logsdir postfix volume) );
+has 'compress_logs'  => is => 'ro',   isa => Bool, default => TRUE;
 
-sub new {
-   my ($self, $app, $attrs) = @_;
+has 'config_path'    => is => 'lazy', isa => Path, coerce => TRUE,
+   default           => sub { [ $_[ 0 ]->config->ctrldir, q(misc.json) ] };
 
-   $attrs->{postfix} ||= q(A_);
+has 'ctldata'        => is => 'lazy', isa => HashRef;
 
-   return $self->next::method( $app, $attrs );
-}
+has 'fcopy_format'   => is => 'ro',   isa => NonEmptySimpleStr,
+   default           => q(%{file}.%{copy});
 
-sub archive {
-   # Prepend $self->postfix to file
+has 'fs_type'        => is => 'ro',   isa => NonEmptySimpleStr,
+   default           => 'ext3';
+
+has 'fuser'          => is => 'ro',   isa => SimpleStr, default => NUL;
+
+has 'postfix'        => is => 'ro',   isa => SimpleStr, default => 'A_';
+
+has 'response_class' => is => 'lazy', isa => LoadableClass, coerce => TRUE,
+   default           => sub { 'CatalystX::Usul::Response::FileSystem' };
+
+has 'table_class'    => is => 'lazy', isa => LoadableClass, coerce => TRUE,
+   default           => sub { 'Class::Usul::Response::Table' };
+
+has 'usul'           => is => 'ro',   isa => BaseClass,
+   handles           => [ qw(config debug lock log) ], init_arg => 'builder',
+   required          => TRUE, weak_ref => TRUE;
+
+
+has '_file' => is => 'lazy', isa => FileClass,
+   default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+
+has '_ipc'  => is => 'lazy', isa => IPCClass,
+   default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
+   handles  => [ qw(run_cmd) ], init_arg => undef, reader => 'ipc';
+
+around 'BUILDARGS' => sub {
+   my ($next, $self, @args) = @_; my $attr = $self->$next( @args );
+
+   my $builder = $attr->{builder} or return $attr;
+
+   if ($builder->can( q(os) )) {
+      my $os = $builder->os;
+
+      defined $os->{fs_type} and $attr->{fs_type} //= $os->{fs_type}->{value};
+      defined $os->{fuser  } and $attr->{fuser  } //= $os->{fuser  }->{value};
+   }
+
+   return $attr;
+};
+
+sub archive { # Prepend $self->postfix to file
    my ($self, @paths) = @_; my $out = NUL;
 
    $paths[ 0 ] or throw 'Archive file path not specified';
@@ -37,8 +78,7 @@ sub archive {
       -e $path or throw error => 'Path [_1] does not exist',
                         args  => [ $path ], out => $out;
 
-      my $to = $self->catfile( $self->dirname( $path ),
-                               $self->postfix.$self->basename( $path ) );
+      my $to = catfile( dirname( $path ), $self->postfix.basename( $path ) );
 
       if (-e $to) { $out .= "Already exists ${to}\n"; next }
 
@@ -55,27 +95,12 @@ sub file_in_use {
 
    ($self->fuser and -x $self->fuser and $path and -e $path) or return FALSE;
 
-   return $self->run_cmd( $self->fuser.SPC.$path )->stdout ? TRUE : FALSE;
+   return $self->run_cmd( [ $self->fuser, $path ] )->stdout ? TRUE : FALSE;
 }
 
-sub get_file_systems {
-   my ($self, $wanted) = @_;
-
-   my $class = ref $self || $self;
-   my $new   = bless { file_systems => [], volume => undef }, $class;
-   my $cmd   = q(mount ).($self->fs_type ? q(-t ).$self->fs_type : NUL);
-
-   for my $line (split m{ [\n] }mx, $self->run_cmd( $cmd )->stdout) {
-      my ($volume, $filesys) = $line =~ m{ \A (\S+) \s+ on \s+ (\S+) }msx;
-
-      if ($volume and $filesys) {
-         push @{ $new->file_systems }, $filesys;
-         $wanted and $filesys eq $wanted and $new->volume( $volume );
-      }
-   }
-
-   @{ $new->file_systems } = sort { lc $a cmp lc $b } @{ $new->file_systems };
-   return $new;
+sub file_systems {
+   return $_[ 0 ]->response_class->new( builder     => $_[ 0 ],
+                                        file_system => $_[ 1 ] );
 }
 
 sub get_perms {
@@ -112,26 +137,22 @@ sub get_perms {
 sub list_subdirectory {
    my ($self, $args) = @_;
 
-   my $count = 0;
-   my $table = __new_results_table();
    my $io    = $self->io( $args->{dir} );
    my $match = $args->{pattern};
       $match and $io->filter( sub { $_->filename =~ $match } );
-   my @paths = $io->all; $paths[ 0 ] or return $table;
+   my @paths = $io->all;
+   my @rows  = ();
+   my $count = 0;
 
    for my $path (@paths) {
-      push @{ $table->values }, $self->_directory_fields( $path, $args );
-      $count++;
+      push @rows, $self->_directory_fields( $path, $args ); $count++;
    }
 
-   $table->count( $count );
-   return $table;
+   return $self->_new_results_table( \@rows, $count );
 }
 
 sub purge_tree {
-   my ($self, $dir, $atime, $dtime) = @_; my $postfix = $self->postfix;
-
-   my ($archive, $delete, $out, @paths);
+   my ($self, $dir, $atime, $dtime) = @_; my ($archive, $delete, $out);
 
    $archive = defined $atime && $atime == 0 ? FALSE : TRUE;
    $atime   = defined $atime ?  $atime : 7;
@@ -141,74 +162,52 @@ sub purge_tree {
       $dir or throw 'Directory path not specified';
    -d $dir or throw error => 'Directory [_1] not found', args => [ $dir ];
 
-   if ($archive) {
-      $out   = "Archiving in $dir files more than $atime days old\n";
-      $atime = time - ($atime * 86_400);
-      @paths = ();
+   $archive and $out .= $self->_find_and_archive( $dir, $atime );
 
-      my $match_arc_files = sub {
-         if (-f $_ and $_ !~ m{ \A $postfix }mx and (stat _)[ 9 ] < $atime) {
-            push @paths, $_;
-         }
-
-         return;
-      };
-
-      find( { no_chdir => TRUE, wanted => $match_arc_files }, $dir );
-
-      if ($paths[ 0 ]) { $out .= $self->archive( $_ ) for (@paths) }
-      else { $out .= "Path $dir nothing to archive\n" }
-   }
-
-   if ($delete) {
-      $out  .= "Deleting in $dir files more than $dtime days old\n";
-      $dtime = time - ($dtime * 86_400);
-      @paths = ();
-
-      my $match_old_files = sub {
-         push @paths, $_ if (-f $_ and (stat _)[ 9 ] < $dtime); return;
-      };
-
-      find( { no_chdir => TRUE, wanted => $match_old_files }, $dir );
-
-      if ($paths[ 0 ]) {
-         for my $path (@paths) {
-            unlink $path or throw error => 'Path [_1] cannot delete',
-                                  args  => [ $path ], out => $out;
-            $out .= "Deleted $path\n";
-         }
-      }
-      else { $out .= "Path $dir nothing to delete\n" }
-   }
+   $delete and $out .= $self->_find_and_delete( $dir, $dtime );
 
    return $out;
 }
 
 sub rotate {
-   my ($self, $logfile, $copies) = @_; my $copy_no = $copies;
+   my ($self, $path, $copies) = @_; my $moves = []; my $copy_no = $copies - 1;
+
+   -e $path or throw error => 'Path [_1] does not exist', args => [ $path ];
 
    while ($copy_no > 0) {
-      my $path = $logfile.q(.).($copy_no - 1);
+      my $from = $self->_get_file_copy_path( $path, $copy_no - 1 );
+      my $to   = $self->_get_file_copy_path( $path, $copy_no     );
 
-      -e $path and move( $path, $logfile.q(.).$copy_no );
-
+      -e $from        and push @{ $moves }, [ $copy_no, $from, $to ];
+      -e "${from}.gz" and push @{ $moves }, [ $copy_no, "${from}.gz",
+                                                        "${to}.gz" ];
       $copy_no--;
    }
 
-   -e $logfile and move( $logfile, $logfile.q(.0) );
+   push @{ $moves }, [ 0, $path, $self->_get_file_copy_path( $path, 0 ) ];
+
+   for my $move (@{ $moves }) {
+      my $from = $move->[ 1 ]; my $to = $move->[ 2 ];
+
+      move( $from, $to ) or throw error => 'Cannot move from [_1] to [_2]',
+                                  args  => [ $from, $to ];
+
+      $self->compress_logs and $move->[ 0 ] > 0 and $to !~ m{ \.gz \z }msx
+         and $self->run_cmd( [ qw(gzip -f), $to ] );
+   }
+
    return;
 }
 
 sub rotate_log {
-   my ($self, @rest) = @_;
+   my ($self, @rest) = @_; my $args = arg_list @rest;
 
-   my $args = arg_list @rest;
    my $path = $args->{logfile} or return;
    my $pid  = $args->{pidfile}
             ? $self->io( $args->{pidfile} )->chomp->lock->getline
             : $args->{pid};
 
-   $self->rotate( $path, $args->{copies} || 0 );
+   $self->rotate( $path, $args->{copies} || 1 );
 
    unless ($args->{notouch}) {
       $self->io( $path )->perms( $args->{mode} )->touch;
@@ -218,19 +217,25 @@ sub rotate_log {
 
    defined $args->{sig} and defined $pid and CORE::kill $args->{sig}, $pid;
 
-   return "Rotated $path\n";
+   return "Rotated ${path}\n";
 }
 
 sub rotate_logs {
-   my ($self, $dir, $copies, $extn) = @_;
+   my ($self, $copies, $extn, $dir) = @_; my $out = NUL;
 
-   $dir ||= $self->logsdir; $copies ||= 5; $extn ||= q(.log);
+   $copies //= 7; $extn //= q(.log); $dir //= $self->config->logsdir;
 
-   my $io = $self->io( $dir ); my $out = NUL;
+   my $io = $self->io( $dir ); my $fcopy = $self->_get_file_copy_regex;
 
-   $io->filter( sub { $_->filename =~ m{ \Q $extn \E \z }msx } );
+   my $match   = qr{ \Q$extn\E \z }msx;
+   my $nomatch = qr{ $fcopy \Q$extn\E (\.gz)? \z }msx;
 
-   $out .= $self->rotate_log( logfile => $_, copies => $copies ) for ($io->all);
+   $io->filter( sub { $_->filename =~ $match and $_->filename !~ $nomatch } );
+
+   for ($io->all) {
+      $out .= $self->rotate_log( copies  => $copies,
+                                 logfile => $_, mode => 0640 );
+   }
 
    return $out;
 }
@@ -243,8 +248,7 @@ sub unarchive {
    for my $path (@paths) {
       if (-e $path) { $out .= "Already exists ${path}\n"; next }
 
-      my $from = $self->catfile( $self->dirname( $path ),
-                                 $self->postfix.$self->basename( $path ) );
+      my $from = catfile( dirname( $path ), $self->postfix.basename( $path ) );
 
       -e $from or throw error => 'Path [_1] does not exist',
                         args  => [ $from ], out => $out;
@@ -258,25 +262,26 @@ sub unarchive {
 }
 
 sub wait_for {
-   my ($self, $vars, $key, $max_wait, $no_thrash) = @_;
+   my ($self, $opts, $key, $max_wait, $no_thrash) = @_;
 
    $key or throw 'Hash key not specified';
 
-   my $cfg   = $self->config;
    my $data  = $self->ctldata->{wait_for}->{ $key }
       or throw error => 'Key [_1] has no data', args => [ $key ];
    my $path  = $data->{path} || NUL;
    my ($rep) = $path =~ m{ % (\w+) % }msx;
 
    if ($rep) {
-      $rep = $vars->{ $rep } || NUL; $path =~ s{ % (\w+) % }{ $rep }gmsx;
+      $rep = $opts->{ $rep } || NUL; $path =~ s{ % (\w+) % }{ $rep }gmsx;
    }
 
    $path or throw error => 'Key [_1] path not specified',
                   args  => [ $key ], rv => 2;
 
-   $max_wait  ||= $data->{max_wait} || $cfg->{max_wait} || 60;
-   $no_thrash ||= $cfg->{no_thrash} || 3;
+   $max_wait  ||= $data->{max_wait} || 60;
+   $no_thrash ||= $self->config->no_thrash;
+   $no_thrash   < $self->config->no_thrash
+      and $no_thrash = $self->config->no_thrash;
 
    my $out   = "Waiting on ${path} for ${max_wait} minutes\n";
 
@@ -294,25 +299,128 @@ sub wait_for {
 
 # Private methods
 
+sub _build_ctldata {
+   return $_[ 0 ]->file->data_load( paths => [ $_[ 0 ]->config_path ] );
+}
+
 sub _directory_fields {
    my ($self, $path, $args) = @_;
 
-   my $file = $path->basename;
-   my $flds = $path->stat;
-   my $mode = $self->get_perms( $flds->{mode} );
+   my $file = $path->basename; my $fields = $path->stat;
+
    my $href = ($args->{action} || NUL).(defined $args->{make_key}
                                         ? SEP.$args->{make_key}( $file )
                                         : '?file='.$file);
 
-   $flds->{name    } = $file;
-   $flds->{modestr } = $mode;
-   $flds->{icon    } = __make_icon( $args->{assets}, $href );
-   $flds->{user    } = getpwuid $flds->{uid} || $flds->{uid};
-   $flds->{group   } = getgrgid $flds->{gid} || $flds->{gid};
-   $flds->{accessed} = time2str( undef, $flds->{atime} );
-   $flds->{modified} = time2str( undef, $flds->{mtime} );
+   $fields->{name    } = $file;
+   $fields->{modestr } = $self->get_perms( $fields->{mode} );
+   $fields->{icon    } = __make_icon( $args->{assets}, $href );
+   $fields->{user    } = getpwuid $fields->{uid} || $fields->{uid};
+   $fields->{group   } = getgrgid $fields->{gid} || $fields->{gid};
+   $fields->{accessed} = time2str( undef, $fields->{atime} );
+   $fields->{modified} = time2str( undef, $fields->{mtime} );
 
-   return $flds;
+   return $fields;
+}
+
+sub _find_and_archive {
+   my ($self, $dir, $atime) = @_; my $postfix = $self->postfix;
+
+   my $out = "Archiving in ${dir} files more than ${atime} days old\n";
+
+   my @paths = (); $atime = time - ($atime * 86_400);
+
+   my $match_arc_files = sub {
+      -f $_ and $_ !~ m{ \A $postfix }mx and (stat _)[ 9 ] < $atime
+         and push @paths, $_;
+      return;
+   };
+
+   find( { no_chdir => TRUE, wanted => $match_arc_files }, $dir );
+
+   if ($paths[ 0 ]) { $out .= $self->archive( $_ ) for (@paths) }
+   else { $out .= "Path ${dir} nothing to archive\n" }
+
+   return $out;
+}
+
+sub _find_and_delete {
+   my ($self, $dir, $dtime) = @_;
+
+   my $out = "Deleting in ${dir} files more than ${dtime} days old\n";
+
+   my @paths = (); $dtime = time - ($dtime * 86_400);
+
+   my $match_old_files = sub {
+      -f $_ and (stat _)[ 9 ] < $dtime and push @paths, $_; return;
+   };
+
+   find( { no_chdir => TRUE, wanted => $match_old_files }, $dir );
+
+   if ($paths[ 0 ]) {
+      for my $path (@paths) {
+         unlink $path or throw error => 'Path [_1] cannot delete',
+                               args  => [ $path ], out => $out;
+         $out .= "Deleted ${path}\n";
+      }
+   }
+   else { $out .= "Path ${dir} nothing to delete\n" }
+
+   return $out;
+}
+
+sub _get_file_copy_path {
+   my ($self, $path, $copy_no) = @_;
+
+   my $dir  = dirname( $path );
+   my $file = basename( $path );
+   my $extn = NUL; $file =~ m{ (\.[^\.]+ (\.gz)?) \z }msx and $extn = $1;
+   my $base = $file; $extn and $base =~ s{ \Q$extn\E \z }{}msx;
+   my $name = $self->fcopy_format;
+
+   $name =~ s{ %\{file\} }{$base}msx; $name =~ s{ %\{copy\} }{$copy_no}msx;
+
+   return $dir ? catfile( $dir, $name.$extn ) : $name.$extn;
+}
+
+sub _get_file_copy_regex {
+   my $self = shift; my $regex = $self->fcopy_format;
+
+   $regex =~ s{ \. }{\\.}gmsx; $regex =~ s{ %\{file\} }{(.+)}msx;
+
+   $regex =~ s{ %\{copy\} }{\\d+}msx; return $regex;
+}
+
+sub _new_results_table {
+   my ($self, $rows, $count) = @_; my $class = {}; my $hclass = {};
+
+   my @fields = ( qw(icon name modestr nlink user group size accessed
+                     modified) );
+
+   for (@fields) {
+      $class->{ $_ } = q(data_value); $hclass->{ $_ } = q(minimal);
+   }
+
+   $class->{icon} = q(row_select); $class->{modestr} = q(mono);
+   $hclass->{name} = q(some);
+
+   return $self->table_class->new
+      ( class    => $class,
+        count    => $count,
+        fields   => \@fields,
+        hclass   => $hclass,
+        labels   => { accessed => q(Last Accessed),
+                      group    => q(Group),
+                      icon     => '&#160;',
+                      nlink    => q(Links),
+                      modestr  => q(Mode),
+                      modified => q(Last Modified),
+                      name     => q(File Name),
+                      size     => q(Size),
+                      user     => q(User) },
+        typelist => { accessed => q(date),    modified => q(date),
+                      nlink    => q(numeric), size     => q(numeric) },
+        values   => $rows, );
 }
 
 # Private subroutines
@@ -331,34 +439,7 @@ sub __make_icon {
             widget    => TRUE };
 }
 
-sub __new_results_table {
-   my $table = CatalystX::Usul::Table->new
-      ( class    => {},
-        flds     => [ qw(icon name modestr nlink user
-                         group size accessed modified) ],
-        hclass   => {},
-        labels   => { accessed => q(Last Accessed),
-                      group    => q(Group),
-                      icon     => '&#160;',
-                      nlink    => q(Links),
-                      modestr  => q(Mode),
-                      modified => q(Last Modified),
-                      name     => q(File Name),
-                      size     => q(Size),
-                      user     => q(User) },
-        typelist => { nlink    => q(numeric),
-                      size     => q(numeric) }, );
-
-   for (@{ $table->flds }) {
-      $table->class->{ $_ } = q(data_value);
-      $table->hclass->{ $_ } = q(minimal);
-   }
-
-   $table->class->{icon   } = q(row_select);
-   $table->class->{modestr} = q(mono);
-   $table->hclass->{name} = q(some);
-   return $table;
-}
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -372,91 +453,138 @@ CatalystX::Usul::FileSystem - File system related methods
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   package CatalystX::Usul::Model::FileSystem;
-
+   use Class::Usul;
    use CatalystX::Usul::FileSystem;
 
-   1;
-
-   package YourApp::Model::FileSystem;
-
-   use base qw(CatalystX::Usul::Model::FileSystem);
-
-   1;
-
-   package YourApp::Controller::Foo;
-
-   sub bar {
-      my ($self, $c) = @_;
-
-      $c->model( q(FileSystem) )->list_subdirectory( { dir => q(/path) } );
-      return;
-   }
+   my $usul    = Class::Usul->new( config => {} );
+   my $filesys = CatalystX::Usul::FileSystem->new( builder => $usul );
+   my $table   = $filesys->list_subdirectory( { dir => 'path_to_directory' } );
 
 =head1 Description
 
 This model provides methods for manipulating files and directories
 
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item C<compress_logs>
+
+Boolean defaults to true. Causes the L</rotate_logs> methods to compress
+logs files after the first copy
+
+=item C<config_path>
+
+A path to a file containing control data. Defaults to the F<misc> file
+in the C<ctrldir> directory
+
+=item C<ctldata>
+
+Hash ref of control data loaded from file referenced by C<config_path>
+attribute
+
+=item C<fcopy_format>
+
+A non empty simple string which defaults to C<%{file}.%{copy}>. Used
+by L</rotate_logs> to insert the copy number into the file name. The
+C<%{file}> symbol is replaced by the file name and the C<%{copy}>
+symbol is replaced by the copy number. Literal text remains unaffected
+
+=item C<fs_type>
+
+String which defaults to C<ext3>. The default filesystem type
+
+=item C<fuser>
+
+String which defaults to the value returned by the usul config
+object. The path to the external C<fuser> command
+
+=item C<postfix>
+
+String which defaults to C<A_>. Prepended to filename when archived
+
+=back
+
 =head1 Subroutines/Methods
-
-=head2 new
-
-Constructor defines I<logsdir>; the location of the applications log
-files and I<no_thrash>; the length of time to wait between test for
-the existence of a file to avoid a spin loop
 
 =head2 archive
 
-Archives a file by prepending the C<$self->postfix>, which
-defaults to I<A_>
+   $output_messages = $self->archive( @paths );
+
+Archives a files by prepending the C<$self->postfix>, which
+defaults to C<A_>
 
 =head2 file_in_use
+
+   $bool = $self->file_in_use( $path );
 
 Uses the system C<fuser> command if it is available to determine if a file
 is in use
 
-=head2 get_file_systems
+=head2 file_systems
+
+   $filesystem_responce_object = $self->file_systems( $filesysem );
 
 Parses the output from the system C<mount> command to produce a list of
-file systems
+file systems. Includes details of the specified filesystem
 
 =head2 get_perms
+
+   $permission_string = $self->get_perms( $mode );
 
 Returns the C<-rw-rw-r--> style permission string for a given octal mode
 
 =head2 list_subdirectory
 
+   $table_object = $self->list_subdirectory( $director_path );
+
 Generates the table data for a directory listing. The data is used by
-the I<table> subclass of L<HTML::FormWidgets>
+the C<table> subclass of L<HTML::FormWidgets>
 
 =head2 purge_tree
+
+   $output_messages = $self->purge_tree( $dir, $atime, $dtime );
 
 Archive old files and delete even older ones from a given directory
 
 =head2 rotate
 
-Issues a sequence a C<move> commands to rename I<file> to I<file.0>,
-I<file.0> to I<file.1>, I<file.1> to I<file.2> and so on
+   $self->rotate( $logfile, $copies );
+
+Issues a sequence a C<move> commands to rename C<file> to C<file.0>,
+C<file.0> to C<file.1>, C<file.1> to C<file.2> and so on. If the attribute
+C<compress_logs> is true, then copies after the first one are compressed
 
 =head2 rotate_log
+
+   $message = $self->rotate_log( logfile => $logfile_path, copies => $copies );
 
 Calls L</rotate>. Will also C<touch> a new logfile into existence and
 optionally signal a process
 
 =head2 rotate_logs
 
-Calls L</rotate_log> on all of the I<.log> files in the given
-directory, which defaults to the logs directory
+   $output_messages = $self->rotate_logs( $copies, $extension, $directory );
+
+Calls L</rotate_log> on all of the F<.log> files in the given
+directory, which defaults to the logs directory. Defaults to keeping seven
+copies. Run this daily from C<cron>
 
 =head2 unarchive
+
+   $output_messages = $self->unarchive( @paths );
 
 Reverse out the effect of calling L</archive>
 
 =head2 wait_for
+
+   $output_messages = $self->wait_for( $opts, $key, $max_wait, $no_thrash );
 
 Wait for a given file to exist. Polls at given intervals file a configurable
 period before throwing a time out error if the file does not show up
@@ -465,19 +593,21 @@ period before throwing a time out error if the file does not show up
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
-=item L<CatalystX::Usul>
+=item L<CatalystX::Usul::Response::FileSystem>
 
-=item L<CatalystX::Usul::Constants>
+=item L<Class::Usul::File>
 
-=item L<CatalystX::Usul::Table>
+=item L<Class::Usul::IPC>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::Response::Table>
+
+=item L<Class::Usul::Time>
 
 =back
 
@@ -497,7 +627,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

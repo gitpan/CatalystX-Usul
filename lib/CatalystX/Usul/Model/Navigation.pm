@@ -1,79 +1,100 @@
-# @(#)$Id: Navigation.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Navigation.pm 1320 2013-07-31 17:31:20Z pjf $
 
 package CatalystX::Usul::Model::Navigation;
 
-use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(is_member merge_attributes);
-use CatalystX::Usul::Table;
-use English qw(-no_match_vars);
+use CatalystX::Usul::Functions qw( is_member merge_attributes throw );
+use CatalystX::Usul::Moose;
+use English                    qw( -no_match_vars );
+use File::DataClass::IO;
 use TryCatch;
 
-__PACKAGE__->config( action_class        => q(Config::Rooms),
-                     action_source       => q(action),
-                     default_action      => DEFAULT_ACTION,
-                     menu_link_class     => q(menu_link fade),
-                     menu_selected_class => q(menu_selected fade),
-                     menu_title_class    => q(menu_title fade),
-                     namespace_source    => q(namespace),
-                     namespace_tag       => q(..Level..),
-                     user_level_access   => FALSE,
-                     _nav_link_cache     => {},
-                     _quick_link_cache   => {} );
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::Model::NavigationLinks);
 
-__PACKAGE__->mk_accessors( qw(action_class action_source default_action
-                              menu_link_class menu_selected_class
-                              menu_title_class namespace_source
-                              namespace_tag skins user_level_access
-                              _nav_link_cache _quick_link_cache) );
+has 'action_class'        => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(Config::Rooms);
+
+has 'action_paths'        => is => 'ro',   isa => HashRef,
+   default                => sub { {} };
+
+has 'action_source'       => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(action);
+
+has 'default_action'      => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => DEFAULT_ACTION;
+
+has 'menu_link_class'     => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(menu_link fade);
+
+has 'menu_selected_class' => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(menu_selected fade);
+
+has 'menu_title_class'    => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(menu_title fade);
+
+has 'namespace_source'    => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(namespace);
+
+has 'namespace_tag'       => is => 'ro',   isa => NonEmptySimpleStr,
+   default                => q(..Level..);
+
+has 'skins'               => is => 'ro',   isa => ArrayRef, required => TRUE;
+
+has 'user_level_access'   => is => 'ro',   isa => Bool, default => FALSE;
+
+
+has '_nav_link_cache'   => is => 'ro', isa => HashRef, default => sub { {} };
+
+has '_quick_link_cache' => is => 'ro', isa => HashRef, default => sub { {} };
 
 sub COMPONENT {
-   my ($class, $app, $attrs) = @_; my $ac = $app->config;
+   my ($class, $app, $attr) = @_;
 
-   merge_attributes $attrs, $ac, $class->config, [ qw(default_action) ];
+   my $ac = $app->config || {}; my $cc = $class->config || {};
 
-   my $new = $class->next::method( $app, $attrs );
+   $cc->{skins} = [ map { $_->filename } io( $ac->{skindir} )->all_dirs ];
 
-   $new->skins( [ map { $_->filename } $new->io( $ac->{skindir} )->all_dirs ] );
+   merge_attributes $attr, $cc, $ac, [ qw(default_action skins) ];
 
-   return $new;
+   return $class->next::method( $app, $attr );
 }
 
 sub access_check {
    # Return non zero to prevent access to requested endpoint
    # The return code indicates the reason
-   my ($self, $source, $key) = @_; my $s = $self->context->stash; my %roles;
+   my ($self, $source, $key) = @_; my $s = $self->context->stash;
 
    # Administrators are always allowed access
    $s->{is_administrator} and return ACCESS_OK;
 
    # Get the list of allowed users and groups from the stash
-   my $action  = exists $s->{ $source }->{ $key }
-               ? $s->{ $source }->{ $key } : {};
-   my @allowed = @{ $action->{acl} || [] };
+   my $action   = exists $s->{ $source }->{ $key }
+                ? $s->{ $source }->{ $key } : {};
+   my @allowed  = @{ $action->{acl} || [] };
+   my $roles    = $s->{user_role_lookup} ||= {};
+   my $username = $s->{user}->username;
 
    # Cannot obtain a list of users/groups for this endpoint
    $allowed[ 0 ] or return ACCESS_NO_UGRPS;
 
    for my $ugrp (@allowed) {
       # Public access or granted access to the user specifically
-      ($ugrp eq q(any) or $ugrp eq $s->{user}) and return ACCESS_OK;
-
+      ($ugrp eq q(any) or $ugrp eq $username) and return ACCESS_OK;
       # Anon. access is now denied
-      $s->{user} eq q(unknown) and return ACCESS_UNKNOWN_USER;
+      $username eq q(unknown) and return ACCESS_UNKNOWN_USER;
 
-      if (q(@) eq substr $ugrp, 0, 1) { # This is a group not a user
-         unless (exists $roles{_seeded}) { # Create a hash lookup
-            %roles = map { $_ => TRUE } @{ $s->{roles} }, q(_seeded);
-         }
+      (q(@) eq substr $ugrp, 0, 1) or next; # Is this a group or a user?
 
-         # User is in a role that has access to the endpoint
-         exists $roles{ substr $ugrp, 1 } and return ACCESS_OK;
+      unless (exists $roles->{_seeded}) { # Create a hash lookup
+         $roles = $s->{user_role_lookup}
+                = { map { $_ => undef } @{ $s->{user}->roles }, q(_seeded) };
       }
+      # User is in a group that has access to the endpoint
+      exists $roles->{ substr $ugrp, 1 } and return ACCESS_OK;
    }
 
    # We don't like your kind around here...
@@ -81,52 +102,88 @@ sub access_check {
 }
 
 sub access_control_form {
-   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $data = {};
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $access = {};
 
    my $new_tag = $s->{newtag}; $ns ||= q(default); $name ||= $new_tag;
 
-   try        { $data = $self->_get_access_data( $ns, $name ) }
+   try        { $access = $self->_get_access_data( $ns, $name ) }
    catch ($e) { return $self->add_error( $e ) }
 
-   my $form = $s->{form}->{name};
+   my $form = $s->{form}->{name}; my $id = $form.q(.).$self->action_source;
 
    # Build the form
-   $self->clear_form  ( { firstfld => $form.q(.).$self->action_source } );
+   $self->clear_form  ( { firstfld => $id } );
    $self->add_field   ( { default  => $ns,
                           id       => q(config.).$self->namespace_source,
-                          values   => $data->{nspaces} } );
+                          values   => $access->{nspaces} } );
    $ns and $ns ne $new_tag and
       $self->add_field( { default  => $name,
-                          id       => $form.q(.).$self->action_source,
-                          values   => $data->{actions} } );
-   $self->group_fields( { id       => $form.q(.select) } );
+                          id       => $id,
+                          values   => $access->{actions} } );
+   $self->group_fields( { id       => "${form}.select" } );
 
    ($ns and $ns ne $new_tag and $name
-        and is_member $name, $data->{actions}) or return;
+        and is_member $name, $access->{actions}) or return;
 
    my $labels = { ACTION_OPEN()    => $self->loc( 'open'   ),
                   ACTION_HIDDEN()  => $self->loc( 'hidden' ),
                   ACTION_CLOSED()  => $self->loc( 'closed' ), };
 
-   $self->add_field   ( { default  => $data->{state},
-                          id       => $form.q(.state),
+   $self->add_field   ( { default  => $access->{state},
+                          id       => "${form}.state",
                           labels   => $labels,
                           values   => [ ACTION_OPEN,
                                         ACTION_HIDDEN,
                                         ACTION_CLOSED, ], } );
-   $self->group_fields( { id       => $form.q(.state) } );
-   $self->add_field   ( { all      => $data->{ugrps},
-                          current  => $data->{acl},
-                          id       => $form.q(.user_groups) } );
-   $self->group_fields( { id       => $form.q(.add_remove) } );
+   $self->group_fields( { id       => "${form}.state" } );
+   $self->add_field   ( { all      => $access->{ugrps},
+                          current  => $access->{acl},
+                          id       => "${form}.user_groups" } );
+   $self->group_fields( { id       => "${form}.add_remove" } );
    $self->add_buttons ( qw(Set Update) );
    return;
 }
 
-sub add_header {
+sub add_menu_back { # Add a browser back link to the navigation menu
+   my ($self, $args) = @_; my $stack = []; $args ||= {};
+
+   $self->_push_menu_link( $stack, 0, $self->get_history_back_link( $args ) );
+
+   my $widget = { data => $stack, id => q(menu), type => q(menu) };
+
+   $self->add_field( $widget, qw(menus clear_menus) );
+   return;
+}
+
+sub add_menu_blank { # Some padding to fill the gap where the nav. menu was
+   my $self = shift; my $stack = [];
+
+   $self->_push_menu_link( $stack, 0, $self->get_blank_link );
+
+   my $widget = { data => $stack, id => q(menu), type => q(menu) };
+
+   $self->add_field( $widget, qw(menus clear_menus) );
+   return;
+}
+
+sub add_menu_close { # Add a close window link to the navigation menu
+   my ($self, $args) = @_; my $stack = []; $args ||= {};
+
+   $self->_push_menu_link( $stack, 0, $self->get_close_link( $args ) );
+
+   my $widget = { data => $stack, id => q(menu), type => q(menu) };
+
+   $self->add_field( $widget, qw(menus clear_menus) );
+   return;
+}
+
+sub add_nav_header {
    my $self = shift; my $s = $self->context->stash;
 
-   $self->maybe::next::method();
+   my $company_link = $self->get_company_link( { name => q(header) } );
+
+   $self->add_field( $self->get_logo_link, qw(header clear_header) );
+   $self->add_field( $company_link, qw(header) );
 
    $self->add_nav_menu; $self->add_utils_menu; $self->add_quick_links;
 
@@ -134,148 +191,46 @@ sub add_header {
    return;
 }
 
-sub add_help_menu {
-   my ($self, $name, $stack, $menu) = @_;
+sub add_nav_menu { # Generate a cone forest
+   my $self  = shift;
+   my $c     = $self->context;
+   my $s     = $c->stash;
+   my $ns    = $c->action->namespace;
+   my $name  = $c->action->name;
+   my $key   = $s->{language}.$SUBSEP.$ns.$SUBSEP.$name;
+   my $cache = $self->_nav_link_cache->{ $key } ||= $self->_get_nav_links;
+   my $first = TRUE;
+   my $links = [];
 
-   my $c = $self->context; my $s = $c->stash;
+   for my $menu (@{ $cache }) {
+      my $copy = { %{ $menu } };
 
-   my $title = $self->loc( q(helpOptionTip) ); my $item = 0;
+      $copy->{items} = [ grep { $self->_is_visible( $first, $_ ) }
+                         @{ $menu->{items} } ];
+      push @{ $links }, $copy; $first = FALSE;
+   }
 
-   # Help options
-   $self->_push_menu_link( $stack, $menu, {
-      class    => $name.q(_title fade),
-      href     => '#top',
-      id       => $name.$menu.q(item).$item++,
-      imgclass => 'help_icon',
-      sep      => NUL,
-      text     => NUL,
-      tip      => DOTS.TTS.$title } );
+   my $title  =  $links->[ 0 ]->{items}->[ 0 ]->{content}->{text} || NUL;
+   my $widget =  { data   => $links, id   => q(menu), select => TRUE,
+                   spacer => GT,     type => q(menu) };
 
-   # Context senitive help page generated from pod in the controller
-   $self->_push_menu_link( $stack, $menu, {
-      class    => $name.q(_link fade windows),
-      config   => { args   => "[ '".$s->{help_url}."', { name: 'help' } ]",
-                    method => "'openWindow'" },
-      href     => '#top',
-      id       => $name.$menu.q(item).$item++,
-      text     => $self->loc( q(contextHelpText) ),
-      tip      => $title.TTS.$self->loc( q(contextHelpTip) ) } );
+   $s->{title} =  $s->{application}.SPC.$title;
 
-   # Display window with copyright and distribution information
-   my $href    = $c->uri_for_action( SEP.q(about) );
-
-   $self->_push_menu_link( $stack, $menu, {
-      class    => $name.q(_link fade windows),
-      config   => { args   => "[ '${href}', { name: 'about' } ]",
-                    method => "'openWindow'" },
-      href     => '#top',
-      id       => $name.$menu.q(item).$item++,
-      text     => $self->loc( q(aboutOptionText) ),
-      tip      => $title.TTS.$self->loc( q(aboutOptionTip) ) } );
-
-   # Send feedback email to site administrators
-   $s->{user} eq q(unknown) and return;
-
-   my $opts    = "{ height: 670, name: 'feedback', width: 850 }";
-
-   $href       = $c->uri_for_action
-      ( SEP.q(feedback), $c->action->namespace, $c->action->name );
-
-   $self->_push_menu_link( $stack, $menu, {
-      class    => $name.q(_link fade windows),
-      config   => { args   => "[ '${href}', ${opts} ]",
-                    method => "'openWindow'" },
-      href     => '#top',
-      id       => $name.$menu.q(item).$item++,
-      text     => $self->loc( q(feedbackOptionText) ),
-      tip      => $title.TTS.$self->loc( q(feedbackOptionTip) ) } );
+   $self->add_field( $widget, qw(menus clear_menus) );
    return;
 }
 
-sub add_menu_back {
-   # Add a browser back link to the navigation menu
-   my ($self, $args) = @_; $args ||= {};
-
-   my $tip   = $self->loc( $args->{tip} || 'Go back to the previous page' );
-   my $menu  = [];
-
-   $self->_push_menu_link( $menu, 0, {
-      class  => $self->menu_title_class.q( submit),
-      config => { args => "[]", method => "'historyBack'" },
-      href   => '#top',
-      id     => q(history_back),
-      text   => $self->loc( 'Back' ),
-      tip    => $self->loc( 'Navigation' ).TTS.$tip } );
-
-   my $content = { data => $menu, id => q(menu), type => q(menu) };
-
-   $self->add_field( $content, qw(menus clear_menus) );
-   return;
-}
-
-sub add_menu_blank {
-   # Stash some padding to fill the gap where the nav. menu was
-   my ($self, $args) = @_; $args ||= {}; my $menu = [];
-
-   $self->_push_menu_link( $menu, 0, { class => $self->menu_title_class,
-                                       href  => '#top',
-                                       text  => NBSP x 30 } );
-
-   my $content = { data => $menu, id => q(menu), type => q(menu) };
-
-   $self->add_field( $content, qw(menus menus_clear) );
-   return;
-}
-
-sub add_menu_close {
-   # Add a close window link to the navigation menu
-   my ($self, $args) = @_; $args ||= {};
-
-   my $field = $args->{field} || NUL;
-   my $form  = $args->{form } || NUL;
-   my $value = $args->{value} || NUL;
-   my $tip   = $self->loc( $args->{tip} || 'Close this window' );
-   my $menu  = [];
-
-   $self->_push_menu_link( $menu, 0, {
-      class  => $self->menu_title_class.q( submit),
-      config => { args   => "[ '${form}', '${field}', '${value}' ]",
-                  method => "'returnValue'" },
-      href   => '#top',
-      id     => q(close_window),
-      text   => $self->loc( $args->{text } || 'Close' ),
-      tip    => $self->loc( $args->{title} || 'Navigation' ).TTS.$tip } );
-
-   my $content = { data => $menu, id => q(menu), type => q(menu) };
-
-   $self->add_field( $content, qw(menus clear_menus) );
-   return;
-}
-
-sub add_nav_menu {
-   # Generate a cone forest
-   my $self     =  shift;
-   my $sep      =  SEP;
-   my $c        =  $self->context;
-   my $s        =  $c->stash;
-   my $ns       =  $c->action->namespace;
-   my $base     =  $c->uri_for_action( $ns.$sep.$self->default_action );
-   my $selected =  $s->{form}->{action} || $c->action->name || NUL;
-      $selected =~ s{ \A $base $sep }{}msx;
-   my $links    =  $self->_get_my_nav_links( $base, $ns, $selected );
-   my $title    =  $links->[ 0 ]->{items}->[ 0 ]->{content}->{text};
-
-   $s->{title}  =  $s->{application}.SPC.$title;
-   $self->add_field( { data   => $links, id     => q(menu),
-                       select => TRUE,   spacer => GT,
-                       type   => q(menu) }, qw(menus clear_menus) );
-   return;
+sub add_navigation_sidebar {
+   return $_[ 0 ]->add_sidebar_panel( {
+      heading     => $_[ 0 ]->_localized_nav_title,
+      on_complete => 'function() { this.rebuild() }',
+      name        => q(navigation_sidebar), } );
 }
 
 sub add_quick_links {
    my $self  = shift;
    my $s     = $self->context->stash;
-   my $links = $self->_quick_link_cache->{ $s->{lang} }
+   my $links = $self->_quick_link_cache->{ $s->{language} }
            ||= $self->_get_quick_links;
    my @items = ( map { { q(content) => $_ } } @{ $links } );
 
@@ -283,220 +238,141 @@ sub add_quick_links {
    return;
 }
 
-sub add_sidebar_panel {
-   my $self = shift;
-
-   return $self->next::method( {
-      heading     => $self->loc( 'Navigation' ),
-      on_complete => 'function() { this.rebuild() }',
-      name        => q(navigation_sidebar), } );
-}
-
-sub add_tools_menu {
-   my ($self, $name, $stack, $menu) = @_; my $s = $self->context->stash;
-
-   my $title = $self->loc( q(displayOptionsTip) ); my $item = 0;
-
-   $self->_push_menu_link( $stack, $menu, {
-      class    => $name.q(_title fade),
-      href     => '#top',
-      id       => $name.$menu.q(item).$item++,
-      imgclass => q(tools_icon),
-      sep      => NUL,
-      text     => NUL,
-      tip      => DOTS.TTS.$title } );
-
-   # Toggle footer visibility
-   my $id   = $name.$menu.q(item).$item++;
-   my $text = $self->loc( q(footerOffText) );
-   my $alt  = $self->loc( q(footerOnText) );
-
-   $self->_push_menu_link( $stack, $menu, {
-      class     => $name.q(_link fade server togglers),
-      config    => {
-         args   => "[ '${id}', 'footer', '${text}', '${alt}' ]",
-         method => "'toggleSwapText'" },
-      href      => '#top',
-      id        => $id,
-      text      => $s->{fstate} ? $text : $alt,
-      tip       => $title.TTS.$self->loc( q(footerToggleTip) ) } );
-
-   if ($s->{is_administrator}) {
-      # Runtime debug option
-      $id   = $name.$menu.q(item).$item++;
-      $text = $self->loc( q(debugOffText) );
-      $alt  = $self->loc( q(debugOnText) );
-
-      $self->_push_menu_link( $stack, $menu, {
-         class     => $name.q(_link fade togglers),
-         config    => {
-            args   => "[ '${id}', 'debug', '${text}', '${alt}' ]",
-            method => "'toggleSwapText'" },
-         href      => '#top',
-         id        => $id,
-         text      => $s->{debug} ? $text : $alt,
-         tip       => $title.TTS.$self->loc( q(debugToggleTip) ) } );
-   }
-
-   # Select the default skin
-   my $default = $self->context->config->{default_skin};
-
-   $self->_push_menu_link( $stack, $menu, {
-      class  => $name.q(_link fade submit),
-      config => { args => "[ 'skin', '${default}' ]", method => "'refresh'" },
-      href   => '#top',
-      id     => $name.$menu.q(item).$item++,
-      text   => $self->loc( q(changeSkinDefaultText) ),
-      tip    => $title.TTS.$self->loc( q(changeSkinDefaultTip) ) } );
-
-   # Select alternate skins
-   for my $skin (grep { $_ ne $default } @{ $self->skins }) {
-      $self->_push_menu_link( $stack, $menu, {
-         class  => $name.q(_link fade submit),
-         config => { args => "[ 'skin', '${skin}' ]", method => "'refresh'" },
-         href   => '#top',
-         id     => $name.$menu.q(item).$item++,
-         text   => (ucfirst $skin).SPC.$self->loc( q(changeSkinAltText) ),
-         tip    => $title.TTS.$self->loc( q(changeSkinAltTip) ) } );
-   }
-
-   return;
-}
-
-sub add_tree_panel {
-   my $self = shift; my $name = $self->context->action->name;
-
-   $self->add_field ( { container => FALSE,
-                        data      => $self->_get_tree_panel_data,
-                        id        => $name.q(_data),
-                        type      => q(tree) } );
-   $self->stash_meta( { id => $name } );
-   return;
-}
-
 sub add_utils_menu {
    my $self = shift; my $c = $self->context;
 
-   my $item = 0; my $menu = 0; my $name = q(tools); my @stack = ();
+   my $menu_no = 0; my $name = q(tools); my @stack = ();
 
-   $self->add_tools_menu( $name, \@stack, $menu++ );
-   $self->add_help_menu ( $name, \@stack, $menu++ );
+   $self->_add_tools_menu( $name, \@stack, $menu_no++ );
+   $self->_add_help_menu ( $name, \@stack, $menu_no++ );
+
+   my $args = { item => 0, menu => $menu_no, name => $name, title => DOTS };
 
    # Logout option drops current identity
-   unless ($self->context->stash->{user} eq q(unknown)) {
-      $self->_push_menu_link( \@stack, $menu, {
-         class    => $name.q(_title fade windows),
-         config   => { args   => "[ '".$c->req->base."' ]",
-                       method => "'wayOut'" },
-         href     => '#top',
-         id       => $name.$menu.q(item).$item++,
-         imgclass => q(exit_icon),
-         sep      => NUL,
-         text     => NUL,
-         tip      => DOTS.TTS.$self->loc( q(exitTip) ) } );
-   }
+   $c->stash->{user}->username ne q(unknown)
+      and $self->_push_menu_link( \@stack, $menu_no,
+                                  $self->get_logout_link( $args ) );
+   $args->{item} += 1;
 
-   my $content = { data   => \@stack, id   => q(tools),
-                   select => FALSE,   type => q(menu) };
+   my $widget = { data   => \@stack, id => $name,
+                  select => FALSE, type => q(menu) };
 
-   $self->add_field( $content, qw(menus clear_menus) );
+   $self->add_field( $widget, qw(menus clear_menus) );
    return;
 }
 
-sub allowed {
-   # Negate the logic of the access_check method
-   my ($self, @rest) = @_; return not $self->access_check( @rest );
+sub allowed { # Negate the logic of the access_check method
+   my ($self, @args) = @_; return not $self->access_check( @args );
 }
 
 sub app_closed_form {
    my $self = shift; my $form = $self->context->stash->{form}->{name};
 
-   $self->add_field  ( { id => $form.q(.user)   } );
-   $self->add_field  ( { id => $form.q(.passwd) } );
+   $self->add_field  ( { id => "${form}.user"   } );
+   $self->add_field  ( { id => "${form}.passwd" } );
    $self->add_hidden ( $form, 0 );
    $self->add_buttons( q(Login) );
    return;
 }
 
+sub load_status_msgs {
+   my $self = shift; my $c = $self->context; my $s = $c->stash;
+
+   $c->load_status_msgs;
+   $s->{error_msg } and $self->add_error ( delete $s->{error_msg } );
+   $s->{status_msg} and $self->add_result( delete $s->{status_msg} );
+   return;
+}
+
+sub navigation_sidebar_form {
+   my $self = shift; my $name = $self->context->action->name;
+
+   $self->add_field ( { container => FALSE,
+                        data      => $self->_get_tree_panel_data,
+                        id        => "tree_panel_data_${name}",
+                        type      => q(tree) } );
+   $self->stash_meta( { id => $name } );
+   return;
+}
+
 sub room_manager_form {
-   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $data = {};
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $actions = {};
 
    my $new_tag = $s->{newtag}; $ns ||= $new_tag; $name ||= $new_tag;
 
-   try        { $data = $self->_get_action_data( $ns, $name ) }
+   try        { $actions = $self->_get_action_data( $ns, $name ) }
    catch ($e) { return $self->add_error( $e ) }
 
    my $form = $s->{form}->{name}; my $ns_tag = $self->namespace_tag;
 
    $self->clear_form  ( { firstfld => $form.q(.).$self->namespace_source } );
-   $self->add_hidden  ( q(acl), $data->{fields}->acl );
+   $self->add_hidden  ( q(acl), $actions->{fields}->acl );
    $self->add_field   ( { default  => $ns,
                           id       => $form.q(.).$self->namespace_source,
-                          values   => $data->{nspaces} } );
+                          values   => $actions->{nspaces} } );
    $ns and $ns ne $new_tag and
       $self->add_field( { default  => $name,
                           id       => $form.q(.).$self->action_source,
-                          values   => $data->{actions} } );
-   $self->group_fields( { id       => $form.q(.select) } );
+                          values   => $actions->{actions} } );
+   $self->group_fields( { id       => "${form}.select" } );
 
-   ($ns and is_member $ns, $data->{nspaces}) or return;
-   ($ns eq $new_tag
-    or ($name and ($name eq $ns_tag
-                   or is_member $name, $data->{actions}))) or return;
+   ($ns   and is_member $ns,   $actions->{nspaces}) or return;
+   ($name and is_member $name, $actions->{actions}) or return;
 
    my $nspace = ($ns eq $new_tag) || ($ns eq q(default)) ? NUL : $ns;
    my $action = $name eq $ns_tag  || $name eq $new_tag
               ? $self->default_action : $name;
    my $uri    = eval { $self->context->uri_for_action( $nspace.SEP.$action ) };
 
-   $self->add_field( { id => $form.q(.uri), text => $uri || NUL } );
+   $self->add_field( { id => "${form}.uri", text => $uri || NUL } );
 
-   if ($data->{is_new}) {
-      $self->add_field( { ajaxid => $form.'.name', default => $data->{name} } );
+   if ($actions->{is_new}) {
+      $self->add_field( { default => $actions->{name},
+                          id      => "${form}.name" } );
       $self->add_buttons( qw(Insert) )
    }
    else {
-      $self->add_hidden( q(name), $data->{name} );
+      $self->add_hidden( q(name), $actions->{name} );
       $self->add_buttons( qw(Save Delete) )
    }
 
-   $self->add_field( { ajaxid  => $form.'.text',
-                       default => $data->{fields}->text } );
-   $self->add_field( { ajaxid  => $form.'.tip',
-                       default => $data->{fields}->tip  } );
+   $self->add_field( { default => $actions->{fields}->text,
+                       id      => "${form}.text" } );
+   $self->add_field( { default => $actions->{fields}->tip,
+                       id      => "${form}.tip" } );
 
    if ($s->{noun} eq q(action)) {
-      $self->add_field( { id      => $form.q(.keywords),
-                          default => $data->{fields}->keywords   } );
-      $self->add_field( { id      => $form.q(.quick_link),
-                          default => $data->{fields}->quick_link } );
-      $self->add_field( { id      => $form.q(.pwidth),
-                          default => $data->{fields}->pwidth     } );
+      $self->add_field( { id      => "${form}.keywords",
+                          default => $actions->{fields}->keywords   } );
+      $self->add_field( { id      => "${form}.quick_link",
+                          default => $actions->{fields}->quick_link } );
+      $self->add_field( { id      => "${form}.pwidth",
+                          default => $actions->{fields}->pwidth     } );
    }
 
-   $self->group_fields( { id => $form.q(.edit) } );
+   $self->group_fields( { id => "${form}.edit" } );
    return;
 }
 
 sub select_this {
-   my ($self, $mitem, $ord, $widget) = @_; my $s = $self->context->stash;
+   my ($self, $item_no, $menu_no, $widget) = @_; my $s = $self->context->stash;
 
-   my $menu = $s->{menus}->{items}->[ $mitem ]->{content}->{data};
+   my $stack = $s->{menus}->{items}->[ $item_no ]->{content}->{data};
 
-   $menu->[ 0 ]->{selected} = $ord; $widget or return;
+   $stack->[ 0 ]->{selected} = $menu_no; $widget or return;
 
    $widget->{class    } ||= $self->menu_selected_class;
    $widget->{container} ||= FALSE;
    $widget->{type     } ||= q(anchor);
    $widget->{widget   } ||= TRUE;
-   $self->_unshift_menu_item( $menu, $ord, $widget );
+   $self->_unshift_menu_item( $stack, $menu_no, $widget );
    return;
 }
 
-sub sitemap {
-   my $self = shift; my $s = $self->context->stash; my $data;
+sub sitemap_form {
+   my $self = shift; my $s = $self->context->stash; my $sitemap;
 
-   try        { $data = $self->_get_sitemap_data }
+   try        { $sitemap = $self->_get_sitemap_data }
    catch ($e) { return $self->add_error( $e ) }
 
    $self->clear_form( {
@@ -504,11 +380,11 @@ sub sitemap {
       sub_heading  => { class   => q(banner),
                         content => $self->loc( q(sitemap_subheading) ),
                         level   => 2, }, } );
-   $self->add_field ( { data => $data, id => $s->{form}->{name} } );
+   $self->add_field ( { data => $sitemap, id => $s->{form}->{name} } );
    return;
 }
 
-# Private methods;
+# Private methods
 
 sub _action_allowed {
    my ($self, $action_info) = @_;
@@ -526,34 +402,35 @@ sub _action_allowed {
 }
 
 sub _add_action_link {
-   my ($self, $args, $name, $action_info) = @_;
+   my ($self, $opts, $name, $action_info) = @_;
 
-   my $c = $self->context; my $sep = SEP; my $base = $args->{base};
+   my $c = $self->context; my $sep = SEP; my $base = $opts->{base};
 
-   my $path = eval { $c->uri_for_action( $args->{myspace}.$sep.$name ) };
+   # TODO: This is flawed. Wont work with capture args
+   # I think we should be using $opts->{myspace}.$sep.$name
+   my $path = eval { $c->uri_for_action( $opts->{myspace}.$sep.$name ) };
 
-   if ($path) { $path =~ s{ \A $base $sep }{}mx }
-   else { $path = $name }
+   if ($path) { $path =~ s{ \A $base $sep }{}mx } else { $path = $name }
 
-   my ($is_first, $is_link, $path_len) = __link_flags( $args, $path );
+   my ($is_first, $is_link, $menu_no) = __link_flags( $opts, $path );
 
-   ($is_first or $is_link) and not defined $args->{menus}->[ $path_len ]
-      and $args->{menus}->[ $path_len ] = { items => [] };
+   ($is_first or $is_link) and not defined $opts->{menus}->[ $menu_no ]
+      and $opts->{menus}->[ $menu_no ] = { items => [] };
 
-   my $menu  = $args->{menus}->[ $path_len ] or return;
+   my $menu  = $opts->{menus}->[ $menu_no ] or return;
    my $class = $is_first
-            && $path_len == $args->{s_len} ? $self->menu_selected_class
-             : $is_first                   ? $self->menu_title_class
-                                           : $self->menu_link_class;
+            && $menu_no == $opts->{s_len} ? $self->menu_selected_class
+             : $is_first                  ? $self->menu_title_class
+                                          : $self->menu_link_class;
    my $text  = $action_info->{text} || ucfirst $name;
    my $tip   = $action_info->{tip } || NUL;
    my $item  = { action    => $name,
-                 namespace => $args->{myspace},
+                 namespace => $opts->{myspace},
                  content   => { class     => $class,
                                 container => FALSE,
-                                href      => $base.$sep.$path.$args->{query},
+                                href      => $base.$sep.$path.$opts->{query},
                                 text      => $text,
-                                tip       => $args->{title}.TTS.$tip,
+                                tip       => $opts->{title}.TTS.$tip,
                                 type      => q(anchor),
                                 widget    => TRUE } };
 
@@ -567,22 +444,45 @@ sub _add_action_link {
    return;
 }
 
+sub _add_help_menu {
+   my ($self, $name, $stack, $menu_no) = @_; my $c = $self->context;
+
+   my $title = $self->loc( q(helpOptionTip) );
+   my $args  = { item => 0, menu => $menu_no, name => $name, title => $title };
+   my $link  = $self->get_help_menu_link( $args ); # Help options
+
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+   # Context senitive help page generated from pod in the controller
+   $link = $self->get_context_help_link( $args );
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+   # Display window with copyright and distribution information
+   $link = $self->get_about_menu_link( $args );
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+
+   $c->stash->{user}->username eq q(unknown) and return;
+
+   # Send feedback email to site administrators
+   $link = $self->get_feedback_menu_link( $args );
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+   return;
+}
+
 sub _add_namespace_link {
-   my ($self, $args, $ns, $ns_info) = @_; $ns_info ||= {};
+   my ($self, $opts, $ns, $ns_info) = @_; $ns_info ||= {};
 
    my $c    = $self->context;
    my $text = $ns_info->{text} || ucfirst $ns;
-   my $tip  = $args->{title}.TTS.($ns_info->{tip} || NUL);
+   my $tip  = $opts->{title}.TTS.($ns_info->{tip} || NUL);
 
-   if ($ns eq $args->{myspace}) {
+   if ($ns eq $opts->{myspace}) {
       # This is the currently selected controller on the navigation tool
-      my $content = $args->{menus}->[ 0 ]->{items}->[ 0 ]->{content};
+      my $content = $opts->{menus}->[ 0 ]->{items}->[ 0 ]->{content};
 
       $content->{text} = $text; $content->{tip} = $tip;
    }
    else {
       # Just another registered controller
-      $self->_push_menu_link( $args->{menus}, 0, {
+      $self->_push_menu_link( $opts->{menus}, 0, {
          class => $self->menu_link_class,
          href  => $c->uri_for_action( $ns.SEP.$self->default_action ),
          text  => $text,
@@ -592,8 +492,40 @@ sub _add_namespace_link {
    return;
 }
 
+sub _add_tools_menu {
+   my ($self, $name, $stack, $menu_no) = @_; my $c = $self->context;
+
+   my $title = $self->loc( q(displayOptionsTip) );
+   my $args  = { item => 0, menu => $menu_no, name => $name, title => $title };
+   my $link  = $self->get_tools_menu_link( $args );
+
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+   # Toggle footer visibility
+   $link = $self->get_footer_toggle_link( $args );
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+
+   if ($c->stash->{is_administrator}) { # Runtime debug option
+      $link = $self->get_debug_toggle_link( $args );
+      $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+   }
+
+   my $default = $self->context->config->{default_skin};
+
+   # Select the default skin
+   $link = $self->get_default_skin_link( $args, $default );
+   $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+
+   # Select alternate skins
+   for my $skin (grep { $_ ne $default } @{ $self->skins }) {
+      $link = $self->get_alternate_skin_link( $args, $skin );
+      $self->_push_menu_link( $stack, $menu_no, $link ); $args->{item} += 1;
+   }
+
+   return;
+}
+
 sub _get_access_data {
-   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $data = {};
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $access = {};
 
    my $ns_tag = $self->namespace_tag;
    my $noun   = ! $ns || $name eq $ns_tag ? q(controller) : q(action);
@@ -603,48 +535,50 @@ sub _get_access_data {
    my $rs     = $s->{namespace_model}->list
       ( ! $ns || $ns eq $s->{newtag} ? q(default) : $ns);
 
-   $data->{nspaces} = [ NUL, q(default), @{ $rs->list} ];
-   $noun eq q(controller) and $data->{acl} = $rs->result->acl;
+   $access->{nspaces} = [ NUL, q(default), @{ $rs->list } ];
+   $noun eq q(controller) and $access->{acl} = $rs->result->acl;
 
    if ($ns and $ns ne $s->{newtag}) {
-      $rs              = $s->{name_model}->list( $ns, $name );
-      $data->{actions} = [ NUL, $ns_tag, @{ $rs->list } ];
-      $data->{state  } = $rs->result->state || ACTION_OPEN;
+      $rs                = $s->{name_model}->list( $ns, $name );
+      $access->{actions} = [ NUL, $ns_tag, @{ $rs->list } ];
+      $access->{state  } = $rs->result->state || ACTION_OPEN;
 
-      $noun eq q(action) and $data->{acl} = $rs->result->acl;
+      $noun eq q(action) and $access->{acl} = $rs->result->acl;
    }
    else {
-      $data->{acl    } = [];
-      $data->{actions} = [ NUL, $ns_tag ];
-      $data->{state  } = ACTION_OPEN;
+      $access->{acl    } = [];
+      $access->{actions} = [ NUL, $ns_tag ];
+      $access->{state  } = ACTION_OPEN;
    }
 
-   my @ugrps = ();
+   my @tmp = ();
 
    for my $model (@{ $s->{auth_models} }) {
-      for my $grp ($model->roles->get_roles( q(all) )) {
-         is_member q(@).$grp, $data->{acl} or push @ugrps, q(@).$grp;
+      for my $group ($model->domain_model->roles->get_roles( q(all) )) {
+         is_member q(@).$group, $access->{acl} or push @tmp, q(@).$group;
       }
 
       $self->user_level_access or next;
 
-      my $users = $model->users->retrieve( q([^\?]+), NUL )->user_list;
-
-      for my $user (@{ $users }) {
-         is_member $user, $data->{acl} or push @ugrps, $user;
+      for my $user (@{ $model->list }) {
+         is_member $user, $access->{acl} or push @tmp, $user;
       }
    }
 
+   my %tmp = (); my @ugrps = ();
+
+   for (@tmp) { unless ($tmp{ $_ }) { push @ugrps, $_; $tmp{ $_ } = TRUE } }
+
    @ugrps = sort @ugrps;
 
-   is_member q(any), $data->{acl} or unshift @ugrps, q(any);
+   is_member q(any), $access->{acl} or unshift @ugrps, q(any);
 
-   $data->{ugrps} = \@ugrps;
-   return $data;
+   $access->{ugrps} = \@ugrps;
+   return $access;
 }
 
 sub _get_action_data {
-   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $data = {};
+   my ($self, $ns, $name) = @_; my $s = $self->context->stash; my $actions = {};
 
    my $new_tag = $s->{newtag};
    my $ns_tag  = $self->namespace_tag;
@@ -656,21 +590,21 @@ sub _get_action_data {
 
    my $res     = $s->{namespace_model}->list( $ns );
 
-   $data->{nspaces} = [ NUL, $new_tag, q(default), @{ $res->list } ];
-   $data->{fields } = $res->result;
+   $actions->{nspaces} = [ NUL, $new_tag, q(default), @{ $res->list } ];
+   $actions->{fields } = $res->result;
 
    if ($ns and $ns ne $new_tag) {
       $res = $s->{name_model}->list( $ns, $name );
 
-      $data->{actions} = [ NUL, $ns_tag, $new_tag, @{ $res->list } ];
-      $name ne $ns_tag and $data->{fields} = $res->result;
+      $actions->{actions} = [ NUL, $ns_tag, $new_tag, @{ $res->list } ];
+      $name ne $ns_tag and $actions->{fields} = $res->result;
    }
 
-   defined $data->{fields}->acl or $data->{fields}->acl( [ NUL ] );
+   defined $actions->{fields}->acl or $actions->{fields}->acl( [ NUL ] );
 
-   $data->{name  } = $is_new ? NUL : ($noun eq q(controller) ? $ns : $name);
-   $data->{is_new} = $is_new;
-   return $data;
+   $actions->{name  } = $is_new ? NUL : ($noun eq q(controller) ? $ns : $name);
+   $actions->{is_new} = $is_new;
+   return $actions;
 }
 
 sub _get_action_info {
@@ -692,41 +626,27 @@ sub _get_action_info {
    return %action_info;
 }
 
-sub _get_my_nav_links {
-   my ($self, $base, $ns, $selected) = @_;
-
-   my $s     = $self->context->stash;
-   my $key   = $s->{lang}.$SUBSEP.$ns.$SUBSEP.$selected;
-   my $cache = $self->_nav_link_cache->{ $key }
-           ||= $self->_get_nav_links( $base, $ns, $selected );
-   my $first = TRUE;
-   my $links = [];
-
-   for my $menu (@{ $cache }) {
-      my $copy          = { %{ $menu } };
-         $copy->{items} = [ grep { $self->_is_visible( $first, $_ ) }
-                                @{ $menu->{items} } ];
-
-      push @{ $links }, $copy; $first = FALSE;
-   }
-
-   return $links;
-}
-
 sub _get_nav_links {
-   my ($self, $base, $myspace, $selected) = @_;
-
-   my $links  = [];
-   my $s      = $self->context->stash;
-   my @s_list = __split_on_sep( $selected );
-   my $args   = { base     => $base,
-                  menus    => $links,
-                  myspace  => $myspace,
-                  query    => NUL,
-                  s_len    => scalar @s_list,
-                  s_list   => \@s_list,
-                  selected => $selected,
-                  title    => $self->loc( 'Navigation' ) };
+   my $self     =  shift;
+   my $links    =  [];
+   my $sep      =  SEP;
+   my $c        =  $self->context;
+   my $s        =  $c->stash;
+   my $myspace  =  $c->action->namespace;
+   my $myname   =  $c->action->name;
+   my $base     =  $s->{base_url};
+   my $selected =  $c->uri_for_action( $myspace.$sep.$myname,
+                                       [ map { '*' } @{ $c->req->captures } ] );
+      $selected =~ s{ \A $base $sep }{}msx; $selected =~ s{ $sep \* }{}gmsx;
+   my @s_list   =  __split_on_sep( $selected );
+   my $opts     =  { base     => $base,
+                     menus    => $links,
+                     myspace  => $myspace,
+                     query    => NUL,
+                     s_len    => scalar @s_list,
+                     s_list   => \@s_list,
+                     selected => $selected,
+                     title    => $self->_localized_nav_title };
 
    $self->_push_menu_link( $links, 0, {
       class => $self->menu_title_class,
@@ -735,39 +655,39 @@ sub _get_nav_links {
       tip   => NUL }, { namespace => $myspace } );
 
    while (my ($ns, $ns_info) = each %{ $s->{ $self->namespace_source } }) {
-      $self->_add_namespace_link( $args, $ns, $ns_info );
+      $self->_add_namespace_link( $opts, $ns, $ns_info );
    }
 
    while (my ($action, $action_info) = each %{ $s->{ $self->action_source } }) {
-      $action_info and $self->_add_action_link( $args, $action, $action_info );
+      $action_info and $self->_add_action_link( $opts, $action, $action_info );
    }
 
    return $self->_sort_links( $links );
 }
 
 sub _get_quick_links {
-   my $self  = shift; my $c = $self->context; my $links = [];
+   my $self  = shift; my $c = $self->context; my $stack = [];
 
    my $model = $c->model( $self->action_class );
-   my $title = $self->loc( 'Navigation' );
+   my $title = $self->_localized_nav_title;
 
    for my $ns (keys %{ $c->stash->{ $self->namespace_source } }) {
       for my $result ($model->search( $ns, { quick_link => { '>' => 0 } } )) {
          my $name = $result->name;
 
-         push @{ $links }, { class     => q(header_link fade),
-                             container => FALSE,
-                             href      => $c->uri_for_action( $ns.SEP.$name ),
-                             id        => $name.q(_quick_link),
-                             sort_by   => $result->quick_link,
-                             text      => $result->text || ucfirst $name,
-                             tip       => $title.TTS.($result->tip || NUL),
-                             type      => q(anchor),
-                             widget    => TRUE };
+         push @{ $stack }, { class      => q(header_link fade),
+                             container  => FALSE,
+                             href       => $c->uri_for_action( $ns.SEP.$name ),
+                             id         => "quick_link_${name}",
+                             quick_link => $result->quick_link,
+                             text       => $result->text || ucfirst $name,
+                             tip        => $title.TTS.($result->tip || NUL),
+                             type       => q(anchor),
+                             widget     => TRUE };
       }
    }
 
-   return [ sort { $a->{sort_by} <=> $b->{sort_by} } @{ $links } ];
+   return [ sort { $a->{quick_link} <=> $b->{quick_link} } @{ $stack } ];
 }
 
 sub _get_sitemap_data {
@@ -775,7 +695,7 @@ sub _get_sitemap_data {
 
    my $title   = $self->loc( 'Select Tab' ); my $key = $self->namespace_source;
 
-   my $nspaces = $c->stash->{ $key }; my $data = []; my $index = 0;
+   my $nspaces = $c->stash->{ $key }; my $sitemap = []; my $index = 0;
 
    for my $ns (sort { __cmp_text( $nspaces, $a, $b ) } keys %{ $nspaces }) {
       my $ns_info  = $nspaces->{ $ns };
@@ -792,14 +712,14 @@ sub _get_sitemap_data {
          widget    => TRUE };
       my $section  = {
          data      => $self->_get_sitemap_table( $ns ),
-         id        => $ns.q(_map),
+         id        => "${ns}_map",
          type      => q(table),
          widget    => TRUE };
 
-      $data->[ $index++ ] = { clicker => $clicker, section => $section };
+      $sitemap->[ $index++ ] = { clicker => $clicker, section => $section };
    }
 
-   return $data;
+   return $sitemap;
 }
 
 sub _get_sitemap_table {
@@ -807,10 +727,8 @@ sub _get_sitemap_table {
 
    my $base    = $c->uri_for_action( $ns.SEP.$self->default_action ) || NUL;
    my $c_no    = 0; my $first  = TRUE; my $field = NUL; my $fields = {};
-   my $lastc   = 0; my $n_cols = 0;    my $sep = SEP;
-   my $table   = CatalystX::Usul::Table->new
-      ( flds   => [ q(controller) ], labels => { controller => 'Controller' } );
-   my $title   = $self->loc( 'Navigation' );
+   my $lastc   = 0; my $n_cols = 0;    my $sep = SEP; my $rows = [];
+   my $title   = $self->_localized_nav_title;
    my $ns_info = $s->{ $self->namespace_source }->{ $ns };
    my %actions = $self->_get_action_info( $base, $ns );
 
@@ -822,7 +740,7 @@ sub _get_sitemap_table {
       tip       => $title.TTS.($ns_info->{tip} || NUL),
       type      => q(anchor),
       widget    => TRUE };
-   push @{ $table->values }, $fields;
+   push @{ $rows }, $fields;
 
    for my $uri_path (sort keys %actions) {
       my $action_info = $actions{ $uri_path };
@@ -832,7 +750,7 @@ sub _get_sitemap_table {
 
       $c_no                 = () = $uri_path =~ m{ $sep }gmx;
       $n_cols               = $c_no if ($c_no > $n_cols);
-      $field                = q(action_).$c_no;
+      $field                = "action_${c_no}";
       $fields               = {};
       $fields->{controller} = NUL;
       $fields->{ $field   } = {
@@ -846,7 +764,7 @@ sub _get_sitemap_table {
 
       if ($first || $c_no > $lastc) {
          $first = FALSE; $lastc = $c_no;
-         $table->values->[-1]->{ $field } = $fields->{ $field };
+         $rows->[ -1 ]->{ $field } = $fields->{ $field };
       }
       else {
          $lastc = $c_no;
@@ -855,27 +773,31 @@ sub _get_sitemap_table {
             $field = q(action_).--$c_no; $fields->{ $field } = NUL;
          }
 
-         push @{ $table->values }, $fields;
+         push @{ $rows }, $fields;
       }
    }
 
-   my $width = $table->widths->{controller} = (int 100 / (2 + $n_cols)).q(%);
+   my @fields = ( q(controller) );
+   my $labels = { controller => $self->loc( 'Controller' ) };
+   my $width  = (int 100 / (2 + $n_cols)).q(%);
+   my $widths = { controller => $width };
 
-   for $field (map { q(action_).$_ } 0 .. $n_cols) {
-      push @{ $table->flds }, $field;
-      $table->labels->{ $field } = 'Actions';
-      $table->widths->{ $field } = $width;
+   for $field (map { "action_${_}" } 0 .. $n_cols) {
+      push @fields, $field;
+      $labels->{ $field } = $self->loc( 'Actions' );
+      $widths->{ $field } = $width;
    }
 
-   return $table;
+   return $self->table_class->new( fields => \@fields, labels => $labels,
+                                   values => $rows,    widths => $widths );
 }
 
 sub _get_tree_panel_data {
-   my $self = shift; my $c = $self->context; my $s = $c->stash;
+   my $self = shift; my $c = $self->context; my $s = $c->stash; my $sep = SEP;
 
    my $key  = $self->namespace_source; my $nspaces = $s->{ $key };
 
-   my $root = q(Site Map); my $data = { $root => {} }; my $sep = SEP;
+   my $root = $self->loc( 'Site Map' ); my $tree = { $root => {} };
 
    for my $ns (sort { __cmp_text( $nspaces, $a, $b ) } keys %{ $nspaces }) {
       my $ns_info = $nspaces->{ $ns };
@@ -885,7 +807,7 @@ sub _get_tree_panel_data {
       my $base = $c->uri_for_action( $ns.$sep.$self->default_action ) || NUL;
       my %action_info = $self->_get_action_info( $base, $ns );
 
-      $data->{ $root }->{ $ns } = {
+      $tree->{ $root }->{ $ns } = {
          _text => $ns_info->{text} || ucfirst $ns,
          _tip  => $ns_info->{tip } || NUL,
          _url  => $base,
@@ -893,7 +815,7 @@ sub _get_tree_panel_data {
 
       for my $uri_path (sort keys %action_info) {
          my $action_info = $action_info{ $uri_path };
-         my $cursor      = $data->{ $root }->{ $ns };
+         my $cursor      = $tree->{ $root }->{ $ns };
 
          $self->_action_allowed( $action_info ) or next;
 
@@ -911,7 +833,7 @@ sub _get_tree_panel_data {
       }
    }
 
-   return $data;
+   return $tree;
 }
 
 sub _is_in_open_state {
@@ -933,28 +855,33 @@ sub _is_visible {
        && $self->allowed( $source, $key || NUL );
 }
 
-sub _push_menu_link {
-   # Add a link to the navigation menu
-   my ($self, $menu, $ord, $ref, $opts) = @_;
+sub _localized_nav_title {
+   return $_[ 0 ]->loc( 'Navigation' );
+}
 
-   $menu ||= []; $ord ||= 0; $ref ||= {};
+sub _push_menu_link { # Add a link to the navigation menu
+   my ($self, $stack, $menu_no, $content, $opts) = @_;
 
-   $ref->{container} = FALSE; $ref->{type} = q(anchor); $ref->{widget} = TRUE;
+   $stack or throw 'No menu arrayref'; $menu_no ||= 0;
 
-   $ref = { content => $ref };
+   $content ||= {}; $content->{container} = FALSE;
 
-   if ($opts) { $ref->{ $_ } = $opts->{ $_ } for (keys %{ $opts }) }
+   $content->{type} = q(anchor); $content->{widget} = TRUE;
 
-   push @{ $menu->[ $ord ]->{items} }, $ref;
+   my $item = { content => $content };
+
+   if ($opts) { $item->{ $_ } = $opts->{ $_ } for (keys %{ $opts }) }
+
+   push @{ $stack->[ $menu_no ]->{items} }, $item;
    return;
 }
 
 sub _sort_links {
-   my ($self, $links) = @_; my $count = 0;
+   my ($self, $stack) = @_; my $count = 0;
 
-   my $selected = $links->[ 0 ]->{selected} || 0;
+   my $selected = $stack->[ 0 ]->{selected} || 0;
 
-   for my $menu (@{ $links }) {
+   for my $menu (@{ $stack }) {
       my $items = $menu->{items} or next; my $first;
 
       if ($count++ <= $selected) { $first = shift @{ $items } }
@@ -968,25 +895,27 @@ sub _sort_links {
       else { $items->[ 0 ]->{content}->{class} = $self->menu_title_class }
    }
 
-   return $links;
+   return $stack;
 }
 
 sub _unshift_menu_item {
-   my ($self, $menu, $ord, $args, $opts) = @_;
+   my ($self, $stack, $menu_no, $content, $opts) = @_;
 
-   $menu ||= []; $ord ||= 0; $args = $args ? { content => $args } : {};
+   $stack or throw 'No menu arrayref'; $menu_no ||= 0;
 
-   if ($opts) { $args->{ $_ } = $opts->{ $_ } for (keys %{ $opts }) }
+   my $item = $content ? { content => $content } : {};
 
-   my $items = $menu->[ $ord ]->{items};
+   if ($opts) { $item->{ $_ } = $opts->{ $_ } for (keys %{ $opts }) }
 
-   $items->[0] and $items->[0]->{content}->{class} = $self->menu_link_class;
+   my $items = $stack->[ $menu_no ]->{items};
 
-   unshift @{ $items }, $args;
+   $items->[ 0 ] and $items->[ 0 ]->{content}->{class} = $self->menu_link_class;
+
+   unshift @{ $items }, $item;
    return;
 }
 
-# Private subroutines
+# Private functions
 
 sub __cmp_text {
    return ($_[ 0 ]->{ $_[ 1 ] }->{text} || $_[ 1 ])
@@ -1034,6 +963,8 @@ sub __split_on_sep {
    my $sep = SEP; return split m{ $sep }mx, $_[ 0 ] || NUL;
 }
 
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -1046,61 +977,139 @@ CatalystX::Usul::Model::Navigation - Navigation links and access control
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1320 $
 
 =head1 Synopsis
 
-   package MyApp;
+   package YourApp;
 
-   use Catalyst qw(ConfigComponents);
+   use Catalyst qw(ConfigComponents...);
 
-   # In the application configuration file
-   <component name="Model::Navigation">
-      <base_class>CatalystX::Usul::Model::Navigation</base_class>
-   </component>
+   __PACKAGE__->config(
+     'Model::Navigation' => {
+        parent_classes   => q(CatalystX::Usul::Model::Navigation) }, );
 
 =head1 Description
 
 Provides methods for creating navigation links and access control
 
+=head1 Configuration and Environment
+
+Defines the following list of attributes
+
+=over 3
+
+=item action_class
+
+A non empty simple string which defaults to I<Config::Rooms>, the name
+of the model used to manage defined actions
+
+=item action_source
+
+A non empty simple string which defaults to I<action>, the stash key
+where action definitions are stored
+
+=item default_action
+
+A non empty simple string which defaults to I<redirect_to_default>. Each
+controller implements this action. It redirects to the controllers default
+action
+
+=item menu_link_class
+
+A non empty simple string which defaults to I<menu_link fade>. The classes
+on the markup for a navigation link
+
+=item menu_selected_class
+
+A non empty simple string which defaults to I<menu_selected fade>. The
+classes on the markup for the selected navigation link
+
+=item menu_title_class
+
+A non empty simple string which defaults to I<menu_title fade>. The
+classes on the markup of the not selected navigation links
+
+=item namespace_source
+
+A non empty simple string which defaults to I<namespace>. The stash key
+where the namespace/controller definitions are stored
+
+=item namespace_tag
+
+A non empty simple string which defaults to I<..Level..>. A popup menu
+selection option used to selected namespace/controller operations
+
+=item skins
+
+A required  array ref. A list of the available skins/themes
+
+=item user_level_access
+
+A boolean which defaults to false. It true then access to actions can be
+set for individual users, not just groups of users. Slows things down a
+lot
+
+=back
+
 =head1 Subroutines/Methods
 
 =head2 COMPONENT
+
+   $navigation_model_object = $self->COMPONENT( $app, $attributes );
 
 Called by Catalyst when the application starts it sets the default action
 from global config and sets up the list of available skins
 
 =head2 access_check
 
-   $state = $c->model( q(Navigation) )->access_check( @args );
+   $state = $self->access_check( $source, $key );
 
-Expects to be passed the stash (C<< $c->stash >>), a key to search in
-the stash (C<$args[0]>) and a level or room to search for
-(C<$args[1]>). It returns 0 if the ACL on the requested level/room
+Expects to be passed a key to search in
+the stash (C<$source>) and a controller or action to search for
+(C<$key>). It returns 0 if the ACL on the requested controller/action
 permits access to the current user. It returns 1 if no ACL was
 found. It returns 2 if the current user is unknown and the
-level/room's ACL did not contain the value I<any> which would permit
+controller/action's ACL did not contain the value I<any> which would permit
 anonymous access. It returns 3 if the current user is explicitly
-denied access to the selected level/room
+denied access to the selected controller/action
 
-This method is called from C</add_nav_menu> (via the C</allowed>
-method which negates the result) to determine which levels the current
-user has access to. It is also called by B</auto> to determine if
-access to the requested endpoint is permitted
+This method is called from L</add_nav_menu> (via the L</allowed>
+method which negates the result) to determine which controllers the current
+user has access to. It is also called by C<auto> to determine if
+access to the requested action is permitted
 
 It could also be used from an application controller method to allow
 the display logic to display content based on the users identity
 
 =head2 access_control_form
 
-   $c->model( q(Navigation) )->form( $namespace, $name );
+   $self->form( $namespace, $name );
 
 Stuffs the stash with the data for the form that controls access to
-levels and rooms
+controllers and actions
 
-=head2 add_header
+=head2 add_menu_back
 
-   $c->model( q(Navigation) )->add_header;
+   $self->add_menu_back( { tip => $title_text } );
+
+Adds a history back link to the main navigation menu
+
+=head2 add_menu_blank
+
+   $self->add_menu_blank;
+
+Adds some filler to the main navigation menu
+
+=head2 add_menu_close
+
+   $self->add_menu_close( $args );
+
+Adds a window close link to the main navigation menu
+
+=head2 add_nav_header
+
+   $self->add_nav_header;
 
 Calls parent method. Adds main and tools menu data. Adds quick link data
 
@@ -1112,43 +1121,24 @@ Calls L<add_quick_links>. Quick links appear in the header and are
 selected from the I<rooms> config items if the I<quick_link> element
 is set. It's numeric value determines the sort order of the links
 
-=head2 add_help_menu
-
-Help menu options
-
-=head2 add_footer
-
-Adds some useful debugging info to the footer
-
-=head2 add_menu_back
-
-   $c->model( q(Navigation) )->add_menu_back( $args );
-
-Adds a history back link to the main navigation menu
-
-=head2 add_menu_blank
-
-   $c->model( q(Navigation) )->add_menu_blank( $args );
-
-Adds some filler to the main navigation menu
-
-=head2 add_menu_close
-
-   $c->model( q(Navigation) )->add_menu_close( $args );
-
-Adds a window close link to the main navigation menu
-
 =head2 add_nav_menu
 
-   $c->model( q(Navigation) )->add_nav_menu;
+   $self->add_nav_menu;
 
 Returns the data used to generate the main navigation menu. The menu uses
 a Cone Trees layout which has been flattened to produce a visual trail
 of breadcrumbs effect, i.e. Home > Reception > Tutorial
 
+=head2 add_navigation_sidebar
+
+   $panel_number = $self->add_navigation_sidebar;
+
+Adds a sidebar panel containing a tree widget that represents all the
+action available in the application (another sitemap)
+
 =head2 add_quick_links
 
-   $links = $c->model( q(Navigation) )->add_quick_links;
+   $links = $self->add_quick_links;
 
 Returns the data used to display "quick" navigation links. Caches data
 on first use. These usually appear in the header and allow single
@@ -1157,34 +1147,18 @@ by adding a I<quick_link> attribute to the I<rooms> element. The
 I<quick_link> attribute value is an integer which determines the
 display order
 
-=head2 add_sidebar_panel
-
-Adds a sidebar panel containing a tree widget that represents all the
-action available in the application (another sitemap)
-
-=head2 add_tools_menu
-
-Utility menu options
-
-=head2 add_tree_panel
-
-   $c->model( q(Navigation) )->add_tree_panel;
-
-Calls L</_get_tree_panel_data> and creates a tree widget using the data. Implements
-the navigation sidebar
-
 =head2 add_utils_menu
 
-   $c->model( q(Navigation) )->add_utils_menu;
+   $self->add_utils_menu;
 
 Returns the stash data for the utilities menu. This contains a selection of
 utility options including: toggle runtime debugging, toggle footer,
 skin switching, context sensitive help, about popup, email feedback
-and logout option. Calls L</add_help_menu> and L</add_tools_menu>
+and logout option. Calls L</_add_help_menu> and L</_add_tools_menu>
 
 =head2 allowed
 
-   $bool = $c->model( q(Navigation) )->allowed( @args );
+   $state = $self->allowed( $source, $key );
 
 Negates the result returned by L</access_check>. Called from
 L</add_nav_menu> to determine if a page is accessible to a user. If
@@ -1192,46 +1166,76 @@ the user does not have access then do not display a link to it
 
 =head2 app_closed_form
 
-   $c->model( q(Navigation) )->app_closed_form;
+   $self->app_closed_form;
 
 Allows administrators to authenticate and reopen the application
 
+=head2 load_status_msgs
+
+   $self->load_status_msgs;
+
+Calls L<Catalyst::Plugin::StatusMessage> to load the stash with the status
+and error messages from the previous request (oops there goes HTTP's
+statelessness). Stuffs the messages back into the stash so that they appear
+in the results div
+
+=head2 navigation_sidebar_form
+
+   $self->navigation_sidebar_form;
+
+Calls L</_get_tree_panel_data> and creates a tree widget using the
+data. Implements the navigation sidebar
+
 =head2 room_manager_form
 
-   $c->model( q(Navigation) )->room_manager_form( $namespace, $name );
+   $self->room_manager_form( $namespace, $name );
 
-Allows for editing of the level and room definition elements in the
+Allows for editing of the controller and action definition elements in the
 configuration files
 
 =head2 select_this
 
-   $c->model( q(Navigation) )->select_this( $menu_num, $order, $widget );
+   $self->select_this( $menu_no, $order, $widget );
 
 Make the widget the selected menu item
 
-=head2 sitemap
+=head2 sitemap_form
 
-   $c->model( q(Navigation) )->sitemap;
+   $self->sitemap_form;
 
 Displays a table of all the pages on the site
 
+=head1 Private Methods
+
+=head2 _add_help_menu
+
+   $self->_add_help_menu( $name, $stack, $menu_no );
+
+Stashes the data for the help menu options
+
+=head2 _add_tools_menu
+
+   $self->_add_tools_menu( $name, $stack, $menu_no );
+
+Utility menu options
+
 =head2 _get_tree_panel_data
 
-   $data = $c->model( q(Navigation) )->_get_tree_panel_data;
+   $data = $self->_get_tree_panel_data;
 
 Called by L</sitemap> this method generates the table data used by
 L<HTML::FormWidgets>'s C<Tree> subclass
 
 =head2 _get_sitemap_data
 
-   $data = $c->model( q(Navigation) )->_get_sitemap_data;
+   $data = $self->_get_sitemap_data;
 
 Called by L</sitemap> this method generates an array of hash refs used by
 L<HTML::FormWidgets>'s C<TabSwapper> subclass
 
 =head2 _get_sitemap_table
 
-   $data = $c->model( q(Navigation) )->_get_sitemap_table( $ns );
+   $data = $self->_get_sitemap_table( $ns );
 
 Called by L</_get_sitemap_data> this method generates the table
 data used by L<HTML::FormWidgets>'s C<Table> subclass
@@ -1252,17 +1256,19 @@ Unshift an anchor widget onto a menu structure
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::Table>
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<Class::Usul::Response::Table>
+
+=item L<File::DataClass::IO>
 
 =back
 
@@ -1282,7 +1288,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2011 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

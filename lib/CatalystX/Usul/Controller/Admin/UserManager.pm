@@ -1,19 +1,23 @@
-# @(#)$Id: UserManager.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: UserManager.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Controller::Admin::UserManager;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Controller);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 
-__PACKAGE__->config( alias_class   => q(MailAliases),
-                     namespace     => q(admin),
-                     profile_class => q(UserProfiles), );
+BEGIN { extends q(CatalystX::Usul::Controller) }
 
-__PACKAGE__->mk_accessors( qw(alias_class profile_class) );
+with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
+with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+
+__PACKAGE__->config( namespace => q(admin), );
+
+has 'alias_class'   => is => 'ro', isa => Str, default => q(MailAliases);
+
+has 'profile_class' => is => 'ro', isa => Str, default => q(UserProfiles);
 
 sub user_base : Chained(common) PathPart(users) CaptureArgs(0) {
    # Stash the identity model for the selected realm
@@ -21,7 +25,7 @@ sub user_base : Chained(common) PathPart(users) CaptureArgs(0) {
 
    $c->stash->{user_params} = $self->get_uri_query_params( $c );
 
-   return $self->set_identity_model( $c );
+   return $self->stash_identity_model( $c );
 }
 
 sub mail_aliases : Chained(user_base) PathPart(aliases) Args HasActions {
@@ -39,9 +43,9 @@ sub mail_aliases_create_or_update : ActionFor(mail_aliases.insert)
 }
 
 sub mail_aliases_delete : ActionFor(mail_aliases.delete) {
-   my ($self, $c) = @_; my $model = $c->model( $self->alias_class );
+   my ($self, $c) = @_; $c->model( $self->alias_class )->delete;
 
-   $model->delete; $self->set_uri_args( $c, $c->stash->{newtag} );
+   $self->set_uri_args( $c, $c->stash->{newtag} );
    return TRUE;
 }
 
@@ -64,9 +68,9 @@ sub user_manager_create_or_update : ActionFor(user_manager.insert)
 }
 
 sub user_manager_delete : ActionFor(user_manager.delete) {
-   my ($self, $c) = @_; my $s = $c->stash;
+   my ($self, $c) = @_; my $s = $c->stash; $s->{user_model}->delete;
 
-   $s->{user_model}->delete; $self->set_uri_args( $c, $s->{newtag} );
+   $self->set_uri_args( $c, $s->{newtag} );
    return TRUE;
 }
 
@@ -89,9 +93,9 @@ sub user_profiles_create_or_update : ActionFor(user_profiles.insert)
 }
 
 sub user_profiles_delete : ActionFor(user_profiles.delete) {
-   my ($self, $c) = @_; my $model = $c->model( $self->profile_class );
+   my ($self, $c) = @_; $c->model( $self->profile_class )->delete;
 
-   $model->delete; $self->set_uri_args( $c, $c->stash->{newtag} );
+   $self->set_uri_args( $c, $c->stash->{newtag} );
    return TRUE;
 }
 
@@ -132,6 +136,12 @@ sub user_sessions : Chained(user_base) PathPart(sessions) Args(0) HasActions {
    return;
 }
 
+sub user_sessions_delete : ActionFor(user_sessions.delete) {
+   my ($self, $c) = @_; return $c->model( q(Session) )->delete_sessions;
+}
+
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -144,13 +154,15 @@ CatalystX::Usul::Controller::Admin::UserManager - User account management
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   package MyApp::Controller::Admin;
+   package YourApp::Controller::Admin;
 
-   use base qw(CatalystX::Usul::Controller::Admin);
+   use CatalystX::Usul::Moose;
+
+   BEGIN { extends q(CatalystX::Usul::Controller::Admin) }
 
    __PACKAGE__->build_subcontrollers;
 
@@ -268,6 +280,10 @@ Updates the selected users list of roles (groups)
 Display two tables. The list of current sessions stored in the session
 store and the list of current TTY sessions
 
+=head2 user_sessions_delete
+
+Delete the selected user sessions
+
 =head1 Diagnostics
 
 None
@@ -281,6 +297,10 @@ None
 =over 3
 
 =item L<CatalystX::Usul::Controller>
+
+=item L<CatalystX::Usul::TraitFor::Controller::ModelHelper>
+
+=item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
 
 =back
 
@@ -300,7 +320,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

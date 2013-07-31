@@ -1,10 +1,10 @@
-# @(#)$Id: ListSessions.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: ListSessions.pm 1305 2013-04-02 14:51:23Z pjf $
 
 package CatalystX::Usul::TraitFor::ListSessions;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1305 $ =~ /\d+/gmx );
 
 use Moose::Role;
 
@@ -24,7 +24,7 @@ CatalystX::Usul::TraitFor::ListSessions - List Catalyst sessions
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1305 $
 
 =head1 Synopsis
 
@@ -36,7 +36,12 @@ CatalystX::Usul::TraitFor::ListSessions - List Catalyst sessions
 
 =head1 Description
 
-A L<role|Moose::Role> which lists Catalyst FastMmap sessions
+A L<role|Moose::Role> which lists
+L<Catalyst::Plugin::Session::Store::FastMmap> sessions
+
+=head1 Configuration and Environment
+
+None
 
 =head1 Subroutines/Methods
 
@@ -47,9 +52,9 @@ L<Catalyst::Plugin::Session::Store::FastMmap>
 
 This method should be implemented for each of the C::P::S::Store::* backends
 
-=head1 Configuration and Environment
-
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
@@ -81,7 +86,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2012 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,110 +1,52 @@
-# @(#)$Id: InflateSymbols.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: InflateSymbols.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::InflateSymbols;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Base CatalystX::Usul::File);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use Class::Usul;
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(class2appdir home2appl untaint_path);
-use Config;
+use CatalystX::Usul::Functions qw(is_hashref);
 
-require Cwd;
+has 'app_class' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
-my @METHODS = qw(appldir binsdir phase);
+around 'BUILDARGS' => sub {
+   my ($next, $self, @args) = @_; my $car = $args[ 0 ];
 
-__PACKAGE__->mk_accessors( qw(_config) );
+   $car and @args < 2 and not is_hashref $car
+      and return $self->$next( { app_class => $car } );
 
-sub new {
-   my ($self, $app) = @_;
+   return $self->$next( @args );
+};
 
-   my $conf = ref $app ? $app->{config} : $app->config;
+sub inflate {
+   my ($self, $symbol, $relpath) = @_; my $usul = $self->_usul; my $inflated;
 
-   return bless { _config => $conf }, ref $self || $self;
-}
+   $usul->config->can( $symbol ) and $inflated = $usul->config->$symbol;
 
-sub appldir {
-   my $self = shift; my $conf = $self->_config; my $dir;
+   (defined $inflated and defined $relpath) or return $inflated;
 
-   if (not $conf->{appldir} or $conf->{appldir} =~ m{ __APPLDIR__ }msx) {
-      $dir = $self->dirname( $Config{sitelibexp} );
-      $dir = $conf->{home} =~ m{ \A $dir }msx
-           ? $self->catdir( NUL, qw(var www), class2appdir $conf->{name},
-                            q(default) )
-           : home2appl $conf->{home};
-      $conf->{appldir} = Cwd::abs_path( $dir );
-   }
-
-   return $conf->{appldir};
-}
-
-sub binsdir {
-   my $self = shift; my $conf = $self->_config; my $dir;
-
-   if (not $conf->{binsdir} or $conf->{binsdir} =~ m{ __BINSDIR__ }msx) {
-      $dir = $self->dirname( $Config{sitelibexp} );
-      $dir = $conf->{home} =~ m{ \A $dir }msx
-           ? $Config{scriptdir}
-           : $self->catdir( home2appl $conf->{home}, q(bin) );
-      $conf->{binsdir} = Cwd::abs_path( $dir );
-   }
-
-   return $conf->{binsdir};
-}
-
-sub inflate_symbols {
-   my ($self, $symbols) = @_; my $conf = $self->_config; $symbols or return;
-
-   for my $k (keys %{ $symbols }) {
-      my $v = defined $conf->{ $k } ? $conf->{ $k }
-            : ref $symbols->{ $k }  ? $self->_expand( $symbols->{ $k } )
-                                    : $symbols->{ $k };
-
-   TRY: {
-      $v =~ m{ __appldir\( (.*) \)__ }msx
-         and $v = $self->catdir( $conf->{appldir}, $1 ) and last TRY;
-
-      $v =~ m{ __binsdir\( (.*) \)__ }msx
-         and $v = $self->catdir( $conf->{binsdir}, $1 ) and last TRY;
-
-      $v =~ m{ __path_to\( (.*) \)__ }msx
-         and $v = $self->catdir( $conf->{home}, $1 );
-      } # TRY
-
-      $v and $v = untaint_path( $v ) and -e $v and $v = Cwd::abs_path( $v );
-
-      $conf->{ $k } = $v;
-   }
-
-   return;
-}
-
-sub phase {
-   my $self = shift; my $conf = $self->_config; my $dir;
-
-   if (not $conf->{phase} or $conf->{phase} =~ m{ __PHASE__ }msx) {
-      my $dir     = $self->basename( $self->appldir );
-      my ($phase) = $dir =~ m{ \A v \d+ [.] \d+ p (\d+) \z }msx;
-
-      $conf->{phase} = defined $phase ? $phase : PHASE;
-   }
-
-   return $conf->{phase};
-}
-
-sub visit_all {
-   my $self = shift; $self->$_() for (@METHODS); return;
+   return $usul->config->canonicalise( $inflated, $relpath );
 }
 
 # Private methods
 
-sub _expand {
-   my ($self, $args) = @_;
+sub _usul {
+   my $self = shift; my $app_class = $self->app_class; my $usul;
 
-   return '__appldir('.$self->catdir( @{ $args } ).')__';
+   $app_class->can( q(usul) ) and defined ($usul = $app_class->usul)
+      and return $usul;
+
+   $usul = Class::Usul->new_from_class( $app_class );
+
+   $app_class->mk_classdata( q(usul), $usul );
+
+   return $usul;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -118,7 +60,7 @@ CatalystX::Usul::InflateSymbols - Return paths to installation directories
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -126,57 +68,38 @@ CatalystX::Usul::InflateSymbols - Return paths to installation directories
 
    use Catalyst qw(InflateMore ConfigLoader ...);
 
-   MyApp->config->{InflateMore} = 'MyApp::Config';
-
-   package MyApp::Config;
-
-   use base qw(CatalystX::Usul::InflateSymbols);
+   MyApp->config->{Plugin::InflateMore} = 'CatalystX::Usul::InflateSymbols';
 
 =head1 Description
 
 The intention here is to demonstrate how to use
-L<Catalyst::Plugin::InflateMore>. It is unlikely that anyone will find
-this module useful unless your share my view on application
-layout. Instead write your own class that implements the methods for
-the configuration file symbols of your choice.
+L<Catalyst::Plugin::InflateMore> to inflate symbolic references in configuration
+data
 
-My applications are divided into three parts by the installer. Since
-the installer supports multiple layouts these methods will return
-paths to each of those components. These methods are called from
-L<Catalyst::Plugin::InflateMore>.
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item app_class
+
+The classname of the application whose configuration data symbols are being
+inflated
+
+=back
 
 =head1 Subroutines/Methods
 
-=head2 new
+=head2 inflate
 
-The constructor stores a copy of the application object
+   $inflated = $self->inflate( $symbol, $relpath );
 
-=head2 appldir
-
-Return absolute path to the directory which defines the phase number
-
-=head2 binsdir
-
-Return absolute path to the directory containing the programs
-
-=head2 inflate_symbols
-
-Takes a hash ref of config key and values. Inflates and untaints (as
-file paths) the values
-
-=head2 phase
-
-Return the phase number derived from the L</appldir>
-
-=head2 visit_all
-
-Calls each of the other object methods thereby inflating each value
+Inflates the symbol. If C<$relpath> is provided returns the untainted
+canonical path of the concatenated inflated symbol value and the
+C<$relpath>
 
 =head1 Diagnostics
-
-None
-
-=head1 Configuration and Environment
 
 None
 
@@ -184,7 +107,9 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul>
+=item L<Class::Usul>
+
+=item L<CatalystX::Usul::Moose>
 
 =back
 
@@ -204,7 +129,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

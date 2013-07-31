@@ -1,11 +1,12 @@
-# @(#)$Id: PersistentState.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: PersistentState.pm 1319 2013-06-23 16:21:01Z pjf $
 
-package CatalystX::Usul::Plugin::Controller::PersistentState;
+package CatalystX::Usul::TraitFor::Controller::PersistentState;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use namespace::autoclean;
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use Moose::Role;
 use CatalystX::Usul::Constants;
 
 sub get_uri_args {
@@ -31,8 +32,8 @@ sub get_uri_args {
       push @args, $v;
    }
 
-   $self->debug and defined $args[0]
-      and $self->log_debug( 'URI attrs '.__uri_attrs_stringify( @args ) );
+   $self->debug and defined $args[ 0 ]
+      and $self->log->debug( 'URI attrs '.__uri_attrs_stringify( @args ) );
    return @args;
 }
 
@@ -68,7 +69,7 @@ sub init_uri_attrs {
 
    my $s         = $c->stash;
    my $conf_key  = $self->_uri_attrs_config_key;
-   my $conf_keys = $s->{ $conf_key }->{ $s->{form}->{name} } or return;
+   my $conf_keys = $s->{ $conf_key }->{ $s->{form}->{name} || NUL } or return;
    my $cache     = $self->_uri_attrs_cache( $c );
 
    while (my ($key, $conf) = each %{ $conf_keys->{vals} }) {
@@ -82,7 +83,7 @@ sub init_uri_attrs {
 }
 
 sub persist_state {
-   # When the plugin is loaded $self->can( q(persist_state) )
+   # When the role is applied $self->can( q(persist_state) )
 }
 
 sub set_uri_args {
@@ -107,7 +108,10 @@ sub set_uri_args {
 }
 
 sub set_uri_attrs_or_redirect {
-   my ($self, $c, @args) = @_;
+   my ($self, $c, @args) = @_; my $sep = SEP;
+
+   # Workaround a bug in $c->req. Cannot handle / as an argument
+   $c->req->_path =~ m{ $sep $sep \z }mx and $args[ 0 ] = $sep;
 
    if (defined $args[ 0 ]) {
       $self->set_uri_args( $c, @args );
@@ -119,9 +123,9 @@ sub set_uri_attrs_or_redirect {
 
    ($action and $args[ 0 ]) or return;
 
-   my $params = $self->get_uri_query_params( $c );
-   my $uri    = $c->uri_for_action( $action, @args, $params );
-
+   my $params = { %{ $self->get_uri_query_params( $c ) },
+                  %{ $c->req->query_params             } };
+   my $uri    = $c->uri_for_action( $action, grep { defined } @args, $params );
    $c->res->redirect( $uri );
    $c->detach(); # Never returns
    return;
@@ -163,7 +167,7 @@ sub _uri_attrs_inflate {
       $v = undef;
 
       for my $part (split m{ \. }mx, $1) {
-         $v = defined $v ? $v->{ $part } : $s->{ $part };
+         $v = defined $v ? $v->{ $part } : $s->{ $part }; defined $v or return;
       }
    }
 
@@ -175,7 +179,7 @@ sub _uri_attrs_model {
 }
 
 sub _uri_attrs_model_class {
-   my ($self, $c, $class) = @_; my $s = $c->stash; $class ||= q(Base);
+   my ($self, $c, $class) = @_; my $s = $c->stash; $class ||= q(Config);
 
    return $s->{ $self->_uri_attrs_stash_key }->{_model_class} ||= $class;
 }
@@ -208,38 +212,73 @@ CatalystX::Usul::Plugin::Controller::PersistentState - Set/Get state information
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::PersistentState;
+   package YourApp::Controller::YourController;
+
+   use CatalystX::Usul::Moose;
+
+   extends q(CatalystX::Controller);
+   with    q(CatalystX::Usul::TraitFor::Controller::PersistentState);
 
 =head1 Description
 
-Uses the session store to provide state information that is persistent across
-requests
+Uses the session store to provide uri arguments and parameters that are
+persistent across requests
 
 =head1 Subroutines/Methods
 
 =head2 get_uri_args
 
-   my @args = $self->get_uri_args( $c );
+   @args = $self->get_uri_args( $c );
+
+Each action can define a list of named arguments in config. This method
+returns a list of values, one for each defined argument. Values are
+searched for in the following locations; the uri attribute cache, the
+request object, the session and finally the configuration default
 
 =head2 get_uri_query_params
 
+   $params = $self->get_uri_query_params( $c );
+
+Each action can define a list of key / value parameter pairs in config. This
+method return a hash ref of parameters. Values are searched for in the same
+locations as L</get_uri_args>
+
 =head2 init_uri_attrs
+
+   $self->init_uri_attrs( $c, $model_class );
+
+This needs to be called early in chained controller methods. It
+initialises the attribute cache used by the other method calls
 
 =head2 persist_state
 
-When the plugin is loaded C<$self->can( q(persist_state) )>
+When the role is applied C<$self->can( q(persist_state) )> is true
 
 =head2 set_uri_args
 
    $self->set_uri_args( $c, @args );
 
-=head2 set_uri_attrs_or_redirect;
+Saves the supplied list of arguments to the session and the cache
+
+=head2 set_uri_attrs_or_redirect
+
+   $self->set_uri_attrs_or_redirect( $c, @args );
+
+If at least one defined argument is passed then this method calls
+L</set_uri_args> and L</set_uri_query_params> and the returns. If no
+defined arguments are passed it calls L</get_uri_args> and
+L</get_uri_query_params>. This method then creates a uri using these values
+and redirects to it
 
 =head2 set_uri_query_params
+
+   $self->set_uri_query_params( $c, \%params );
+
+Saves the supplied parameter hash to the session and the cache
 
 =head1 Diagnostics
 
@@ -253,7 +292,7 @@ None
 
 =over 3
 
-=item L<CatalystX::Usul::Constants>
+=item L<Moose::Role>
 
 =back
 
@@ -273,7 +312,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008-2010 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

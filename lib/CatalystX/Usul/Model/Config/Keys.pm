@@ -1,24 +1,35 @@
-# @(#)$Id: Keys.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Keys.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Keys;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
-__PACKAGE__->config
-   ( create_msg_key => 'Keys [_1]/[_2] created',
-     delete_msg_key => 'Keys [_1]/[_2] deleted',
-     keys_attr      => q(keys),
-     table_data     => {
-        vals        => {
-           align    => { name => q(left), key => q(left), order => q(right) },
-           flds     => [ qw(name key order) ],
-           labels   => { name => 'Key',  key => 'Default', order => 'Order' },
-           sizes    => { name => 16,     key => 16,        order => 2 }, }, },
-     typelist       => { vals => q(table) },
-     update_msg_key => 'Keys [_1]/[_2] updated', );
+use CatalystX::Usul::Moose;
+
+extends q(CatalystX::Usul::Model::Config);
+
+has '+create_msg_key' => default => 'Keys [_1]/[_2] created';
+
+has '+delete_msg_key' => default => 'Keys [_1]/[_2] deleted';
+
+has '+fields'         => default => sub { [ qw(vals) ] };
+
+has '+keys_attr'      => default => q(keys);
+
+has '+table_data'     => default => sub { {
+   vals               => {
+      classes         => { order => 'ifield numeric' },
+      fields          => [ qw(name key order) ],
+      labels          => { name => 'Key',  key => 'Default', order => 'Order' },
+      typelist        => { order => 'numeric' },
+      sizes           => { name => 16,     key => 16,        order => 2 }, },}};
+
+has '+typelist'       => default => sub { { vals => q(table) } };
+
+has '+update_msg_key' => default => 'Keys [_1]/[_2] updated';
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -32,7 +43,7 @@ CatalystX::Usul::Model::Config::Keys - Class definition for keys configuration e
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
@@ -43,7 +54,7 @@ CatalystX::Usul::Model::Config::Keys - Class definition for keys configuration e
 Defines the attributes for the <keys> element in the configuration
 files
 
-Defines one language independent attribute; I<vals>
+Defines one language independent attribute; C<vals>
 
 =head1 Subroutines/Methods
 

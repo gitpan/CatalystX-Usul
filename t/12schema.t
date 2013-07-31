@@ -1,11 +1,11 @@
-# @(#)$Id: 12schema.t 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: 12schema.t 1290 2012-10-31 01:42:57Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1290 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
-use lib catdir( $Bin, updir, q(lib) );
+use lib catdir( $Bin, updir, q(lib) ), catdir( $Bin, q(lib) );
 
 use Module::Build;
 use Test::More;
@@ -15,21 +15,21 @@ BEGIN {
 
    $current and $current->notes->{stop_tests}
             and plan skip_all => $current->notes->{stop_tests};
-
-   plan tests => 3;
 }
 
-use Class::Null;
+use MyApp;
+use CatalystX::Usul::Model::Schema;
 
-use_ok q(CatalystX::Usul::Schema);
+my $class = q(CatalystX::Usul::Model::Schema);
+my $attr  = { ctlfile  => q(t/test.json),
+              database => q(library),
+              prefix   => q(munchies),
+              tempdir  => q(t), };
+my $dsn   = q(dbi:mysql:database=library;host=localhost;port=3306);
 
-my $ref = q(CatalystX::Usul::Schema);
+is $class->get_connect_info( 'MyApp', $attr )->[ 0 ], $dsn, 'Connect info';
 
-ok( $ref->get_connect_info( { ctlfile => q(t/test.xml), prefix => q(munchies), tempdir => q(t), }, q(library), )->[0] eq q(dbi:mysql:database=library;host=localhost;port=3306), q(connect_info) );
-
-my $encrypted = $ref->encrypt( q(munchies), q(test) );
-
-ok( $ref->decrypt( q(munchies), $encrypted ) eq q(test), q(encrypt/decrypt) );
+done_testing;
 
 # Local Variables:
 # mode: perl

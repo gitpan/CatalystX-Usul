@@ -1,39 +1,43 @@
-# @(#)$Id: MailAliases.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: MailAliases.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::MailAliases;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(throw);
-use File::MailAlias;
-use MRO::Compat;
+use CatalystX::Usul::Functions   qw(throw);
+use CatalystX::Usul::Constraints qw(Path);
 use TryCatch;
 
-__PACKAGE__->mk_accessors( qw(user_model) );
+extends q(CatalystX::Usul::Model);
+with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
+
+has '+domain_class' => default => q(File::MailAlias);
+
+has 'aliases_path'  => is => 'lazy', isa => Path, coerce => TRUE,
+   default          => sub { [ $_[ 0 ]->usul->config->ctrldir, 'aliases' ] };
+
+
+has '_user_model'   => is => 'lazy', isa => Object,
+   default          => sub { $_[ 0 ]->context->model( q(UsersUnix) ) },
+   init_arg         => undef, reader => 'user_model';
 
 sub build_per_context_instance {
-   my ($self, $c, @rest) = @_;
+   my ($self, $c, @rest) = @_; my $clone = $self->next::method( $c, @rest );
 
-   my $new   = $self->next::method( $c, @rest );
-   my $attrs = { %{ $new->domain_attributes || {} } };
+   my $attr = { path => $clone->aliases_path,
+                %{ $clone->domain_attributes || {} }, builder => $clone->usul };
 
-   $attrs->{ioc_obj} = $new;
-   $attrs->{path   } = $c->config->{aliases_path};
-
-   $new->domain_model( File::MailAlias->new( $attrs ) );
-   $new->user_model  ( $c->model( q(UsersUnix) ) );
-
-   return $new;
+   $clone->domain_model( $self->domain_class->new( $attr ) );
+   return $clone;
 }
 
 sub create_or_update {
    my $self = shift;
-   my $name = $self->query_value( q(name) )
-      or throw 'Alias name not specified';
+   my $name = $self->query_value( q(name) ) or throw 'Alias name not specified';
 
   (my $recipients = $self->query_value( q(recipients) )) =~ s{ \s+ }{ }gmsx;
 
@@ -41,18 +45,17 @@ sub create_or_update {
    my $fields = { name       => $name,
                   alias_name => $name,
                   comment    => $self->query_array( q(comment) ) || [],
-                  owner      => $s->{user},
+                  owner      => $s->{user}->username,
                   recipients => [ split SPC, $recipients ] };
-   my $alias  = $self->query_value( q(alias) ) || NUL;
-   my $key    = $alias eq $s->{newtag}
-              ? 'Alias [_1] created' : 'Alias [_1] updated';
-   my $method = $alias eq $s->{newtag} ? q(create) : q(update);
+   my $is_new = $self->query_value( q(alias) ) eq $s->{newtag} ? TRUE : FALSE;
+   my $key    = $is_new ? 'Alias [_1] created' : 'Alias [_1] updated';
+   my $method = $is_new ? q(create) : q(update);
    my $out;
 
    ($name, $out) = $self->domain_model->$method( $self->check_form( $fields ) );
+   $self->user_model->invalidate_cache;
    $self->add_result_msg( $key, $name );
    $self->add_result( $out );
-   $self->user_model->domain_model->cache->{dirty} = TRUE;
    return $name;
 }
 
@@ -62,54 +65,59 @@ sub delete {
       or throw 'Alias name not specified';
    my ($name, $out) = $self->domain_model->delete( { name => $alias } );
 
+   $self->user_model->invalidate_cache;
    $self->add_result_msg( 'Alias [_1] deleted', $name );
    $self->add_result( $out );
-   $self->user_model->domain_model->cache->{dirty} = TRUE;
    return;
 }
 
 sub mail_aliases_form {
-   my ($self, $alias) = @_; my $data;
+   my ($self, $alias_name) = @_; my $mail_alias;
 
    # Retrieve data from model
-   try        { $data = $self->domain_model->list( $alias ) }
+   try        { $mail_alias = $self->domain_model->list( $alias_name ) }
    catch ($e) { return $self->add_error( $e ) }
 
    my $s       = $self->context->stash;
    my $form    = $s->{form}->{name}; $s->{pwidth} -= 20;
-   my $aliases = [ NUL, $s->{newtag}, @{ $data->list } ];
-   my $element = $data->result;
+   my $is_new  = $alias_name eq $s->{newtag} ? TRUE : FALSE;
+   my $aliases = [ NUL, $s->{newtag}, @{ $mail_alias->list } ];
+   my $alias   = $mail_alias->result;
 
    # Add HTML elements items to form
-   $self->clear_form( { firstfld => $form.'.alias' } );
-   $self->add_field(  { default  => $alias,
-                        id       => $form.'.alias',
-                        values   => $aliases } );
+   $self->clear_form( { firstfld  => "${form}.alias" } );
+   $self->add_field(  { default   => $alias_name,
+                        id        => "${form}.alias",
+                        values    => $aliases } );
 
-   if ($data->found and $element->owner) {
-      $s->{owner  } = $element->owner;
-      $s->{created} = $element->created;
-      $self->add_field( { id => $form.'.note' } );
+   if ($is_new) {
+      $self->add_field( { id      => "${form}.alias_name",
+                          name    => 'name' } );
+      $self->add_buttons( qw(Insert) );
+   }
+   else {
+      $self->add_hidden( 'name', $alias_name );
+      $self->add_buttons( qw(Save Delete) );
    }
 
-   $self->group_fields( { id => $form.'.select' } ); $alias or return;
+   if ($mail_alias->found and $alias->owner) {
+      $s->{owner} = $alias->owner; $s->{created} = $alias->created;
+      $self->add_field( { id      => "${form}.note" } );
+   }
 
-   $self->add_field(    { ajaxid  => $form.'.alias_name',
-                          default => $alias ne $s->{newtag} ? $alias : NUL,
-                          name    => 'name' } );
-   $self->add_field(    { default => $element->comment || '-',
-                          id      => $form.'.comment' } );
-   $self->add_field(    { default =>
-                             (join "\r", @{ $element->recipients || [] } ),
-                          id      => $form.'.recipients' } );
-   $self->group_fields( { id      => $form.'.edit' } );
+   $self->group_fields( { id      => "${form}.select" } );
 
-   # Add buttons to form
-   if ($alias eq $s->{newtag}) { $self->add_buttons( qw(Insert) ) }
-   else { $self->add_buttons( qw(Save Delete) ) }
+   $alias_name or return;
 
+   $self->add_field(    { default => $alias->comment || '-',
+                          id      => "${form}.comment" } );
+   $self->add_field(    { default => (join "\r", @{ $alias->recipients || [] }),
+                          id      => "${form}.recipients" } );
+   $self->group_fields( { id      => "${form}.edit" } );
    return;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -123,17 +131,36 @@ CatalystX::Usul::Model::MailAliases - Manipulate the mail aliases file
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
-   use CatalystX::Usul::Model::MailAliases;
+   package YourApp;
 
-   $alias_obj = CatalystX::Usul::Model::MailAliases->new( $app, $config );
+   use Catalyst qw(ConfigComponents...);
+
+   __PACKAGE__->config(
+     'Model::MailAliases'  => {
+        parent_classes     => q(CatalystX::Usul::Model::MailAliases),
+        domain_attributes  => {
+           root_update_cmd => q(path_to_suid_wrapper), }, }, );
 
 =head1 Description
 
 Management model file the system mail alias file
+
+=head1 Configuration and Environment
+
+Defines the following attributes
+
+=over 3
+
+=item aliases_path
+
+The path to the local copy of the mail alias file. Defaults to
+F<aliases> in F<ctrldir>
+
+=back
 
 =head1 Subroutines/Methods
 
@@ -188,17 +215,21 @@ create and update mail aliases
 
 None
 
-=head1 Configuration and Environment
-
-None
-
 =head1 Dependencies
 
 =over 3
 
+=item L<CatalystX::Usul::MailAliases>
+
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::MailAliases>
+=item L<CatalystX::Usul::TraitFor::Model::QueryingRequest>
+
+=item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<CatalystX::Usul::Moose>
+
+=item L<CatalystX::Usul::Constraints>
 
 =back
 
@@ -218,7 +249,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

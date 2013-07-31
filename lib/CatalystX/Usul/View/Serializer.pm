@@ -1,28 +1,25 @@
-# @(#)$Id: Serializer.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Serializer.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::View::Serializer;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::View);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(throw);
 use Data::Serializer;
-use MRO::Compat;
 use Safe;
 
-my $LB = chr 123;
+extends q(CatalystX::Usul::View);
 
-__PACKAGE__->config
-   ( content_types => {
-      'application/x-storable'   => { serializer => q(Storable)           },
-      'application/x-freezethaw' => { serializer => q(FreezeThaw)         },
-      'text/x-config-general'    => { serializer => q(Config::General)    },
-      'text/x-data-dumper'       => { serializer => q(Data::Dumper)       },
-      'text/x-php-serialization' => { serializer => q(PHP::Serialization) },
-   } );
+has 'content_types' => is => 'ro', isa => HashRef, default => sub { {
+   'application/x-storable'   => { serializer => q(Storable)           },
+   'application/x-freezethaw' => { serializer => q(FreezeThaw)         },
+   'text/x-config-general'    => { serializer => q(Config::General)    },
+   'text/x-data-dumper'       => { serializer => q(Data::Dumper)       },
+   'text/x-php-serialization' => { serializer => q(PHP::Serialization) },
+} };
 
 sub deserialize {
    my ($self, @rest) = @_; my ($s, $req) = @rest; my $process;
@@ -31,7 +28,7 @@ sub deserialize {
 
    $process = sub {
       if ( $_[ 0 ]->{serializer} eq q(Data::Dumper) ) {
-         my $code = $LB eq substr $_[ 1 ], 0, 1 ? q(+).$_[ 1 ] : $_[ 1 ];
+         my $code = __LB() eq substr $_[ 1 ], 0, 1 ? q(+).$_[ 1 ] : $_[ 1 ];
          my $compartment = Safe->new;
 
          $compartment->permit_only( qw(anonhash anonlist const
@@ -69,6 +66,14 @@ sub _unsupported_media_type {
    return TRUE;
 }
 
+# Private functions
+
+sub __LB {
+   return chr 123;
+}
+
+__PACKAGE__->meta->make_immutable;
+
 1;
 
 __END__
@@ -81,12 +86,12 @@ CatalystX::Usul::View::Serializer - Serialize response to an XMLHttpRequest
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    MyApp->config( "View::JSON"   => {
-                     base_class => qw(CatalystX::Usul::View::JSON) } );
+                  parent_classes => qw(CatalystX::Usul::View::JSON) } );
 
 =head1 Description
 
@@ -104,11 +109,11 @@ Deserializes the supplied data
 
 Returns the supplied data serialized in the required format
 
-=head1 Diagnostics
+=head1 Configuration and Environment
 
 None
 
-=head1 Configuration and Environment
+=head1 Diagnostics
 
 None
 
@@ -116,9 +121,13 @@ None
 
 =over 3
 
-=item L<Catalyst::View>
+=item L<CatalystX::Usul::View>
 
-=item L<JSON>
+=item L<CatalystX::Usul::Moose>
+
+=item L<Data::Serializer>
+
+=item L<Safe>
 
 =back
 
@@ -138,7 +147,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2008 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

@@ -1,12 +1,14 @@
-# @(#)$Id: LogRequest.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: LogRequest.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::TraitFor::LogRequest;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
 use Moose::Role;
+
+requires qw(config debug log);
 
 sub log_request_parameters {
    # Print stars instead of values for some debug attributes
@@ -49,19 +51,23 @@ CatalystX::Usul::TraitFor::LogRequest - Log request parameters with filtering
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
    package YourApp;
 
-   use Moose;
+   use CatalystX::Usul::Moose;
 
    with qw(CatalystX::Usul::TraitFor::LogRequest);
 
 =head1 Description
 
 Log request parameters, displaying values for selected keys as stars
+
+=head1 Configuration and Environment
+
+Requires I<config>, I<debug>, and I<log> attributes
 
 =head1 Subroutines/Methods
 
@@ -71,10 +77,6 @@ Overrides the Catalyst method to suppress the printing of passwords in
 the debug output. The configuration options C<Debug> attribute
 C<skip_dump_parameters> should be set to a regex that matches the keys
 to suppress
-
-=head1 Configuration and Environment
-
-None
 
 =head1 Diagnostics
 
@@ -108,7 +110,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2012 Peter Flanigan. All rights reserved
+Copyright (c) 2013 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

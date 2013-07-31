@@ -1,36 +1,37 @@
-# @(#)$Id: Globals.pm 1181 2012-04-17 19:06:07Z pjf $
+# @(#)$Id: Globals.pm 1319 2013-06-23 16:21:01Z pjf $
 
 package CatalystX::Usul::Model::Config::Globals;
 
 use strict;
-use warnings;
-use version; our $VERSION = qv( sprintf '0.7.%d', q$Rev: 1181 $ =~ /\d+/gmx );
-use parent qw(CatalystX::Usul::Model::Config);
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
 
+use CatalystX::Usul::Moose;
+use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw(throw);
 use TryCatch;
 
-__PACKAGE__->config
-   ( create_msg_key => 'Global attribute [_2] created in [_1]',
-     delete_msg_key => 'Global attribute [_2] deleted from [_1]',
-     file           => q(default),
-     keys_attr      => q(globals),
-     typelist       => {},
-     update_msg_key => 'Global attribute [_2] updated in [_1]', );
+extends q(CatalystX::Usul::Model::Config);
 
-__PACKAGE__->mk_accessors( qw(file) );
+has '+create_msg_key' => default => 'Global attribute [_2] created in [_1]';
+
+has '+delete_msg_key' => default => 'Global attribute [_2] deleted from [_1]';
+
+has 'filename'        => is => 'ro', isa => Str, default => q(default);
+
+has '+keys_attr'      => default => q(globals);
+
+has '+update_msg_key' => default => 'Global attribute [_2] updated in [_1]';
 
 sub globals_form {
    my $self = shift; my $s = $self->context->stash; my @elements;
 
    my $form   = $s->{form}->{name}; $s->{pwidth} -= 10;
-   my $prompt = $self->loc( q(defTextPrompt) );
 
-   try        { @elements = $self->search( $self->file ) }
+   try        { @elements = $self->search( $self->filename ) }
    catch ($e) { return $self->add_error( $e ) }
 
-   $self->clear_form( { firstfld => $form.'.newParam' } );
-   $self->add_field( { id => $form.'.newParam', stepno => 0 } );
+   $self->clear_form( { firstfld => "${form}.newParam" } );
+   $self->add_field ( { id       => "${form}.newParam", stepno => 0 } );
 
    for my $element (sort { $a->name cmp $b->name } @elements) {
       my $text = $element->name; $text =~ s{ _ }{ }gmx;
@@ -38,13 +39,13 @@ sub globals_form {
       $self->add_field( { clear   => q(left),
                           default => $element->value,
                           name    => $element->name,
-                          prompt  => $prompt.$text,
+                          prompt  => $self->loc( q(defTextPrompt), $text ),
                           stepno  => -1,
                           width   => 40 } );
    }
 
-   $self->group_fields( { id => $form.'.edit' } );
-   $self->add_buttons( qw(Save Delete) );
+   $self->group_fields( { id => "${form}.edit" } );
+   $self->add_buttons ( qw(Save Delete) );
    return;
 }
 
@@ -52,29 +53,31 @@ sub save {
    my $self = shift; my ($element, $p, $updated, $v);
 
    if ($p = lc $self->query_value( q(newParam) )) {
-      if ($self->find( $self->file, $p )) {
+      if ($self->find( $self->filename, $p )) {
          throw error => 'Attribute [_1] already exists', args => [ $p ];
       }
 
-      $self->create( $self->file, { name => $p, value => q() } );
+      $self->create( $self->filename, { name => $p, value => q() } );
    }
    else {
-      for $element ($self->search( $self->file )) {
+      for $element ($self->search( $self->filename )) {
          if (defined ($v = $self->query_value( $element->name ))
              and (($v and not defined $element->value)
                   or (defined $element->value and $element->value ne $v))) {
             $element->value( $v ); $element->update;
             $self->add_result_msg( $self->update_msg_key,
-                                   $self->file, $element->name );
-            $updated = 1;
+                                   $self->filename, $element->name );
+            $updated = TRUE;
          }
       }
 
       $updated or throw 'Nothing updated';
    }
 
-   return 1;
+   return TRUE;
 }
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -88,7 +91,7 @@ CatalystX::Usul::Model::Config::Globals - Class definition for global configurat
 
 =head1 Version
 
-0.7.$Revision: 1181 $
+0.8.$Revision: 1319 $
 
 =head1 Synopsis
 
