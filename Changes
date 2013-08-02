@@ -1,6 +1,7 @@
 Revision history for CatalystX::Usul
 
 0.8.1320 2013-07-31
+         - Updated toolchain
          - Internalized Moose exporter and constraints
          - Changed logname to loginid in ::Admin
          - Tightened ::TraitFor::ConnectInfo

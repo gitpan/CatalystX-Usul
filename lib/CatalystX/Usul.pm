@@ -1,11 +1,11 @@
-# @(#)$Ident: Usul.pm 2013-05-13 02:21 pjf ;
+# @(#)$Ident: Usul.pm 2013-08-02 18:50 pjf ;
 
 package CatalystX::Usul;
 
 use 5.01;
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1315 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1321 $ =~ /\d+/gmx );
 
 1;
 
@@ -19,7 +19,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-This document describes CatalystX::Usul version 0.8.$Revision: 1315 $
+This document describes CatalystX::Usul version 0.8.$Revision: 1321 $
 
 =head1 Synopsis
 
