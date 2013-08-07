@@ -59,6 +59,7 @@
             "Catalyst::Plugin::StatusMessage" : "1.002",
             "Catalyst::View::TT" : "0.36",
             "CatalystX::Component::Traits" : "0.16",
+            "Class::Load" : "0.18",
             "Class::Null" : "2.10142",
             "Class::Usul" : "v0.21.3",
             "Crypt::Eksblowfish" : "0.009",
@@ -81,6 +82,7 @@
             "HTTP::Message" : "6.06",
             "IO::Interactive" : "v0.0.6",
             "Imager" : "0.9",
+            "Import::Into" : "1.001",
             "JSON" : "2.5",
             "MIME::Types" : "1.31",
             "Moo" : "1.002",
@@ -88,6 +90,7 @@
             "Moose" : "2.0802",
             "MooseX::AttributeShortcuts" : "0.014",
             "MooseX::Types" : "0.35",
+            "MooseX::Types::Common" : "0.001008",
             "MooseX::Types::LoadableClass" : "0.008",
             "PPI" : "1.215",
             "PPI::HTML" : "1.08",
@@ -100,14 +103,14 @@
             "XML::Simple" : "2.18",
             "namespace::autoclean" : "0.13",
             "namespace::sweep" : "0.006",
-            "perl" : "5.01"
+            "perl" : "5.010001"
          }
       }
    },
    "provides" : {
       "CatalystX::Usul" : {
          "file" : "lib/CatalystX/Usul.pm",
-         "version" : "v0.8.1321"
+         "version" : "v0.8.1322"
       },
       "CatalystX::Usul::Action" : {
          "file" : "lib/CatalystX/Usul/Action.pm",
@@ -452,5 +455,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "v0.8.1321"
+   "version" : "v0.8.1322"
 }

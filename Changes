@@ -1,6 +1,7 @@
 Revision history for CatalystX::Usul
 
 0.8.1320 2013-07-31
+         - Raised minimum Perl version to v5.10.1
          - Updated toolchain
          - Internalized Moose exporter and constraints
          - Changed logname to loginid in ::Admin

@@ -1,15 +1,15 @@
-# @(#)$Id: Build.PL 1320 2013-07-31 17:31:20Z pjf $
+# @(#)$Id: Build.PL 1322 2013-08-07 18:22:42Z pjf $
 
 use strict;
 use warnings;
 use inc::Bob; # Module::Build subclass
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1322 $ =~ /\d+/gmx );
 
 Bob->new( {
    module    => q(CatalystX::Usul),
    home_page => q(http://www.roxsoft.co.uk),
    requires  => {
-      'perl'                                       => 5.01,
+      'perl'                                       => 5.010001,
       'namespace::autoclean'                       => 0.13,
       'namespace::sweep'                           => 0.006,
       'Catalyst'                                   => 5.9002,
@@ -26,6 +26,7 @@ Bob->new( {
       'Catalyst::Plugin::StatusMessage'            => 1.002000,
       'Catalyst::View::TT'                         => 0.36,
       'CatalystX::Component::Traits'               => 0.16,
+      'Class::Load'                                => 0.18,
       'Class::Null'                                => 2.101420,
       'Class::Usul'                                => q(0.21.3),
       'Crypt::Eksblowfish'                         => 0.009,
@@ -48,12 +49,14 @@ Bob->new( {
       'HTTP::Message'                              => 6.06,
       'IO::Interactive'                            => q(0.0.6),
       'Imager'                                     => 0.90,
+      'Import::Into'                               => 1.001000,
       'JSON'                                       => 2.50,
       'MIME::Types'                                => 1.31,
       'Moo'                                        => 1.002000,
       'Moose'                                      => 2.0802,
       'MooseX::AttributeShortcuts'                 => 0.014,
       'MooseX::Types'                              => 0.35,
+      'MooseX::Types::Common'                      => 0.001008,
       'MooseX::Types::LoadableClass'               => 0.008,
       'MooX::Options'                              => 3.83,
       'Parse::HTTP::UserAgent'                     => 0.33,

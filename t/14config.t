@@ -1,8 +1,8 @@
-# @(#)$Id: 14config.t 1308 2013-04-19 22:09:25Z pjf $
+# @(#)$Id: 14config.t 1323 2013-08-07 18:26:42Z pjf $
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1308 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1323 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) ), catdir( $Bin, q(lib) );
@@ -11,13 +11,16 @@ use English qw(-no_match_vars);
 use Module::Build;
 use Test::More;
 
-BEGIN {
-   my $current = eval { Module::Build->current };
+my $reason;
 
-   $current and $current->notes->{stop_tests}
-            and plan skip_all => $current->notes->{stop_tests};
+BEGIN {
+   my $builder = eval { Module::Build->current };
+
+   $builder and $reason = $builder->notes->{stop_tests};
+   $reason  and $reason =~ m{ \A TESTS: }mx and plan skip_all => $reason;
 }
 
+use MyApp; # Who knows or cares why?
 use Catalyst::Test q(MyApp);
 
 my (undef, $context) = ctx_request( '/' );
