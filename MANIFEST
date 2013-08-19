@@ -1,8 +1,11 @@
 Build.PL
 Changes
-inc/Bob.pm
-inc/CPANTesting.pm
-inc/SubClass.pm
+LICENSE
+MANIFEST
+META.json
+META.yml
+README
+SIGNATURE
 lib/CatalystX/Usul.pm
 lib/CatalystX/Usul/Action.pm
 lib/CatalystX/Usul/Admin.pm
@@ -87,11 +90,6 @@ lib/CatalystX/Usul/View/HTML.pm
 lib/CatalystX/Usul/View/JSON.pm
 lib/CatalystX/Usul/View/Serializer.pm
 lib/CatalystX/Usul/View/XML.pm
-LICENSE
-MANIFEST			This list of files
-META.json
-META.yml
-README
 t/01always_pass.t
 t/02pod.t
 t/03podcoverage.t
@@ -111,5 +109,3 @@ t/lib/MyApp/Model/MutableConfig.pm
 t/locale/de/LC_MESSAGES/default.mo
 t/locale/de/LC_MESSAGES/default.po
 t/test.json
-t/users-simple.json
-SIGNATURE    Added here by Module::Build

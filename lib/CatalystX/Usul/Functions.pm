@@ -1,10 +1,10 @@
-# @(#)$Id: Functions.pm 1305 2013-04-02 14:51:23Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::Functions;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1305 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use Class::Usul::Functions ();
 use Sub::Exporter;
@@ -49,7 +49,7 @@ CatalystX::Usul::Functions - Exports general purpose functions
 
 =head1 Version
 
-0.8.$Revision: 1305 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

@@ -1,9 +1,9 @@
-# @(#)$Id: Schema.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::Model::Schema;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use Scalar::Util qw(refaddr);
@@ -51,7 +51,7 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-0.8.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

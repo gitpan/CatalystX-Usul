@@ -1,10 +1,10 @@
-# @(#)$Id: CreatingUsul.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::TraitFor::CreatingUsul;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use Class::Usul;
@@ -62,7 +62,7 @@ CatalystX::Usul::TraitFor::CreatingUsul - Create an instance if Class::Usul
 
 =head1 Version
 
-0.8.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

@@ -1,9 +1,9 @@
-# @(#)$Id: Roles.pm 1320 2013-07-31 17:31:20Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::Roles;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -139,7 +139,7 @@ CatalystX::Usul::Roles - Manage the roles and their members
 
 =head1 Version
 
-0.8.$Revision: 1320 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

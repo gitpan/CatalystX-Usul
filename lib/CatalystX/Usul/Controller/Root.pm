@@ -1,8 +1,8 @@
-# @(#)$Id: Root.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::Controller::Root;
 
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( env_prefix is_member throw );
@@ -224,7 +224,7 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-0.8.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

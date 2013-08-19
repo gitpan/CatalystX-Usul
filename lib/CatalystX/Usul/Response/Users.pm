@@ -1,9 +1,9 @@
-# @(#)$Id: Users.pm 1320 2013-07-31 17:31:20Z pjf $
+# @(#)Ident: Users.pm 2013-08-19 19:16 pjf ;
 
 package CatalystX::Usul::Response::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 1320 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -210,7 +210,7 @@ CatalystX::Usul::Response::Users - The actual user object
 
 =head1 Version
 
-0.1.$Revision: 1320 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

@@ -1,8 +1,8 @@
-# @(#)$Id: 06yaml.t 1290 2012-10-31 01:42:57Z pjf $
+# @(#)Ident: 06yaml.t 2013-08-19 18:55 pjf ;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1290 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -11,14 +11,12 @@ use English qw(-no_match_vars);
 use Test::More;
 
 BEGIN {
-   if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
-      plan skip_all => 'YAML test only for developers';
-   }
+   $ENV{AUTHOR_TESTING} or plan skip_all => 'YAML test only for developers';
 }
 
 eval { require Test::YAML::Meta; };
 
-plan skip_all => 'Test::YAML::Meta not installed' if ($EVAL_ERROR);
+$EVAL_ERROR and plan skip_all => 'Test::YAML::Meta not installed';
 
 Test::YAML::Meta->import();
 

@@ -1,9 +1,9 @@
-# @(#)$Id: FileSystem.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: FileSystem.pm 2013-08-19 19:16 pjf ;
 
 package CatalystX::Usul::Response::FileSystem;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -74,7 +74,7 @@ CatalystX::Usul::Response::FileSystem - Object wrapper for the file system
 
 =head1 Version
 
-0.1.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

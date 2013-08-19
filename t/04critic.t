@@ -1,8 +1,8 @@
-# @(#)$Id: 04critic.t 1290 2012-10-31 01:42:57Z pjf $
+# @(#)Ident: 04critic.t 2013-08-19 18:54 pjf ;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1290 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -11,20 +11,15 @@ use English qw(-no_match_vars);
 use Test::More;
 
 BEGIN {
-   if (!-e catfile( $Bin, updir, q(MANIFEST.SKIP) )) {
-      plan skip_all => 'Critic test only for developers';
-   }
+   $ENV{AUTHOR_TESTING} or plan skip_all => 'Critic test only for developers';
 }
 
-eval { require Test::Perl::Critic; };
+eval "use Test::Perl::Critic -profile => catfile( q(t), q(critic.rc) )";
 
-plan skip_all => 'Test::Perl::Critic not installed' if ($EVAL_ERROR);
+$EVAL_ERROR and plan skip_all => 'Test::Perl::Critic not installed';
 
-unless ($ENV{TEST_CRITIC}) {
-   plan skip_all => 'Environment variable TEST_CRITIC not set';
-}
-
-Test::Perl::Critic->import( -profile => catfile( q(t), q(critic.rc) ) );
+$ENV{TEST_CRITIC}
+   or plan skip_all => 'Environment variable TEST_CRITIC not set';
 
 all_critic_ok();
 

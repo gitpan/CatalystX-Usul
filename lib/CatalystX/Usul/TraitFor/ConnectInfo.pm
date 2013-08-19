@@ -1,10 +1,10 @@
-# @(#)$Id: ConnectInfo.pm 1320 2013-07-31 17:31:20Z pjf $
+# @(#)Ident: ConnectInfo.pm 2013-08-19 19:34 pjf ;
 
 package CatalystX::Usul::TraitFor::ConnectInfo;
 
-use 5.01;
+use 5.010001;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( merge_attributes throw );
@@ -171,7 +171,7 @@ CatalystX::Usul::TraitFor::ConnectInfo - Provides the DBIC connect info array re
 
 =head1 Version
 
-0.1.$Revision: 1320 $
+0.1.$Rev: 0 $
 
 =head1 Synopsis
 

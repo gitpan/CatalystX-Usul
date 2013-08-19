@@ -1,8 +1,8 @@
-# @(#)$Id: Model.pm 1320 2013-07-31 17:31:20Z pjf $
+# @(#)$Ident: Model.pm 2013-08-19 19:06 pjf ;
 
 package CatalystX::Usul::Model;
 
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( is_arrayref is_hashref throw );
@@ -80,7 +80,7 @@ CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-0.8.$Revision: 1320 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

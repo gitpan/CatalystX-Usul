@@ -1,9 +1,9 @@
-# @(#)$Id: QueryRequest.pm 1320 2013-07-31 17:31:20Z pjf $
+# @(#)Ident: QueryRequest.pm 2013-08-19 19:21 pjf ;
 
 package CatalystX::Usul::QueryRequest;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1320 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -206,7 +206,7 @@ CatalystX::Usul::QueryRequest - Create request query methods for different encod
 
 =head1 Version
 
-$Revision: 1320 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

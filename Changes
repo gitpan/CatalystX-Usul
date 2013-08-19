@@ -1,5 +1,9 @@
 Revision history for CatalystX::Usul
 
+0.9.0     2013-08-19 20:31:01
+         - Bumped version to reset patch number
+         - Switched to Git from SVN
+
 0.8.1320 2013-07-31
          - Raised minimum Perl version to v5.10.1
          - Updated toolchain
@@ -106,56 +110,3 @@ Revision history for CatalystX::Usul
          - Build.pm no longer uses notes field
          - Refactored localize. Removed markdown
 
-0.3.636  05/07/2009
-         - Switched to C::P::ContextualUriFor
-
-0.3.632
-         - Only call self uri_for
-         - Refactored uri_for
-         - Changed the way default_action works in get_action. Now
-           defaults to default
-         - Refactored Build.pm
-
-0.3.625  30/06/2009
-         - DB password encryption no longer userid dependent
-         - Users::DBIC should release lock if cannot connect to database
-         - Build.pm undefined values in _set_config fixed. Bypassed
-           the ask more question. Undefined on 358
-
-0.3.613  29/06/2009
-         - Split out File::HashMerge as a seperate class
-         - Use Class::MOP in Base::ensure_class_loaded
-         - Renamed suid to admin and misc to cli
-         - Adpated for Catalyst 5.8. Package config no longer inherits
-         - Suppresed repository resource if svn is file://
-         - Removed last references to Identity::Users
-
-0.2.571  09/06/2009
-         - Squeezed a domain model out of the identity model
-         - Much improved OO-fu in Build.pm
-         - Improved testing idioms
-         - Made Project::Docs and Plugin::Captcha optional modules
-         - Added repository method to Build.pm. Returns the SVN
-           repository for the resources attribute in META.yml
-         - Simple page puts better class names on elements. Paragraph
-           columns now have a max width
-
-0.1.450  12/04/2009
-         - More CPAN testing crap
-
-0.1.443  09/04/2009
-         - Navigation model now uses the menu subclass from
-           HTML::FormWidgets
-
-0.1.437  07/04/2009
-         - Added more tests
-
-0.1.428  05/04/2009
-         - More CPAN testing crap
-         - Fixed context sensitive help
-
-0.1.426  01/04/2009
-         - Fixed documentation typos
-
-0.1.232  26/09/2008
-         - Started this log

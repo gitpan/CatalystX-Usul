@@ -1,10 +1,10 @@
-# @(#)$Id: DumpInfo.pm 1305 2013-04-02 14:51:23Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::TraitFor::Engine::DumpInfo;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1305 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use Data::Dumper;
@@ -55,7 +55,7 @@ CatalystX::Usul::TraitFor::Engine::DumpInfo - Prettier debug information dump
 
 =head1 Version
 
-0.8.$Revision: 1305 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

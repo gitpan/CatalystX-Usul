@@ -1,9 +1,9 @@
-# @(#)$Id: Backup.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::Controller::Admin::Backup;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use File::Spec::Functions qw(catfile);
@@ -64,7 +64,7 @@ CatalystX::Usul::Controller::Admin::Backup - Tape device backups
 
 =head1 Version
 
-0.8.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

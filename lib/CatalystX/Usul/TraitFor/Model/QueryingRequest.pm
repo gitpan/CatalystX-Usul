@@ -1,10 +1,10 @@
-# @(#)$Id: QueryingRequest.pm 1305 2013-04-02 14:51:23Z pjf $
+# @(#)Ident: QueryingRequest.pm 2013-08-19 19:19 pjf ;
 
 package CatalystX::Usul::TraitFor::Model::QueryingRequest;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 1305 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use CatalystX::Usul::Constants;
@@ -108,7 +108,7 @@ CatalystX::Usul::TraitFor::Model::QueryingRequest - Creates a query request obje
 
 =head1 Version
 
-0.1.$Revision: 1305 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

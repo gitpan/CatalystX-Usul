@@ -1,10 +1,10 @@
-# @(#)$Id: NavigationLinks.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: NavigationLinks.pm 2013-08-19 19:18 pjf ;
 
 package CatalystX::Usul::TraitFor::Model::NavigationLinks;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use Moose::Util::TypeConstraints;
@@ -295,7 +295,7 @@ CatalystX::Usul::TraitFor::Model::NavigationLinks - Provides navigation links
 
 =head1 Version
 
-0.1.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 

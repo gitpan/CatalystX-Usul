@@ -1,8 +1,8 @@
-# @(#)$Id: Help.pm 1319 2013-06-23 16:21:01Z pjf $
+# @(#)Ident: ;
 
 package CatalystX::Usul::Model::Help;
 
-use version; our $VERSION = qv( sprintf '0.8.%d', q$Rev: 1319 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( distname find_source merge_attributes throw);
@@ -303,7 +303,7 @@ CatalystX::Usul::Model::Help - Provides data for help pages
 
 =head1 Version
 
-0.8.$Revision: 1319 $
+Describes v0.9.$Rev: 0 $
 
 =head1 Synopsis
 
