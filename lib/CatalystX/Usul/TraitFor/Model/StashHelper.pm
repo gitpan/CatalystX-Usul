@@ -1,10 +1,11 @@
-# @(#)Ident: StashHelper.pm 2013-08-19 19:34 pjf ;
+# @(#)Ident: StashHelper.pm 2013-09-29 01:40 pjf ;
 
 package CatalystX::Usul::TraitFor::Model::StashHelper;
 
 use 5.010001;
+use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( assert exception is_arrayref is_hashref
@@ -711,7 +712,7 @@ CatalystX::Usul::TraitFor::Model::StashHelper - Convenience methods for stuffing
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

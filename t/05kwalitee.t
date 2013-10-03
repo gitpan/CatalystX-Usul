@@ -1,8 +1,8 @@
-# @(#)Ident: 05kwalitee.t 2013-08-19 18:54 pjf ;
+# @(#)Ident: 05kwalitee.t 2013-09-29 00:45 pjf ;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 use File::Spec::Functions;
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -18,8 +18,7 @@ eval { require Test::Kwalitee; };
 
 $EVAL_ERROR and plan skip_all => 'Test::Kwalitee not installed';
 
-# Since we now use a custom Moose exporter this metric is no longer valid
-Test::Kwalitee->import( tests => [ qw(-use_strict) ] );
+Test::Kwalitee->import();
 
 unlink q(Debian_CPANTS.txt);
 

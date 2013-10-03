@@ -1,9 +1,10 @@
-# @(#)Ident: ;
+# @(#)Ident: Captcha.pm 2013-09-29 01:37 pjf ;
 
 package CatalystX::Usul::TraitFor::Captcha;
 
+use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( NullLoadingClass );
@@ -95,7 +96,7 @@ CatalystX::Usul::TraitFor::Captcha - Role to implement captchas
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

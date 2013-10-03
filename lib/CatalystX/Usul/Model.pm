@@ -1,8 +1,9 @@
-# @(#)$Ident: Model.pm 2013-08-19 19:06 pjf ;
+# @(#)$Ident: Model.pm 2013-09-29 00:48 pjf ;
 
 package CatalystX::Usul::Model;
 
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use strict;
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( is_arrayref is_hashref throw );
@@ -80,7 +81,7 @@ CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -150,8 +151,8 @@ C<< $self->context >>
 
 Localizes the message. Calls L<Class::Usul::L10N/localize>. Adds the
 constant C<DEFAULT_L10N_DOMAINS> to the list of domain files that are
-searched. Adds C<< $self->context->stash->language >> and
-C<< $self->context->stash->namespace >> (search domain) to the
+searched. Adds C<< $self->context->stash->{language} >> and
+C<< $self->context->stash->{namespace} >> (search domain) to the
 arguments passed to C<localize>
 
 =head1 Diagnostics

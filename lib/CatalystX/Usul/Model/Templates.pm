@@ -1,9 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: Templates.pm 2013-09-03 12:50 pjf ;
 
 package CatalystX::Usul::Model::Templates;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -139,7 +139,7 @@ CatalystX::Usul::Model::Templates - Edit page templates
 
 =head1 Version
 
-0.1.$Rev: 0 $
+v0.10.$Rev: 1 $
 
 =head1 Synopsis
 

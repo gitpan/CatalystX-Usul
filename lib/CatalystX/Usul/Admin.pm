@@ -1,14 +1,16 @@
-# @(#)$Ident: Admin.pm 2013-08-19 19:05 pjf ;
+# @(#)$Ident: Admin.pm 2013-09-29 12:08 pjf ;
 
 package CatalystX::Usul::Admin;
 
+use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( class2appdir logname emit throw
                                    untaint_cmdline untaint_identifier );
 use Class::Null;
+use Class::Usul::Exception;
 use English                    qw( -no_match_vars );
 use File::DataClass::Types     qw( ArrayRef Bool Directory HashRef
                                    LoadableClass Object Path );
@@ -23,6 +25,8 @@ use TryCatch;
 
 extends q(Class::Usul::Programs);
 with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
+
+Class::Usul::Exception->has_exception( 'PasswordExpired' );
 
 # Public attributes
 option 'exec_setuid' => is => 'ro', isa => Bool, default => FALSE,
@@ -424,7 +428,7 @@ sub tape_backup : method {
 
    $self->info( 'Starting tape backup on '.$self->options->{device} );
    $cmd  = catfile( $cfg->binsdir, $cfg->prefix.q(_cli) );
-   $cmd .= SPC.$self->debug_flag.' -c tape_backup -L '.$self->language;
+   $cmd .= SPC.$self->debug_flag.' -c tape_backup -L '.$self->locale;
 
    for (keys %{ $self->options }) {
       $cmd .= ' -o '.$_.'="'.$self->options->{ $_ }.'"';
@@ -482,8 +486,8 @@ sub untaint_self {
    my $self = shift; my $cmd = $self->config->pathname;
 
    $cmd .= SPC.$self->debug_flag.' -e -c "'.$self->method.'"';
-   $cmd .= ' -L '.$self->language if ($self->language);
-   $cmd .= ' -q'                  if ($self->quiet);
+   $cmd .= ' -L '.$self->locale if ($self->locale);
+   $cmd .= ' -q'                if ($self->quiet);
 
    for (keys %{ $self->options }) {
       $cmd .= ' -o '.$_.'="'.$self->options->{ $_ }.'"';
@@ -712,7 +716,7 @@ CatalystX::Usul::Admin - Subroutines that run as the super user
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

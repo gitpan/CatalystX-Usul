@@ -5,7 +5,7 @@ package CatalystX::Usul::Moose;
 use strict;
 use warnings;
 use feature ();
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 use namespace::autoclean ();
 
 use CatalystX::Usul::Constraints ();
@@ -74,7 +74,7 @@ CatalystX::Usul::Moose - Moose, the way I like it.
 
 =head1 Version
 
-This documents version v0.9.$Rev: 0 $
+This documents version v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

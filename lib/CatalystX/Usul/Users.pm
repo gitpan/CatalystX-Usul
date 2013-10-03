@@ -1,9 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: Users.pm 2013-09-02 15:20 pjf ;
 
 package CatalystX::Usul::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
@@ -11,6 +11,7 @@ use CatalystX::Usul::Functions   qw( create_token exception is_arrayref
                                      is_hashref is_member throw );
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Response::Users;
+use Class::Usul::Exception;
 use Class::Usul::File;
 use Class::Usul::IPC;
 use Crypt::Eksblowfish::Bcrypt   qw( bcrypt en_base64 );
@@ -19,6 +20,10 @@ use TryCatch;
 
 with q(Class::Usul::TraitFor::LoadingClasses);
 with q(CatalystX::Usul::TraitFor::Email);
+
+Class::Usul::Exception->has_exception( 'AccountInactive'   );
+Class::Usul::Exception->has_exception( 'IncorrectPassword' );
+Class::Usul::Exception->has_exception( 'MaxLoginAttempts'  );
 
 has 'alias_class'       => is => 'lazy', isa => LoadableClass, coerce => TRUE,
    default              => sub { 'File::MailAlias' };
@@ -33,10 +38,10 @@ has 'cache'             => is => 'ro',   isa => HashRef, default => sub { {} };
 has 'def_passwd'        => is => 'ro',   isa => NonEmptySimpleStr,
    default              => '*DISABLED*';
 
-has 'language'          => is => 'ro',   isa => NonEmptySimpleStr,
-   default              => LANG;
-
 has 'load_factor'       => is => 'ro',   isa => PositiveInt, default => 14;
+
+has 'locale'            => is => 'ro',   isa => NonEmptySimpleStr,
+   default              => sub { $_[ 0 ]->config->locale };
 
 has 'max_login_trys'    => is => 'ro',   isa => PositiveOrZeroInt, default => 3;
 
@@ -397,7 +402,7 @@ sub loc {
             : { params => (is_arrayref $car) ? $car : [ @args ] };
 
    $args->{domain_names} ||= [ DEFAULT_L10N_DOMAIN ];
-   $args->{locale      } ||= $self->language;
+   $args->{locale      } ||= $self->locale;
 
    return $self->usul->localize( $key, $args );
 }
@@ -649,7 +654,7 @@ CatalystX::Usul::Users - User domain model
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -688,6 +693,10 @@ Default password string which defaults I<*DISABLED*>
 
 Integer which defaults to 14. Used by L<Crypt::Eksblowfish::Bcrypt> to
 determine how expensive the key distribution algorithm should be
+
+=item C<locale>
+
+The language used to localize text, defaults to C<en_GB>
 
 =item C<max_login_trys>
 

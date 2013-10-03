@@ -1,8 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: Navigation.pm 2013-09-29 00:55 pjf ;
 
 package CatalystX::Usul::Model::Navigation;
 
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use strict;
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( is_member merge_attributes throw );
@@ -977,7 +978,7 @@ CatalystX::Usul::Model::Navigation - Navigation links and access control
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

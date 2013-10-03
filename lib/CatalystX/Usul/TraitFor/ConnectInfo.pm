@@ -1,10 +1,11 @@
-# @(#)Ident: ConnectInfo.pm 2013-08-19 19:34 pjf ;
+# @(#)Ident: ConnectInfo.pm 2013-09-29 01:38 pjf ;
 
 package CatalystX::Usul::TraitFor::ConnectInfo;
 
 use 5.010001;
+use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( merge_attributes throw );
@@ -12,8 +13,8 @@ use Class::Usul::Crypt         qw( cipher_list );
 use Class::Usul::Crypt::Util   qw( decrypt_from_config encrypt_for_config );
 use Class::Usul::File;
 use File::Spec::Functions      qw( catfile );
-use Moo::Role;
 use Scalar::Util               qw( blessed );
+use Moo::Role;
 
 requires qw( config ); # As a class method
 
@@ -42,7 +43,9 @@ sub extract_creds_from_cfg {
 }
 
 sub get_connect_info {
-   my ($self, $app, $params) = @_; state $cache //= {}; $params ||= {};
+   my ($self, $app, $params) = @_;
+
+   state $cache //= {}; $app //= $self; $params //= {};
 
    merge_attributes $params, $app->config, $self->config, __get_config_attr();
 
@@ -55,8 +58,8 @@ sub get_connect_info {
 
    my $cfg_data = __load_config_data( $params, $db );
    my $creds    = __extract_creds_from_cfg( $params, $db, $cfg_data );
-   my $dsn      = q(dbi:).$creds->{driver}.q(:database=).$db;
-      $dsn     .= q(;host=).$creds->{host}.q(;port=).$creds->{port};
+   my $dsn      = 'dbi:'.$creds->{driver}.':database='.$db;
+      $dsn     .= ';host='.$creds->{host}.';port='.$creds->{port};
    my $password = decrypt_from_config( $params, $creds->{password} );
    my $opts     = __get_connect_options( $creds );
 
@@ -105,7 +108,7 @@ sub __get_config_attr {
 sub __get_connect_info_cache_key {
    my ($params, $db) = @_;
 
-   return $params->{subspace} ? $db.q(.).$params->{subspace} : $db;
+   return $params->{subspace} ? "${db}.".$params->{subspace} : $db;
 }
 
 sub __get_connect_options {
@@ -141,10 +144,9 @@ sub __get_dataclass_schema {
 sub __load_config_data {
    my ($params, $db) = @_;
 
-   my $ctlfile = __get_credentials_file( $params, $db );
-   my $schema  = __get_dataclass_schema( $params->{dataclass_attr} );
+   my $schema = __get_dataclass_schema( $params->{dataclass_attr} );
 
-   return $schema->load( $ctlfile );
+   return $schema->load( __get_credentials_file( $params, $db ) );
 }
 
 sub __merge_attributes {
@@ -171,7 +173,7 @@ CatalystX::Usul::TraitFor::ConnectInfo - Provides the DBIC connect info array re
 
 =head1 Version
 
-0.1.$Rev: 0 $
+v0.10.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -179,10 +181,10 @@ CatalystX::Usul::TraitFor::ConnectInfo - Provides the DBIC connect info array re
 
    use CatalystX::Usul::Moose;
 
-   extends qw(CatalystX::Usul::Model::Schema);
+   extends q(CatalystX::Usul::Model::Schema);
 
-   __PACKAGE__->config( database     => q(your_database_name),
-                        schema_class => q(YourApp::Schema::YourSchema) );
+   __PACKAGE__->config( database     => 'your_database_name',
+                        schema_class => 'YourApp::Schema::YourSchema' );
 
    sub COMPONENT {
       my ($class, $app, $cfg) = @_;

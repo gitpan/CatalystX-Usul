@@ -1,9 +1,10 @@
-# @(#)Ident: PostInstallConfig.pm 2013-08-19 19:17 pjf ;
+# @(#)Ident: PostInstallConfig.pm 2013-09-29 01:40 pjf ;
 
 package CatalystX::Usul::TraitFor::PostInstallConfig;
 
+use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use Class::Usul::File;
@@ -63,7 +64,7 @@ CatalystX::Usul::Traitfor::PostInstallConfig - Reads and writes the post install
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

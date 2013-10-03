@@ -1,9 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: TapeBackup.pm 2013-08-27 17:42 pjf ;
 
 package CatalystX::Usul::TapeBackup;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -30,11 +30,12 @@ has 'dump_dates'   => is => 'lazy', isa => Path, coerce => TRUE,
 has 'form'         => is => 'ro',   isa => NonEmptySimpleStr,
    default         => 'backup';
 
-has 'language'     => is => 'ro',   isa => NonEmptySimpleStr, default => LANG;
-
 has 'level_map'    => is => 'ro',   isa => HashRef, init_arg => undef,
    default         => sub { { 0 => 1, 1 => 3, 2 => 5, 3 => 2, 4 => 7,
                               5 => 4, 6 => 9, 7 => 6, 8 => 9, 9 => 8 } };
+
+has 'locale'       => is => 'ro',   isa => NonEmptySimpleStr,
+   default         => sub { $_[ 0 ]->config->locale };
 
 has 'max_wait'     => is => 'ro',   isa => PositiveInt, default => 43_200;
 
@@ -152,7 +153,7 @@ sub start {
 
    $paths or throw 'No file path specified';
    $cmd  = $self->config->suid.q( -c tape_backup ).$self->debug_flag;
-   $cmd .= q( -L ).$self->language;
+   $cmd .= q( -L ).$self->locale;
 
    while (my ($k, $v) = each %{ $args }) {
       $cmd .= q( -o ).$k.'="'.$v.'"';
@@ -286,7 +287,7 @@ CatalystX::Usul::TapeBackup - Provides tape device methods
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -333,9 +334,9 @@ Path which defaults to F</etc/dumpdates>
 
 String which defaults to C<backup>
 
-=item language
+=item locale
 
-String which defaults to C<en>
+String which defaults to C<en_GB>
 
 =item max_wait
 

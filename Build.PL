@@ -1,9 +1,9 @@
-# @(#)$Ident: DZ_Build.PL 2013-08-15 13:04 pjf ;
+# @(#)$Ident: Build.PL 2013-08-26 21:23 pjf ;
 
 use strict;
 use warnings;
 
-use Module::Build;
+use Module::Build 0.4004;
 
 sub whimper { print {*STDOUT} $_[ 0 ]."\n"; exit 0 }
 
@@ -39,9 +39,9 @@ Module::Build->subclass( code => do { local $/; <DATA> } )->new(
     'Catalyst::Action::RenderView' => '0.16',
     'Catalyst::Model::DBIC::Schema' => '0.48',
     'Catalyst::Plugin::Authentication' => '0.10016',
-    'Catalyst::Plugin::ConfigComponents' => 'v0.6.0',
+    'Catalyst::Plugin::ConfigComponents' => 'v0.8.0',
     'Catalyst::Plugin::ConfigLoader' => '0.19',
-    'Catalyst::Plugin::InflateMore' => 'v0.5.0',
+    'Catalyst::Plugin::InflateMore' => 'v0.7.0',
     'Catalyst::Plugin::Session' => '0.31',
     'Catalyst::Plugin::Session::State::Cookie' => '0.17',
     'Catalyst::Plugin::Session::Store::FastMmap' => '0.14',
@@ -51,22 +51,22 @@ Module::Build->subclass( code => do { local $/; <DATA> } )->new(
     'CatalystX::Component::Traits' => '0.16',
     'Class::Load' => '0.18',
     'Class::Null' => '2.101420',
-    'Class::Usul' => 'v0.21.3',
+    'Class::Usul' => 'v0.28.0',
     'Crypt::Eksblowfish' => '0.009',
     'DBIx::Class' => '0.08009',
     'Data::Pageset' => '1.06',
     'Data::Serializer' => '0.53',
-    'Data::Validation' => 'v0.10.0',
+    'Data::Validation' => 'v0.14.0',
     'Email::MIME' => '1.906',
     'Email::Sender' => '0.093380',
     'Encode' => '2.12',
     'Encode::Guess' => '2.00',
-    'File::DataClass' => 'v0.20.10',
-    'File::Gettext' => 'v0.18.0',
-    'File::MailAlias' => 'v0.16.0',
-    'File::UnixAuth' => 'v0.16.0',
+    'File::DataClass' => 'v0.25.0',
+    'File::Gettext' => 'v0.20.0',
+    'File::MailAlias' => 'v0.19.0',
+    'File::UnixAuth' => 'v0.19.0',
     'HTML::FillInForm' => '2.00',
-    'HTML::FormWidgets' => 'v0.18.0',
+    'HTML::FormWidgets' => 'v0.21.0',
     'HTML::Parser' => '3.69',
     'HTTP::Date' => '6.02',
     'HTTP::Message' => '6.06',
@@ -75,7 +75,7 @@ Module::Build->subclass( code => do { local $/; <DATA> } )->new(
     'Import::Into' => '1.001000',
     'JSON' => '2.50',
     'MIME::Types' => '1.31',
-    'Moo' => '1.002000',
+    'Moo' => '1.003000',
     'MooX::Options' => '3.83',
     'Moose' => '2.0802',
     'MooseX::AttributeShortcuts' => '0.014',

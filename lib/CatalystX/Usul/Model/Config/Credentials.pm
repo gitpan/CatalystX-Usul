@@ -1,35 +1,35 @@
-# @(#)Ident: ;
+# @(#)Ident: Credentials.pm 2013-09-19 22:42 pjf ;
 
 package CatalystX::Usul::Model::Config::Credentials;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions;
-use Class::Usul::Crypt::Util qw( get_cipher );
+use Class::Usul::Crypt::Util qw( decrypt_from_config
+                                 encrypt_for_config get_cipher );
 use TryCatch;
 
 extends q(CatalystX::Usul::Model::Config);
-with    q(CatalystX::Usul::TraitFor::ConnectInfo);
 
 has '+create_msg_key' => default => 'Credentials [_1]/[_2] created';
 
 has '+delete_msg_key' => default => 'Credentials [_1]/[_2] deleted';
 
-has '+keys_attr'      => default => q(credentials);
+has '+keys_attr'      => default => 'credentials';
 
 has '+update_msg_key' => default => 'Credentials [_1]/[_2] updated';
 
 sub create_or_update {
    my ($self, $ns, $args) = @_; my $c = $self->context; my $v;
 
-   if (defined ($v = $self->query_value( q(password) ))) {
-      my $cipher = $self->query_value( q(cipher) );
+   if (defined ($v = $self->query_value( 'password' ))) {
+      my $cipher = $self->query_value( 'cipher' );
 
       $c->req->params->{password}
-         = $self->encrypt_for_cfg( $self->usul->config, $v, $cipher );
+         = encrypt_for_config( $self->usul->config, $v, $cipher );
    }
 
    $self->next::method( $ns, $args );
@@ -50,16 +50,16 @@ sub credentials_form {
    my $creds    = $config_obj->list;
    my $fields   = $config_obj->result;
    my $usul_cfg = $self->usul->config;
-   my $password = $self->decrypt_from_cfg( $usul_cfg, $fields->password );
+   my $password = decrypt_from_config( $usul_cfg, $fields->password );
    my $cipher   = get_cipher( $fields->password );
    my $ciphers  = [ NUL, $self->get_cipher_list ];
 
    unshift @{ $creds  }, NUL, $s->{newtag};
-   unshift @{ $spaces }, NUL, q(default);
+   unshift @{ $spaces }, NUL, 'default';
 
    $self->clear_form(   { firstfld => $id } );
    $self->add_field(    { default  => $ns,
-                          id       => q(config.).$self->ns_key,
+                          id       => 'config.'.$self->ns_key,
                           stepno   => 0,
                           values   => $spaces } );
 
@@ -82,7 +82,7 @@ sub credentials_form {
 
    $self->add_field(    { default => $def,
                           id      => $id,
-                          name    => q(name) } );
+                          name    => 'name' } );
    $self->add_field(    { default => $fields->driver,
                           id      => "${form}.driver" } );
    $self->add_field(    { default => $fields->host,
@@ -114,7 +114,7 @@ CatalystX::Usul::Model::Config::Credentials - Database connection definitions
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

@@ -4,7 +4,7 @@ package CatalystX::Usul::TraitFor::BuildingUsul;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moose::Role;
 
@@ -38,7 +38,7 @@ CatalystX::Usul::TraitFor::BuildingUsul - Caches the app_class for later use
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

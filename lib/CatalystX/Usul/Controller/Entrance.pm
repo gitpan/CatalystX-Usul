@@ -1,8 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: Entrance.pm 2013-09-29 00:51 pjf ;
 
 package CatalystX::Usul::Controller::Entrance;
 
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use strict;
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Moose;
@@ -160,7 +161,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

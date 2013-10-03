@@ -1,8 +1,9 @@
-# @(#)$Ident: Controller.pm 2013-08-19 19:06 pjf ;
+# @(#)$Ident: Controller.pm 2013-09-29 00:48 pjf ;
 
 package CatalystX::Usul::Controller;
 
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use strict;
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Class::Null;
 use CatalystX::Usul::Constants;
@@ -93,14 +94,14 @@ sub begin {
    my $cfg = $c->config; my $ns = $c->action->namespace || NUL;
 
    $c->stash( leader => blessed $self );
-   # No configuration game over. Implies we didn't parse homedir/appname.json
-   ($cfg and $cfg->{has_loaded}) or $self->_throw_up_and_die( $c, $s );
-   # Stash the session to reduce can session calls
-   # Stash the content type from the request. Default from config
-   $c->stash( session      => $c->can( q(session) ) ? $c->session : {},
-              content_type => __preferred_content_type( $req, $cfg ) );
    # Redirect after successful model call from a post request
    $c->stash( redirect_after_execute => TRUE );
+   # No configuration game over. Implies we didn't parse homedir/appname.json
+   ($cfg and $cfg->{has_loaded}) or $self->_throw_up_and_die( $c, $s );
+   # Stash the session to reduce $c->can session calls
+   $c->stash( session => $c->can( 'session' ) ? $c->session : {} );
+   # Stash the content type from the request. Default from config
+   $c->stash( __get_preferred_content_type( $req, $cfg ) );
    # Select the view from the content type
    $c->stash( current_view => $cfg->{content_map}->{ $s->{content_type} } );
    # Derive the verb from the request. View dependant
@@ -227,7 +228,6 @@ sub redirect_to_path { # Does a response redirect and detach
 }
 
 # Private methods
-
 sub _error_page { # Display a customised error page
    my ($self, $c, $error) = @_; my $action = $c->action; my $s = $c->stash;
 
@@ -460,7 +460,6 @@ sub _throw_up_and_die {
 }
 
 # Private functions
-
 sub __accepted_content_types { # Taken from jshirley's Catalyst::Action::REST
    my $req = shift; my ($accept_header, $qvalue, $type, %types);
 
@@ -488,10 +487,21 @@ sub __accepted_content_types { # Taken from jshirley's Catalyst::Action::REST
    return [ reverse sort { $types{ $a } <=> $types{ $b } } keys %types ];
 }
 
+sub __extract_version_from {
+   my ($versioned_type, $cfg) = @_;
+
+   my ($rest, $format) = split m{ [+] }mx, $versioned_type;
+   my ($type, $ver)    = split m{ [-] }mx, $rest;
+
+   $format and $type .= "+${format}"; $ver and $ver =~ s{ \A v }{}mx;
+
+   return ( $type, $ver || $cfg->{api_version} || 1 );
+}
+
 sub __get_default_action {
    my $navm = $_[ 0 ]->{nav_model};
 
-   return $navm ? $navm->default_action : q(about);
+   return $navm ? $navm->default_action : 'about';
 }
 
 sub __get_language {
@@ -522,6 +532,27 @@ sub __get_language {
    return $lang || $cfg->{language} || LANG;
 }
 
+sub __get_preferred_content_type {
+   my ($req, $cfg) = @_; my ($type, $ver);
+
+   my $types = __accepted_content_types( $req );
+
+   # Set the content type from the client request header
+   $cfg->{negotiate_content_type} ne NEGOTIATION_OFF and $type = $types->[ 0 ];
+
+   # Chrome cannot handle what it asks for
+   # Adding the !ENTITY definitions for dagger etc breaks the DOM
+   $type and $cfg->{negotiate_content_type} eq NEGOTIATION_IGNORE_XML
+         and $type =~ m{ \A application .+? xml \z }mx
+         and $type = $cfg->{content_type};
+
+   # Default the content type if it's not already set
+  ($type and $type ne '*/*') or $type = $cfg->{content_type};
+  ($type, $ver) = __extract_version_from( $type, $cfg );
+
+   return ( 'content_type', $type, 'api_version', $ver );
+}
+
 sub __get_request_domain {
    my @parts = split m{ [\.] }mx, $_[ 0 ]; shift @parts; my $domain;
 
@@ -537,25 +568,6 @@ sub __is_language { # Is this one if the languages the application supports
 sub __list_acceptable_languages {
    return (map { (split m{ ; }mx, $_)[ 0 ] } split m{ , }mx,
            lc( $_[ 0 ]->headers->{ q(accept-language) } || NUL ));
-}
-
-sub __preferred_content_type {
-   my ($req, $cfg) = @_; my $types = __accepted_content_types( $req ); my $type;
-
-   # Set the content type from the client request header
-   $cfg->{negotiate_content_type} ne NEGOTIATION_OFF and $type = $types->[ 0 ];
-
-   # Chrome cannot handle what it asks for
-   # Adding the !ENTITY definitions for dagger etc breaks the DOM
-   if ($type and $cfg->{negotiate_content_type} eq NEGOTIATION_IGNORE_XML) {
-      ($type eq q(application/xml) or $type eq q(application/xhtml+xml))
-         and $type = $cfg->{content_type};
-   }
-
-   # Default the content type if it's not already set
-   (not $type or $type eq q(*/*)) and $type = $cfg->{content_type};
-
-   return $type;
 }
 
 sub __want_app_closed {
@@ -582,7 +594,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version 0.8.$Rev: 0 $
+This document describes CatalystX::Usul::Controller version v0.13.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -763,7 +775,7 @@ L<CatalystX::Usul::TraitFor::Controller::Cookies> module if it's loaded
 
 Localizes the message. Calls L<Class::Usul::L10N/localize>. Adds the
 constant C<DEFAULT_L10N_DOMAINS> to the list of domain files that are
-searched. Adds C<< $c->stash->language >> and C<< $c->stash->namespace >>
+searched. Adds C<< $c->stash->{language} >> and C<< $c->stash->{namespace} >>
 (search domain) to the arguments passed to C<localize>
 
 =head2 redirect_to_path

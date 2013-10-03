@@ -1,9 +1,10 @@
-# @(#)Ident: ;
+# @(#)Ident: Schema.pm 2013-09-29 00:57 pjf ;
 
 package CatalystX::Usul::Schema;
 
+use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( distname );
@@ -19,27 +20,35 @@ with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
 
 # Public attributes
 option 'attrs'          => is => 'ro',   isa => HashRef,
+   documentation        => 'Default database connection attributes',
    default              => sub { { add_drop_table => TRUE,
                                    no_comments    => TRUE, } },
    init_arg             => 'dbattrs';
 
 option 'database'       => is => 'ro',   isa => NonEmptySimpleStr,
+   documentation        => 'The database to connect to',
    required             => TRUE;
 
 option 'db_admin_ids'   => is => 'ro',   isa => HashRef,
-   default              => sub { { mysql => q(root), pg => q(postgres), } };
+   documentation        => 'The admin user ids for each RDBMS',
+   default              => sub { { mysql => 'root', pg => 'postgres', } };
 
-option 'preversion'     => is => 'ro',   isa => Str, default => NUL;
+option 'preversion'     => is => 'ro',   isa => Str, default => NUL,
+   documentation        => 'Previous schema version';
 
 option 'rdbms'          => is => 'ro',   isa => ArrayRef,
-   default              => sub { [ qw(MySQL PostgreSQL) ] };
+   documentation        => 'List of RDBMSs',
+   default              => sub { [ qw( MySQL PostgreSQL ) ] };
 
-option 'schema_classes' => is => 'ro',   isa => HashRef, default => sub { {} };
+option 'schema_classes' => is => 'lazy', isa => HashRef, default => sub { {} },
+   documentation        => 'The database schema classes';
 
 option 'schema_version' => is => 'ro',   isa => NonEmptySimpleStr,
+   documentation        => 'Current schema version',
    default              => '0.1';
 
-option 'unlink'         => is => 'ro',   isa => Bool, default => FALSE;
+option 'unlink'         => is => 'ro',   isa => Bool, default => FALSE,
+   documentation        => 'If true remove DDL file before creating new ones';
 
 with q(Class::Usul::TraitFor::UntaintedGetopts);
 
@@ -60,7 +69,7 @@ sub create_database : method {
 
    my $admin_creds = $self->_get_db_admin_creds( 'create database' );
 
-   if (lc $self->driver eq q(mysql)) {
+   if (lc $self->driver eq 'mysql') {
       $self->info( "Creating MySQL database ${database}" );
       $cmd  = "create user '${user}'".'@';
       $cmd .= "'${host}' identified by '${password}';";
@@ -74,7 +83,7 @@ sub create_database : method {
       return OK;
    }
 
-   if (lc $self->driver eq q(pg)) {
+   if (lc $self->driver eq 'pg') {
       $self->info( "Creating PostgreSQL database ${database}" );
       $cmd  = "create role ${user} login password '${password}';";
       $self->_run_db_cmd( $admin_creds, $cmd );
@@ -91,6 +100,7 @@ sub create_ddl : method {
    my $self = shift; $self->output( 'Creating DDL for '.$self->dsn );
 
    for my $schema_class (values %{ $self->schema_classes }) {
+      $self->ensure_class_loaded( $schema_class );
       $self->_create_ddl( $schema_class, $self->config->dbasedir );
    }
 
@@ -130,6 +140,7 @@ sub deploy_and_populate : method {
    my $self = shift; $self->output( 'Deploy and populate for '.$self->dsn );
 
    for my $schema_class (values %{ $self->schema_classes }) {
+      $self->ensure_class_loaded( $schema_class );
       $self->_deploy_and_populate( $schema_class, $self->config->dbasedir );
    }
 
@@ -137,7 +148,7 @@ sub deploy_and_populate : method {
 }
 
 sub driver {
-   return (split q(:), $_[ 0 ]->dsn)[ 1 ];
+   return (split m{ [:] }mx, $_[ 0 ]->dsn)[ 1 ];
 }
 
 sub drop_database : method {
@@ -149,7 +160,7 @@ sub drop_database : method {
 
    $self->info( "Droping database ${database}" );
 
-   if (lc $self->driver eq q(mysql)) {
+   if (lc $self->driver eq 'mysql') {
       $cmd = "drop database if exists ${database};";
       $self->_run_db_cmd( $admin_creds, $cmd );
       $cmd = "drop user '${user}'".'@'."'${host}';";
@@ -157,7 +168,7 @@ sub drop_database : method {
       return OK;
    }
 
-   if (lc $self->driver eq q(pg)) {
+   if (lc $self->driver eq 'pg') {
       $self->_run_db_cmd( $admin_creds, "drop database ${database};" );
       $self->_run_db_cmd( $admin_creds, "drop user ${user};" );
       return OK;
@@ -186,20 +197,20 @@ sub edit_credentials : method {
                      user     => 'Enter db user',
                      password => 'Enter db password' };
    my $defaults  = { name     => $db,
-                     driver   => q(_field),
-                     host     => q(localhost),
-                     port     => q(_field),
-                     user     => q(_field),
+                     driver   => '_field',
+                     host     => 'localhost',
+                     port     => '_field',
+                     user     => '_field',
                      password => NUL };
 
-   for my $field (qw(name driver host port user password)) {
-      my $value = $defaults->{ $field } ne q(_field) ? $defaults->{ $field }
-                :                                         $creds->{ $field };
+   for my $field (qw( name driver host port user password )) {
+      my $value = $defaults->{ $field } ne '_field' ? $defaults->{ $field }
+                :                                        $creds->{ $field };
 
       $value = $self->get_line( $prompts->{ $field }, $value, TRUE, 0, FALSE,
-                                $field eq q(password) ? TRUE : FALSE );
+                                $field eq 'password' ? TRUE : FALSE );
 
-      $field eq q(password) and $value
+      $field eq 'password' and $value
          = $self->encrypt_for_cfg( $self_cfg, $value, $creds->{password} );
 
       $creds->{ $field } = $value || NUL;
@@ -211,7 +222,7 @@ sub edit_credentials : method {
 }
 
 sub host {
-   return (split q(=), (split q(;), $_[ 0 ]->dsn)[ 1 ])[ 1 ];
+   return (split m{ [=] }mx, (split m{ [;] }mx, $_[ 0 ]->dsn)[ 1 ])[ 1 ];
 }
 
 sub password {
@@ -302,22 +313,22 @@ sub _run_db_cmd {
    my ($self, $admin_creds, $cmd, $opts) = @_; $admin_creds ||= {};
 
    my $drvr = lc $self->driver;
-   my $host = $self->host || q(localhost);
+   my $host = $self->host || 'localhost';
    my $user = $admin_creds->{user} || $self->db_admin_ids->{ $drvr };
    my $pass = $admin_creds->{password}
       or $self->fatal( 'No database admin password' );
 
    $cmd = "echo \"${cmd}\" | ";
 
-   if ($drvr eq q(mysql) ) {
+   if ($drvr eq 'mysql' ) {
       $cmd .= "mysql -A -h ${host} -u ${user} -p${pass} mysql";
    }
-   elsif ($drvr eq q(pg)) {
+   elsif ($drvr eq 'pg') {
       $cmd .= "PGPASSWORD=${pass} psql -q -w -h ${host} -U ${user}";
    }
 
-   $self->run_cmd( $cmd, { debug => $self->debug, out => q(stdout),
-                           %{ $opts || {} } } );
+   $self->run_cmd( $cmd, { debug => $self->debug,
+                           out   => 'stdout', %{ $opts || {} } } );
    return;
 }
 
@@ -333,7 +344,7 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -346,10 +357,10 @@ Describes v0.9.$Rev: 0 $
 
    extends qw(CatalystX::Usul::Schema);
 
-   my %ATTRS  = ( database          => q(library),
+   my %ATTRS  = ( database          => 'library',
                   schema_classes    => {
-                     authentication => q(YourApp::Schema::Authentication),
-                     catalog        => q(YourApp::Schema::Catalog), }, );
+                     authentication => 'YourApp::Schema::Authentication',
+                     catalog        => 'YourApp::Schema::Catalog', }, );
 
    sub new_with_options {
       my ($self, @rest) = @_; my $attrs = arg_list @rest;
@@ -379,7 +390,7 @@ String which is required
 
 =item C<db_admin_ids>
 
-Hash ref which defaults to C<< { mysql => q(root), pg => q(postgres), } >>
+Hash ref which defaults to C<< { mysql => 'root', pg => 'postgres', } >>
 
 =item C<paragraph>
 
@@ -409,24 +420,23 @@ Boolean which defaults to false
 
 =head1 Subroutines/Methods
 
-=head2 create_database
+=head2 create_database - Creates a database
 
    $self->create_database;
 
-Creates a database. Understands how to do this for different RDBMSs,
-e.g. MySQL and PostgreSQL
+Understands how to do this for different RDBMSs, e.g. MySQL and PostgreSQL
 
-=head2 create_ddl
+=head2 create_ddl - Dump the database schema definition
 
    $self->create_ddl;
 
-Dump the database schema definition
+Creates the DDL for multiple RDBMs
 
-=head2 create_schema
+=head2 create_schema - Creates a database then deploys and populates the schema
 
    $self->create_schema;
 
-Creates a database then deploys and populates the schema
+Calls L<create_database> followed by L<deploy_and_populate>
 
 =head2 dbattrs
 
@@ -436,12 +446,11 @@ Merges the C<attrs> attribute with the database attributes returned by the
 L<get_connect_info|CatalystX::Usul::TraitFor::ConnectInfo/get_connect_info>
 method
 
-=head2 deploy_and_populate
+=head2 deploy_and_populate - Create tables and populates them with initial data
 
    $self->deploy_and_populate;
 
-Create database tables and populate them with initial data. Called as
-part of the application install
+Called as part of the application install
 
 =head2 driver
 
@@ -449,11 +458,11 @@ part of the application install
 
 The database driver string, derived from the L</dsn> method
 
-=head2 drop_database
+=head2 drop_database - Drops a database
 
    $self->drop_database;
 
-Drops the database that is selected by the call to C<database> attribute
+The database is selected by the C<database> attribute
 
 =head2 dsn
 
@@ -462,11 +471,11 @@ Drops the database that is selected by the call to C<database> attribute
 Returns the DSN from the call to
 L<get_connect_info|CatalystX::Usul::TraitFor::ConnectInfo/get_connect_info>
 
-=head2 edit_credentials
+=head2 edit_credentials - Edits the database login information
 
    $self->edit_credentials;
 
-Edits the configuration file containing the database login information
+Encrypts the database connection password before storage
 
 =head2 host
 

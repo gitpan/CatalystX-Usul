@@ -1,9 +1,9 @@
-# @(#)$Ident: View.pm 2013-08-19 19:06 pjf ;
+# @(#)$Ident: View.pm 2013-08-27 17:43 pjf ;
 
 package CatalystX::Usul::View;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -204,7 +204,7 @@ CatalystX::Usul::View - Base class for views
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -261,7 +261,7 @@ determined from the request content type
 
 Localizes the message. Calls L<Class::Usul::L10N/localize>. Adds the
 constant C<DEFAULT_L10N_DOMAINS> to the list of domain files that are
-searched. Adds C<< $c->stash->language >> and C<< $c->stash->namespace >>
+searched. Adds C<< $c->stash->{language} >> and C<< $c->stash->{namespace} >>
 (search domain) to the arguments passed to C<localize>
 
 =head2 not_implemented

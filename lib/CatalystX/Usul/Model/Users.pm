@@ -1,9 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: Users.pm 2013-08-27 17:37 pjf ;
 
 package CatalystX::Usul::Model::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
@@ -82,7 +82,7 @@ sub COMPONENT {
       my $attr     = { %{ $clone->domain_attributes },
                        builder    => $clone->usul,
                        cache      => $user_cache->{ $class } ||= {},
-                       language   => $c->stash->{language},
+                       locale     => $c->stash->{language},
                        role_cache => $role_cache->{ $class } ||= {}, };
 
       $attr->{dbic_user_class} and $attr->{dbic_user_model}
@@ -728,7 +728,7 @@ CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-Describes v0.9.$Rev: 0 $
+Describes v0.13.$Rev: 1 $
 
 =head1 Synopsis
 

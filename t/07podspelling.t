@@ -1,8 +1,8 @@
-# @(#)Ident: 07podspelling.t 2013-08-19 18:55 pjf ;
+# @(#)Ident: 07podspelling.t 2013-09-29 01:11 pjf ;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.9.%d', q$Rev: 0 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
 use File::Spec::Functions qw(catdir catfile updir);
 use FindBin qw( $Bin );
 use lib catdir( $Bin, updir, q(lib) );
@@ -40,7 +40,7 @@ done_testing();
 
 __DATA__
 BSON
-flanigan
+DDL
 acl
 api
 appldir
@@ -68,6 +68,7 @@ embeded
 fieldset
 filename
 filenames
+flanigan
 gettext
 hostname
 html
