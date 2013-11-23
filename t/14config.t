@@ -1,8 +1,8 @@
-# @(#)$Ident: 14config.t 2013-08-19 19:04 pjf ;
+# @(#)$Ident: 14config.t 2013-10-21 15:00 pjf ;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 use File::Spec::Functions   qw( catdir catfile updir );
 use FindBin                 qw( $Bin );
 use lib                 catdir( $Bin, updir, 'lib' ), catdir( $Bin, 'lib' );
@@ -45,7 +45,7 @@ $model->_set_keys_attr( q(an_element_name) );
 
 eval { $model->create_or_update }; $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e->as_string, qr{ Result \s+ source \s+ an_element_name \s+ unknown }msx,
+like $e->as_string, qr{ Result \s source \s 'an_element_name' \s unknown }msx,
     'Result source an_element_name unknown';
 
 $model->_set_keys_attr( q(globals) );
@@ -85,7 +85,7 @@ eval { $model->create_or_update( $file, q(dummy) ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e, qr{ element \s+ dummy \s+ already \s+ exists }msx,
+like $e, qr{ element \s+ 'dummy' \s+ already \s+ exists }msx,
     'Detects existing record';
 
 eval { $model->delete( $file, $name ) };
@@ -98,7 +98,7 @@ eval { $model->delete( $file, $name ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e, qr{ element \s+ dummy \s+ does \s+ not \s+ exist }msx,
+like $e, qr{ element \s+ 'dummy' \s+ does \s+ not \s+ exist }msx,
     'Detects non existance on delete';
 
 my @res = $model->search( $file, { acl => q(@support) } );

@@ -1,18 +1,19 @@
-# @(#)Ident: ;
+# @(#)Ident: Admin.pm 2013-10-19 17:50 pjf ;
 
 package CatalystX::Usul::Controller::Admin;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
-use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use File::Spec::Functions qw(catfile);
+use CatalystX::Usul::Moose;
+use File::Spec::Functions   qw( catfile );
 
 BEGIN { extends q(CatalystX::Usul::Controller) }
 
 with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
 with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+with q(CatalystX::Usul::TraitFor::Controller::TokenValidation);
 with q(Class::Usul::TraitFor::LoadingClasses);
 
 has 'default_action'   => is => 'ro', isa => NonEmptySimpleStr,
@@ -104,7 +105,7 @@ CatalystX::Usul::Controller::Admin - Administration controller methods
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

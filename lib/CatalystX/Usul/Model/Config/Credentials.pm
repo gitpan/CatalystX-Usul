@@ -1,13 +1,14 @@
-# @(#)Ident: Credentials.pm 2013-09-19 22:42 pjf ;
+# @(#)Ident: Credentials.pm 2013-11-08 12:45 pjf ;
 
 package CatalystX::Usul::Model::Config::Credentials;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions;
+use Class::Usul::Crypt       qw( cipher_list );
 use Class::Usul::Crypt::Util qw( decrypt_from_config
                                  encrypt_for_config get_cipher );
 use TryCatch;
@@ -52,7 +53,7 @@ sub credentials_form {
    my $usul_cfg = $self->usul->config;
    my $password = decrypt_from_config( $usul_cfg, $fields->password );
    my $cipher   = get_cipher( $fields->password );
-   my $ciphers  = [ NUL, $self->get_cipher_list ];
+   my $ciphers  = [ NUL, cipher_list ];
 
    unshift @{ $creds  }, NUL, $s->{newtag};
    unshift @{ $spaces }, NUL, 'default';
@@ -114,7 +115,7 @@ CatalystX::Usul::Model::Config::Credentials - Database connection definitions
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

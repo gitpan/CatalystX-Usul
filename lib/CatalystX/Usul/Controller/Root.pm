@@ -1,9 +1,9 @@
-# @(#)Ident: Root.pm 2013-09-29 00:51 pjf ;
+# @(#)Ident: Root.pm 2013-10-19 17:49 pjf ;
 
 package CatalystX::Usul::Controller::Root;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( env_prefix is_member throw );
@@ -13,6 +13,7 @@ BEGIN { extends q(CatalystX::Usul::Controller) }
 
 with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
 with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+with q(CatalystX::Usul::TraitFor::Controller::TokenValidation);
 
 has 'default_namespace' => is => 'ro', isa => SimpleStr, required => TRUE;
 
@@ -225,7 +226,7 @@ CatalystX::Usul::Controller::Root - Root Controller for the application
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

@@ -3,7 +3,7 @@
 package CatalystX::Usul::Model;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( is_arrayref is_hashref throw );
@@ -81,7 +81,7 @@ CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

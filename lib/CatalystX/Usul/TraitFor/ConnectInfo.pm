@@ -1,16 +1,15 @@
-# @(#)Ident: ConnectInfo.pm 2013-09-29 01:38 pjf ;
+# @(#)Ident: ConnectInfo.pm 2013-11-09 13:58 pjf ;
 
 package CatalystX::Usul::TraitFor::ConnectInfo;
 
 use 5.010001;
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( merge_attributes throw );
-use Class::Usul::Crypt         qw( cipher_list );
-use Class::Usul::Crypt::Util   qw( decrypt_from_config encrypt_for_config );
+use Class::Usul::Crypt::Util   qw( decrypt_from_config );
 use Class::Usul::File;
 use File::Spec::Functions      qw( catfile );
 use Scalar::Util               qw( blessed );
@@ -18,36 +17,28 @@ use Moo::Role;
 
 requires qw( config ); # As a class method
 
-sub decrypt_from_cfg {
-   my $self = shift; return decrypt_from_config( @_ );
-}
-
-sub dump_cfg_data {
+sub dump_config_data {
    my ($self, $config, $db, $cfg_data) = @_;
 
-   my $params = __merge_attributes( blessed $self || $self, $config );
+   my $params = $self->_merge_attributes( $config );
 
    return __dump_config_data( $params, $db, $cfg_data );
 }
 
-sub encrypt_for_cfg {
-   my $self = shift; return encrypt_for_config( @_ );
-}
-
-sub extract_creds_from_cfg {
+sub extract_creds_from {
    my ($self, $config, $db, $cfg_data) = @_;
 
-   my $params = __merge_attributes( blessed $self || $self, $config );
+   my $params = $self->_merge_attributes( $config );
 
-   return __extract_creds_from_cfg( $params, $db, $cfg_data );
+   return __extract_creds_from( $params, $db, $cfg_data );
 }
 
 sub get_connect_info {
-   my ($self, $app, $params) = @_;
+   my ($self, $app, $params) = @_; my $attr = $self->_connect_config_attr;
 
    state $cache //= {}; $app //= $self; $params //= {};
 
-   merge_attributes $params, $app->config, $self->config, __get_config_attr();
+   merge_attributes $params, $app->config, $self->config, $attr;
 
    my $class    = blessed $self || $self; $params->{class} = $class;
    my $db       = $params->{database}
@@ -56,26 +47,32 @@ sub get_connect_info {
 
    defined $cache->{ $key } and return $cache->{ $key };
 
-   my $cfg_data = __load_config_data( $params, $db );
-   my $creds    = __extract_creds_from_cfg( $params, $db, $cfg_data );
-   my $dsn      = 'dbi:'.$creds->{driver}.':database='.$db;
-      $dsn     .= ';host='.$creds->{host}.';port='.$creds->{port};
+   my $cfg_data = $self->load_config_data( $params, $db );
+   my $creds    = $self->extract_creds_from( $params, $db, $cfg_data );
+   my $dsn      = 'dbi:'.$creds->{driver}.':database='.$db
+                  .';host='.$creds->{host}.';port='.$creds->{port};
    my $password = decrypt_from_config( $params, $creds->{password} );
    my $opts     = __get_connect_options( $creds );
 
    return $cache->{ $key } = [ $dsn, $creds->{user}, $password, $opts ];
 }
 
-sub get_cipher_list {
-   return cipher_list;
+sub load_config_data {
+   return __load_config_data( $_[ 0 ]->_merge_attributes( $_[ 1 ] ), $_[ 2 ] );
 }
 
-sub load_cfg_data {
-   my ($self, $config, $db) = @_;
+# Private methods
+sub _connect_config_attr {
+   return [ qw( class ctlfile ctrldir database dataclass_attr extension
+                prefix read_secure salt seed seed_file subspace tempdir ) ];
+}
 
-   my $params = __merge_attributes( blessed $self || $self, $config );
+sub _merge_attributes {
+   my ($self, $config) = @_;
 
-   return __load_config_data( $params, $db );
+   my $attr = $self->_connect_config_attr; my $class = blessed $self || $self;
+
+   return merge_attributes { class => $class }, $config, {}, $attr;
 }
 
 # Private functions
@@ -88,7 +85,7 @@ sub __dump_config_data {
    return $schema->dump( { data => $cfg_data, path => $ctlfile } );
 }
 
-sub __extract_creds_from_cfg {
+sub __extract_creds_from {
    my ($params, $db, $cfg_data) = @_;
 
    my $key = __get_connect_info_cache_key( $params, $db );
@@ -98,11 +95,6 @@ sub __extract_creds_from_cfg {
                args  => [ __get_credentials_file( $params, $db ), $key ];
 
    return $cfg_data->{credentials}->{ $key };
-}
-
-sub __get_config_attr {
-   return [ qw(class ctlfile ctrldir database dataclass_attr extension subspace
-               ctrldir prefix read_secure salt seed suid tempdir) ];
 }
 
 sub __get_connect_info_cache_key {
@@ -116,10 +108,10 @@ sub __get_connect_options {
    my $uopt  = $creds->{unicode_option}
             || __unicode_options()->{ lc $creds->{driver} } || {};
 
-   return { AutoCommit => $creds->{auto_commit} // TRUE,
-            PrintError => $creds->{print_error} // FALSE,
-            RaiseError => $creds->{raise_error} // TRUE,
-            %{ $uopt }, %{ $creds->{database_attributes} || {} }, };
+   return { AutoCommit =>  $creds->{auto_commit  } // TRUE,
+            PrintError =>  $creds->{print_error  } // FALSE,
+            RaiseError =>  $creds->{raise_error  } // TRUE,
+            %{ $uopt }, %{ $creds->{database_attr} || {} }, };
 }
 
 sub __get_credentials_file {
@@ -147,14 +139,6 @@ sub __load_config_data {
    my $schema = __get_dataclass_schema( $params->{dataclass_attr} );
 
    return $schema->load( __get_credentials_file( $params, $db ) );
-}
-
-sub __merge_attributes {
-   my ($class, $config) = @_; my $params = {};
-
-   merge_attributes $params, $config, { class => $class }, __get_config_attr();
-
-   return $params;
 }
 
 sub __unicode_options {
@@ -206,7 +190,7 @@ The XML data looks like this:
     <name>database_we_want_to_connect_to.optional_subspace</name>
     <driver>mysql</driver>
     <host>localhost</host>
-    <password>{Twofish}0QqX325DLs18I8T/wU4/ZQQ=</password>
+    <password>{Twofish2}0QqX325DLs18I8T/wU4/ZQQ=</password>
     <port>3306</port>
     <print_error>0</print_error>
     <raise_error>1</raise_error>
@@ -215,40 +199,20 @@ The XML data looks like this:
 
 =head1 Subroutines/Methods
 
-=head2 decrypt_from_cfg
+=head2 dump_config_data
 
-   $plain_text = $self->decrypt_from_cfg( $app_config, $password );
-
-Strips the C<{Twofish2}> prefix and then decrypts the password
-
-=head2 dump_cfg_data
-
-   $dumped_data = $self->dump_cfg_data( $app_config, $db, $cfg_data );
+   $dumped_data = $self->dump_config_data( $app_config, $db, $cfg_data );
 
 Call the L<dump method|File::DataClass::Schema/dump> to write the
 configuration file back to disk
 
-=head2 encrypt_for_cfg
+=head2 extract_creds_from
 
-   $encrypted_value = $self->encrypt_for_cfg( $app_config, $plain_text );
-
-Returns the encrypted value of the plain value prefixed with C<{Twofish2}>
-for storage in a configuration file
-
-=head2 extract_creds_from_cfg
-
-   $creds = $self->extract_creds_from_cfg( $app_config, $db, $cfg_data );
+   $creds = $self->extract_creds_from( $app_config, $db, $cfg_data );
 
 Returns the credential info for the specified database and (optional)
 subspace. The subspace attribute of C<$app_config> is appended
 to the database name to create a unique cache key
-
-=head2 get_cipher_list
-
-   @list_of_ciphers = $self->get_cipher_list;
-
-Returns the list of ciphers supported by L<Crypt::CBC>. These may not
-all be installed
 
 =head2 get_connect_info
 
@@ -261,9 +225,9 @@ C<ctrldir>. Multiple sets of data can be stored in the same file,
 keyed by the C<$db> argument. The password is decrypted if
 required
 
-=head2 load_cfg_data
+=head2 load_config_data
 
-   $cfg_data = $self->load_cfg_data( $app_config, $db );
+   $cfg_data = $self->load_config_data( $app_config, $db );
 
 Returns a hash ref of configuration file data. The path to the file
 can be specified in C<< $app_config->{ctlfile} >> or it will default

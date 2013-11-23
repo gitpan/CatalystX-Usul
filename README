@@ -2,7 +2,7 @@ Name
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    This document describes CatalystX::Usul version v0.13.$Rev: 1 $
+    This document describes CatalystX::Usul version v0.14.$Rev: 1 $
 
 Synopsis
        package MyApp::Controller;

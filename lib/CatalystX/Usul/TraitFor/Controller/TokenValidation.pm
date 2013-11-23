@@ -1,22 +1,22 @@
-# @(#)Ident: ;
+# @(#)Ident: TokenValidation.pm 2013-10-19 17:46 pjf ;
 
 package CatalystX::Usul::TraitFor::Controller::TokenValidation;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(create_token);
-use Class::Usul::Time          qw(str2time time2str);
+use CatalystX::Usul::Functions qw( create_token );
+use Class::Usul::Time          qw( str2time time2str );
 
-requires qw(end redirect_to_path);
+requires qw( end redirect_to_path usul );
 
 around 'end' => sub {
    my ($next, $self, $c, @args) = @_;
 
-   exists $c->action->attributes->{ q(NoToken) }
+   exists $c->action->attributes->{ 'NoToken' }
       or $self->_add_validation_token( $c, @args );
 
    return $self->$next( $c, @args );
@@ -48,7 +48,8 @@ sub validate_token {
       my $now    = time;
       my $minted = (split m{ _ }mx, $request)[ 0 ] || NUL;
       my $then   = $minted ? str2time( $minted ) : $now;
-      my $seed   = $minted.q(_).$self->salt.q(_).$s->{user}->username;
+      my $salt   = $self->usul->config->salt;
+      my $seed   = "${minted}_${salt}_".$s->{user}->username;
 
       if ($now - $then > $max_age) {
          $self->log->info( "Token too old ${minted}" );
@@ -71,7 +72,6 @@ sub validate_token {
 }
 
 # Private methods
-
 sub _add_validation_token { # Add the CSRF token to the form
    my ($self, $c) = @_; my ($mtoken, $token);
 
@@ -83,7 +83,8 @@ sub _add_validation_token { # Add the CSRF token to the form
    if ($max_age > 0) {
       # This method does not use the session store so it's browser tab safe
       my $minted = time2str();
-      my $seed   = $minted.q(_).$self->salt.q(_).$s->{user}->username;
+      my $salt   = $self->usul->config->salt;
+      my $seed   = "${minted}_${salt}_".$s->{user}->username;
 
       $token = __create_token( $seed ); $mtoken = "${minted}_${token}";
    }
@@ -100,7 +101,6 @@ sub _model {
 }
 
 # Private functions
-
 sub __create_token {
    return substr create_token( $_[ 0 ] ), 0, 32;
 }
@@ -117,7 +117,7 @@ CatalystX::Usul::Plugin::Controller::TokenValidation - CSRF form tokens
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

@@ -1,22 +1,22 @@
-# @(#)Ident: ;
+# @(#)Ident: Email.pm 2013-11-21 23:24 pjf ;
 
 package CatalystX::Usul::TraitFor::Email;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(is_hashref throw);
+use CatalystX::Usul::Functions qw( ensure_class_loaded is_hashref throw );
 use Email::MIME;
 use Encode;
-use File::Basename             qw(basename);
+use File::Basename             qw( basename );
 use File::DataClass::IO;
 use MIME::Types;
 use Template;
 
-requires qw(ensure_class_loaded loc);
+requires qw( loc );
 
 sub send_email {
    my ($self, $args) = @_;
@@ -100,11 +100,11 @@ sub _transport_email {
 
    $args->{email} or throw 'No email object specified';
 
-   my $class = $args->{mailer} || q(SMTP);
+   my $class = $args->{mailer} || 'SMTP';
 
-   substr $class, 0, 1 eq q(+) or $class = "Email::Sender::Transport::${class}";
+   substr $class, 0, 1 eq '+' or $class = "Email::Sender::Transport::${class}";
 
-   $self->ensure_class_loaded( $class );
+   ensure_class_loaded( $class );
 
    my $mailer_args = { %{ $args->{mailer_args} || {} } };
 
@@ -114,7 +114,7 @@ sub _transport_email {
    my $send_args = { from => $args->{from}, to => $args->{to} };
    my $result    = $mailer->send( $args->{email}, $send_args );
 
-   $result->can( q(failure) ) and throw $result->message;
+   $result->can( 'failure' ) and throw $result->message;
    return $args->{to};
 }
 
@@ -130,7 +130,7 @@ CatalystX::Usul::TraitFor::Email - Role for sending emails
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -151,7 +151,7 @@ Provides utility methods to the model and program base classes
 
 =head1 Configuration and Environment
 
-Requires the C<ensure_class_loaded> and C<loc> methods
+Requires the C<loc> method
 
 =head1 Subroutines/Methods
 

@@ -1,9 +1,9 @@
-# @(#)$Ident: Controller.pm 2013-09-29 00:48 pjf ;
+# @(#)$Ident: Controller.pm 2013-11-21 23:33 pjf ;
 
 package CatalystX::Usul::Controller;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Class::Null;
 use CatalystX::Usul::Constants;
@@ -16,34 +16,33 @@ use TryCatch;
 extends q(Catalyst::Controller);
 with    q(CatalystX::Usul::TraitFor::BuildingUsul);
 with    q(CatalystX::Usul::TraitFor::Controller::Cookies);
-with    q(CatalystX::Usul::TraitFor::Controller::TokenValidation);
 
 has 'action_source'    => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(action);
+   default             => 'action';
 
 has 'config_class'     => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(Config);
+   default             => 'Config';
 
 has 'fs_class'         => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(FileSystem);
+   default             => 'FileSystem';
 
 has 'global_class'     => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(Config::Globals);
+   default             => 'Config::Globals';
 
 has 'help_class'       => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(Help);
+   default             => 'Help';
 
 has 'nav_class'        => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(Navigation);
+   default             => 'Navigation';
 
 has 'realm_class'      => is => 'ro',   isa => NonEmptySimpleStr,
-   default             => q(UsersSimple);
+   default             => 'UsersSimple';
 
 has 'user_agent_class' => is => 'lazy', isa => LoadableClass, coerce => TRUE,
    default             => sub { 'Parse::HTTP::UserAgent' };
 
 has 'usul'             => is => 'lazy', isa => BaseClass,
-   handles             => [ qw(debug encoding log prefix salt) ];
+   handles             => [ qw( debug encoding log ) ];
 
 sub auto { # Allow access to authorised users. Redirect the unwanted elsewhere
    my ($self, $c) = @_; my $s = $c->stash; my $name;
@@ -265,7 +264,7 @@ sub _get_basic_info {
    # TODO: Add some sort of structure to the stash. Move all globals down
    return ( action_paths => $navm ? $navm->action_paths : {},
             application  => $app,
-            class        => $self->prefix,
+            class        => $self->usul->config->prefix,
             dhtml        => TRUE,
             domain       => __get_request_domain( $req_host ),
             fonts        => [ split SPC, $cfg->{fonts} || NUL ],
@@ -382,12 +381,11 @@ sub _is_action_state_ok {
 sub _is_user_agent_ok {
    my ($self, $c) = @_; my $cfg = $c->config; my $s = $c->stash;
 
-   $cfg->{misery_page} or $cfg->{misery_skin} or return TRUE;
-
    my $header = $c->req->headers->{ q(user-agent) } || 'Mozilla';
    my $ua     = $s->{user_agent}
               = $self->user_agent_class->new( $header, { extended => 0 } );
 
+   $cfg->{misery_page} or $cfg->{misery_skin} or return TRUE;
    (not $ua->name or $ua->name ne EVIL_EMPIRE) and return TRUE;
 
    if ($cfg->{misery_skin}) {
@@ -594,7 +592,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version v0.13.$Rev: 1 $
+This document describes CatalystX::Usul::Controller version v0.14.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -665,8 +663,6 @@ Extends L<Catalyst::Controller>. Applies the controller roles including;
 =item L<CatalystX::Usul::TraitFor::Controller::PersistentState>
 
 =item L<CatalystX::Usul::TraitFor::Controller::TokenValidation>
-
-=item L<Class::Usul::TraitFor::LoadingClasses>
 
 =back
 

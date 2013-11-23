@@ -5,7 +5,7 @@ package CatalystX::Usul::Constraints;
 use strict;
 use warnings;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Encode                      qw( find_encoding );
 use File::DataClass::IO;
@@ -92,7 +92,7 @@ CatalystX::Usul::Constraints - Defines Moose type constraints
 
 =head1 Version
 
-This document describes CatalystX::Usul::Constraints version v0.13.$Rev: 1 $
+This document describes CatalystX::Usul::Constraints version v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

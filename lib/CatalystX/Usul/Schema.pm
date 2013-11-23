@@ -1,17 +1,18 @@
-# @(#)Ident: Schema.pm 2013-09-29 00:57 pjf ;
+# @(#)Ident: Schema.pm 2013-11-22 22:40 pjf ;
 
 package CatalystX::Usul::Schema;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
+use Moo;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw( distname );
+use CatalystX::Usul::Functions qw( distname ensure_class_loaded );
+use Class::Usul::Crypt::Util   qw( encrypt_for_config );
+use Class::Usul::Options;
 use Class::Usul::Types         qw( ArrayRef Bool HashRef
                                    NonEmptySimpleStr Str );
-use Moo;
-use MooX::Options;
 use File::Spec::Functions      qw( catfile );
 
 extends q(Class::Usul::Programs);
@@ -49,8 +50,6 @@ option 'schema_version' => is => 'ro',   isa => NonEmptySimpleStr,
 
 option 'unlink'         => is => 'ro',   isa => Bool, default => FALSE,
    documentation        => 'If true remove DDL file before creating new ones';
-
-with q(Class::Usul::TraitFor::UntaintedGetopts);
 
 # Private attributes
 has '_connect_info'  => is => 'lazy', isa => ArrayRef, init_arg => undef,
@@ -100,7 +99,7 @@ sub create_ddl : method {
    my $self = shift; $self->output( 'Creating DDL for '.$self->dsn );
 
    for my $schema_class (values %{ $self->schema_classes }) {
-      $self->ensure_class_loaded( $schema_class );
+      ensure_class_loaded( $schema_class );
       $self->_create_ddl( $schema_class, $self->config->dbasedir );
    }
 
@@ -140,7 +139,7 @@ sub deploy_and_populate : method {
    my $self = shift; $self->output( 'Deploy and populate for '.$self->dsn );
 
    for my $schema_class (values %{ $self->schema_classes }) {
-      $self->ensure_class_loaded( $schema_class );
+      ensure_class_loaded( $schema_class );
       $self->_deploy_and_populate( $schema_class, $self->config->dbasedir );
    }
 
@@ -187,9 +186,9 @@ sub edit_credentials : method {
    my $self_cfg  = $self->config;
    my $db        = $self->database;
    my $bootstrap = $self->options->{bootstrap};
-   my $cfg_data  = $bootstrap ? {} : $self->load_cfg_data( $self_cfg, $db );
+   my $cfg_data  = $bootstrap ? {} : $self->load_config_data( $self_cfg, $db );
    my $creds     = $bootstrap ? {}
-                 : $self->extract_creds_from_cfg( $self_cfg, $db, $cfg_data );
+                 : $self->extract_creds_from( $self_cfg, $db, $cfg_data );
    my $prompts   = { name     => 'Enter db name',
                      driver   => 'Enter DBD driver',
                      host     => 'Enter db host',
@@ -211,13 +210,13 @@ sub edit_credentials : method {
                                 $field eq 'password' ? TRUE : FALSE );
 
       $field eq 'password' and $value
-         = $self->encrypt_for_cfg( $self_cfg, $value, $creds->{password} );
+         = encrypt_for_config( $self_cfg, $value, $creds->{password} );
 
       $creds->{ $field } = $value || NUL;
    }
 
    $cfg_data->{credentials}->{ $creds->{name} } = $creds;
-   $self->dump_cfg_data( $self_cfg, $creds->{name}, $cfg_data );
+   $self->dump_config_data( $self_cfg, $creds->{name}, $cfg_data );
    return OK;
 }
 
@@ -344,7 +343,7 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

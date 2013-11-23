@@ -1,14 +1,14 @@
-# @(#)Ident: Users.pm 2013-09-02 15:20 pjf ;
+# @(#)Ident: Users.pm 2013-11-21 23:40 pjf ;
 
 package CatalystX::Usul::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
-use CatalystX::Usul::Functions   qw( create_token exception is_arrayref
-                                     is_hashref is_member throw );
+use CatalystX::Usul::Functions   qw( create_token ensure_class_loaded exception
+                                     is_arrayref is_hashref is_member throw );
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Response::Users;
 use Class::Usul::Exception;
@@ -18,7 +18,6 @@ use Crypt::Eksblowfish::Bcrypt   qw( bcrypt en_base64 );
 use File::Spec::Functions        qw( catdir catfile );
 use TryCatch;
 
-with q(Class::Usul::TraitFor::LoadingClasses);
 with q(CatalystX::Usul::TraitFor::Email);
 
 Class::Usul::Exception->has_exception( 'AccountInactive'   );
@@ -559,7 +558,7 @@ sub _generate_password {
    my $self = shift;
 
    try {
-      $self->ensure_class_loaded( q(Crypt::PassGen) );
+      ensure_class_loaded( 'Crypt::PassGen' );
 
       my $passwd = (Crypt::PassGen::passgen( NLETT => 6, NWORDS => 1 ))[ 0 ]
          or throw $Crypt::PassGen::ERRSTR;
@@ -568,7 +567,7 @@ sub _generate_password {
    }
    catch ($e) { $self->log->error( $e ) }
 
-   return $self->usul->prefix;
+   return $self->usul->config->prefix;
 }
 
 sub _get_salt_for {
@@ -654,7 +653,7 @@ CatalystX::Usul::Users - User domain model
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -939,6 +938,8 @@ None
 
 =over 3
 
+=item L<CatalystX::Usul::Constraints>
+
 =item L<CatalystX::Usul::Response::Users>
 
 =item L<CatalystX::Usul::Shells>
@@ -950,8 +951,6 @@ None
 =item L<Class::Usul::IPC>
 
 =item L<Crypt::Eksblowfish::Bcrypt>
-
-=item L<CatalystX::Usul::Constraints>
 
 =item L<TryCatch>
 

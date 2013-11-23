@@ -1,9 +1,9 @@
-# @(#)Ident: Users.pm 2013-08-27 17:37 pjf ;
+# @(#)Ident: Users.pm 2013-11-21 23:40 pjf ;
 
 package CatalystX::Usul::Model::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
@@ -16,7 +16,6 @@ use File::Spec::Functions        qw( catdir catfile );
 use TryCatch;
 
 extends q(CatalystX::Usul::Model);
-with    q(Class::Usul::TraitFor::LoadingClasses);
 with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
 with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
 with    q(CatalystX::Usul::TraitFor::Captcha);
@@ -728,7 +727,7 @@ CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

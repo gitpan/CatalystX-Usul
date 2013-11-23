@@ -1,9 +1,9 @@
-# @(#)Ident: Help.pm 2013-09-29 00:54 pjf ;
+# @(#)Ident: Help.pm 2013-11-21 23:41 pjf ;
 
 package CatalystX::Usul::Model::Help;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( distname find_source merge_attributes throw);
@@ -12,7 +12,6 @@ use Class::Usul::Time;
 use Time::Elapsed              qw( elapsed );
 
 extends q(CatalystX::Usul::Model);
-with    q(Class::Usul::TraitFor::LoadingClasses);
 with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
 with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
 with    q(CatalystX::Usul::TraitFor::Email);
@@ -304,7 +303,7 @@ CatalystX::Usul::Model::Help - Provides data for help pages
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -435,8 +434,6 @@ None
 =item L<CatalystX::Usul::Moose>
 
 =item L<Class::Usul::Time>
-
-=item L<Class::Usul::TraitFor::LoadingClasses>
 
 =item L<Time::Elapsed>
 

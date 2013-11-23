@@ -1,16 +1,18 @@
-# @(#)$Ident: Admin.pm 2013-09-29 12:08 pjf ;
+# @(#)$Ident: Admin.pm 2013-11-22 22:40 pjf ;
 
 package CatalystX::Usul::Admin;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
+use Moo;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( class2appdir logname emit throw
                                    untaint_cmdline untaint_identifier );
 use Class::Null;
 use Class::Usul::Exception;
+use Class::Usul::Options;
 use English                    qw( -no_match_vars );
 use File::DataClass::Types     qw( ArrayRef Bool Directory HashRef
                                    LoadableClass Object Path );
@@ -19,8 +21,6 @@ use File::Basename             qw( basename dirname );
 use File::Spec::Functions      qw( catfile );
 use IO::Interactive            qw( is_interactive );
 use List::Util                 qw( first );
-use Moo;
-use MooX::Options;
 use TryCatch;
 
 extends q(Class::Usul::Programs);
@@ -31,8 +31,6 @@ Class::Usul::Exception->has_exception( 'PasswordExpired' );
 # Public attributes
 option 'exec_setuid' => is => 'ro', isa => Bool, default => FALSE,
    documentation     => 'True when executing setuid', short => 'e';
-
-with    q(Class::Usul::TraitFor::UntaintedGetopts);
 
 # Private attributes
 has '_commands'        => is => 'ro',   isa => HashRef,
@@ -716,7 +714,7 @@ CatalystX::Usul::Admin - Subroutines that run as the super user
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

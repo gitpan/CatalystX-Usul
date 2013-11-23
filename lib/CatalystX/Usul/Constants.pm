@@ -4,7 +4,7 @@ package CatalystX::Usul::Constants;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Class::Usul::Constants ();
 use Sub::Exporter;
@@ -68,7 +68,7 @@ CatalystX::Usul::Constants - Definitions of constant values
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

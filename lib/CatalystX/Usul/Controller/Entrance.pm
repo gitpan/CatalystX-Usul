@@ -1,9 +1,9 @@
-# @(#)Ident: Entrance.pm 2013-09-29 00:51 pjf ;
+# @(#)Ident: Entrance.pm 2013-10-19 17:49 pjf ;
 
 package CatalystX::Usul::Controller::Entrance;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Moose;
@@ -12,6 +12,7 @@ BEGIN { extends q(CatalystX::Usul::Controller) }
 
 with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
 with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
+with q(CatalystX::Usul::TraitFor::Controller::TokenValidation);
 
 has 'default_action'   => is => 'ro', isa => NonEmptySimpleStr,
    default             => q(reception);
@@ -161,7 +162,7 @@ CatalystX::Usul::Controller::Entrance - Common controller methods
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 

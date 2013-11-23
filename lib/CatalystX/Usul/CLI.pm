@@ -1,31 +1,29 @@
-# @(#)$Ident: CLI.pm 2013-09-29 12:08 pjf ;
+# @(#)$Ident: CLI.pm 2013-11-22 22:40 pjf ;
 
 package CatalystX::Usul::CLI;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.13.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
+use Moo;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( bson64id bson64id_time emit );
 use CatalystX::Usul::FileSystem;
 use CatalystX::Usul::ProjectDocs;
 use CatalystX::Usul::TapeBackup;
+use Class::Usul::Options;
 use Class::Usul::Time          qw( nap time2str );
 use English                    qw( -no_match_vars );
 use File::DataClass::Types     qw( Int Object Path );
 use File::Find                 qw( find );
 use File::Spec::Functions      qw( catdir catfile tmpdir );
-use Moo;
-use MooX::Options;
 
 extends q(Class::Usul::Programs);
 with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
 
 option 'delete_after' => is => 'ro', isa => Int, default => 35,
    documentation => 'Housekeeping deletes archive file after this many days';
-
-with    q(Class::Usul::TraitFor::UntaintedGetopts);
 
 has '_filesys'  => is => 'lazy', isa => Object, reader => 'filesys';
 
@@ -220,7 +218,7 @@ CatalystX::Usul::CLI - Subroutines accessed from the command line
 
 =head1 Version
 
-Describes v0.13.$Rev: 1 $
+Describes v0.14.$Rev: 1 $
 
 =head1 Synopsis
 
