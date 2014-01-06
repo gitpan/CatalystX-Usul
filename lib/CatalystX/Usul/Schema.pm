@@ -1,23 +1,20 @@
-# @(#)Ident: Schema.pm 2013-11-22 22:40 pjf ;
+# @(#)Ident: Schema.pm 2014-01-06 12:41 pjf ;
 
 package CatalystX::Usul::Schema;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version;  our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moo;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw( distname ensure_class_loaded );
-use Class::Usul::Crypt::Util   qw( encrypt_for_config );
+use Class::Usul::Crypt::Util qw( encrypt_for_config );
+use Class::Usul::Functions   qw( distname ensure_class_loaded );
 use Class::Usul::Options;
-use Class::Usul::Types         qw( ArrayRef Bool HashRef
-                                   NonEmptySimpleStr Str );
-use File::Spec::Functions      qw( catfile );
+use Class::Usul::Types       qw( ArrayRef Bool HashRef NonEmptySimpleStr Str );
 
 extends q(Class::Usul::Programs);
 with    q(CatalystX::Usul::TraitFor::ConnectInfo);
-with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
 
 # Public attributes
 option 'attrs'          => is => 'ro',   isa => HashRef,
@@ -51,13 +48,16 @@ option 'schema_version' => is => 'ro',   isa => NonEmptySimpleStr,
 option 'unlink'         => is => 'ro',   isa => Bool, default => FALSE,
    documentation        => 'If true remove DDL file before creating new ones';
 
-# Private attributes
-has '_connect_info'  => is => 'lazy', isa => ArrayRef, init_arg => undef,
-   reader            => 'connect_info';
+option 'yes'            => is => 'ro',   isa => Bool, default => FALSE,
+   documentation        => 'When true flips the defaults for yes/no questions',
+   short                => 'y';
 
-has '_paragraph'     => is => 'ro',   isa => HashRef,
-   default           => sub { { cl => TRUE, fill => TRUE, nl => TRUE } },
-   reader            => 'paragraph';
+has 'paragraph'         => is => 'ro',   isa => HashRef,
+   default              => sub { { cl => TRUE, fill => TRUE, nl => TRUE } };
+
+# Private attributes
+has '_connect_info' => is => 'lazy', isa => ArrayRef, init_arg => undef,
+   reader           => 'connect_info';
 
 # Public methods
 sub create_database : method {
@@ -108,11 +108,9 @@ sub create_ddl : method {
 
 sub create_schema : method { # Create databases and edit credentials
    my $self    = shift;
-   my $picfg   = $self->maybe_read_post_install_config;
    my $text    = 'Schema creation requires a database, id and password. ';
       $text   .= 'For Postgres the driver is Pg and the port 5432';
-   my $default = defined $picfg->{create_schema}
-               ? $picfg->{create_schema} : TRUE;
+   my $default = $self->yes;
 
    $self->output( $text, $self->paragraph );
 
@@ -281,6 +279,7 @@ sub _deploy_and_populate {
 
       my $hash = $self->file->dataclass_schema->load( $path );
       my $flds = [ split SPC, $hash->{fields} ];
+      # TODO: Use Data::Record
       my @rows = map { [ map    { s{ \A [\'\"] }{}mx; s{ [\'\"] \z }{}mx; $_ }
                          split m{ , \s* }mx, $_ ] } @{ $hash->{rows} };
 
@@ -343,7 +342,7 @@ CatalystX::Usul::Schema - Support for database schemas
 
 =head1 Version
 
-Describes v0.14.$Rev: 1 $
+Describes v0.15.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -414,6 +413,11 @@ String which defaults to C<0.1>
 =item C<unlink>
 
 Boolean which defaults to false
+
+=item C<yes>
+
+Boolean which defaults to false. When true flips the defaults for
+yes/no questions
 
 =back
 
@@ -529,7 +533,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2013 Peter Flanigan. All rights reserved
+Copyright (c) 2014 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

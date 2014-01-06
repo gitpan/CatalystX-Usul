@@ -5,7 +5,7 @@ package CatalystX::Usul;
 use 5.010001;
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 1;
 
@@ -19,7 +19,7 @@ CatalystX::Usul - A base class for Catalyst MVC components
 
 =head1 Version
 
-This document describes CatalystX::Usul version v0.14.$Rev: 1 $
+This document describes CatalystX::Usul version v0.15.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -124,7 +124,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2013 Peter Flanigan. All rights reserved
+Copyright (c) 2014 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

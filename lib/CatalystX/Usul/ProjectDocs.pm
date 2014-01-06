@@ -3,7 +3,7 @@
 package CatalystX::Usul::ProjectDocs;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use Class::Null;
@@ -119,7 +119,7 @@ CatalystX::Usul::ProjectDocs - Generates CPAN like pod pages
 
 =head1 Version
 
-Describes v0.14.$Rev: 1 $
+Describes v0.15.$Rev: 1 $
 
 =head1 Synopsis
 

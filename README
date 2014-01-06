@@ -1,87 +1,104 @@
 Name
+
     CatalystX::Usul - A base class for Catalyst MVC components
 
 Version
-    This document describes CatalystX::Usul version v0.14.$Rev: 1 $
+
+    This document describes CatalystX::Usul version v0.15.$Rev: 1 $
 
 Synopsis
+
        package MyApp::Controller;
-
+    
        use Moose;
-
+    
        BEGIN { extends qw(CatalystX::Usul::Controller) }
-
-
+    
+    
        package MyApp::Model;
-
+    
        use Moose;
-
+    
        extends qw(CatalystX::Usul::Model);
 
 Description
-    These modules provide a set of extension base classes for a Catalyst web
-    application. Features include:
+
+    These modules provide a set of extension base classes for a Catalyst
+    web application. Features include:
 
     Targeted at intranet applications
-       The identity model supports multiple backend authentication stores
-       including the underlying operating system accounts
+
+      The identity model supports multiple backend authentication stores
+      including the underlying operating system accounts
 
     Thin controllers
-       Most controllers make a single call to the model and so comprise of
-       only a few lines of code. The interface model stashes data used by
-       the view to render the page
+
+      Most controllers make a single call to the model and so comprise of
+      only a few lines of code. The interface model stashes data used by
+      the view to render the page
 
     No further view programing required
-       A single template toolkit instance is used to render all pages as
-       either HTML or XHTML. The template forms one component of the "skin",
-       the other components are: a Javascript file containing the use cases
-       for the Javascript libraries, a primary CSS file with support for
-       alternative CSS files, and a set of image files
 
-       Designers can create new skins with different layout, presentation
-       and behaviour for the whole application. They can do this for the
-       example application, Munchies, whilst the programmers write the
-       "real" application in parallel with the designers work
+      A single template toolkit instance is used to render all pages as
+      either HTML or XHTML. The template forms one component of the "skin",
+      the other components are: a Javascript file containing the use cases
+      for the Javascript libraries, a primary CSS file with support for
+      alternative CSS files, and a set of image files
+
+      Designers can create new skins with different layout, presentation
+      and behaviour for the whole application. They can do this for the
+      example application, Munchies, whilst the programmers write the
+      "real" application in parallel with the designers work
 
     Flexible development methodology
-       These base classes are used by an example application, Munchies,
-       which can be deployed to staging and production servers at the
-       beginning of the project. Setting up the example application allows
-       issues regarding the software technology to be resolved whilst the
-       "real" application is being written. The example application can be
-       deleted leaving these base classes for the "real" application to use
+
+      These base classes are used by an example application, Munchies,
+      which can be deployed to staging and production servers at the
+      beginning of the project. Setting up the example application allows
+      issues regarding the software technology to be resolved whilst the
+      "real" application is being written. The example application can be
+      deleted leaving these base classes for the "real" application to use
 
 Subroutines/Methods
+
     This package is a placeholder for POD and contains no methods or
     functions
 
 Configuration and Environment
+
     None
 
 Diagnostics
+
     None
 
 Dependencies
+
     Class::Usul
 
     To make the Captchas work GD::SecurityImage needs to be installed which
-    has a documented dependency on "libgd" which should be installed first
+    has a documented dependency on libgd which should be installed first
 
 Incompatibilities
+
     There are no known incompatibilities in this module
 
 Bugs and Limitations
+
     There are no known bugs in this module. Please report problems to the
     address below. Patches are welcome
 
 Acknowledgements
+
     Larry Wall - For the Perl programming language
 
 Author
-    Peter Flanigan, "<pjfl@cpan.org>"
+
+    Peter Flanigan, <pjfl@cpan.org>
 
 License and Copyright
-    Copyright (c) 2013 Peter Flanigan. All rights reserved
+
+    Copyright (c) 2014 Peter Flanigan. All rights reserved
 
     This program is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself. See perlartistic

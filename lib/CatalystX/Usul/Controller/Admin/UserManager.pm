@@ -3,7 +3,7 @@
 package CatalystX::Usul::Controller::Admin::UserManager;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -154,7 +154,7 @@ CatalystX::Usul::Controller::Admin::UserManager - User account management
 
 =head1 Version
 
-Describes v0.14.$Rev: 1 $
+Describes v0.15.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -320,7 +320,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2013 Peter Flanigan. All rights reserved
+Copyright (c) 2014 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

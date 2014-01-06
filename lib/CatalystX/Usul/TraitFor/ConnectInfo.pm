@@ -1,18 +1,18 @@
-# @(#)Ident: ConnectInfo.pm 2013-11-09 13:58 pjf ;
+# @(#)Ident: ConnectInfo.pm 2013-12-01 01:30 pjf ;
 
 package CatalystX::Usul::TraitFor::ConnectInfo;
 
 use 5.010001;
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version;  our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw( merge_attributes throw );
-use Class::Usul::Crypt::Util   qw( decrypt_from_config );
+use Class::Usul::Crypt::Util qw( decrypt_from_config );
 use Class::Usul::File;
-use File::Spec::Functions      qw( catfile );
-use Scalar::Util               qw( blessed );
+use Class::Usul::Functions   qw( merge_attributes throw );
+use File::Spec::Functions    qw( catfile );
+use Scalar::Util             qw( blessed );
 use Moo::Role;
 
 requires qw( config ); # As a class method
@@ -272,7 +272,7 @@ Peter Flanigan, C<< <Support at RoxSoft.co.uk> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2013 Peter Flanigan. All rights reserved
+Copyright (c) 2014 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

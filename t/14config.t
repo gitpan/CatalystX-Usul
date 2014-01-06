@@ -1,13 +1,14 @@
-# @(#)$Ident: 14config.t 2013-10-21 15:00 pjf ;
+# @(#)$Ident: 14config.t 2014-01-06 12:48 pjf ;
 
 use strict;
 use warnings;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 use File::Spec::Functions   qw( catdir catfile updir );
 use FindBin                 qw( $Bin );
 use lib                 catdir( $Bin, updir, 'lib' ), catdir( $Bin, 'lib' );
 
 use Module::Build;
+use Test::Requires { version => 0.88 };
 use Test::More;
 
 my $notes = {}; my $perl_ver;
@@ -38,8 +39,7 @@ is ref $cfg->{namespace}->{entrance}->{acl}, q(ARRAY), 'Detects arrays';
 
 eval { $model->create_or_update }; my $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e->as_string, qr{ Result \s+ source \s+ not \s+ specified }msx,
-    'Result source not specified';
+like $e->as_string, qr{ \Qnot specified\E }msx, 'Result source not specified';
 
 $model->_set_keys_attr( q(an_element_name) );
 
@@ -59,8 +59,7 @@ my $file = q(default); eval { $model->create_or_update( $file ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e->as_string, qr{ No \s+ element \s+ name \s+ specified }msx,
-    'No element name specified';
+like $e->as_string, qr{ \Qnot specified\E }msx, 'No element name specified';
 
 $model = $context->model( q(Config::Levels) );
 
@@ -85,8 +84,7 @@ eval { $model->create_or_update( $file, q(dummy) ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e, qr{ element \s+ 'dummy' \s+ already \s+ exists }msx,
-    'Detects existing record';
+like $e, qr{ \Q'dummy' already exists\E }msx, 'Detects existing record';
 
 eval { $model->delete( $file, $name ) };
 
@@ -98,8 +96,7 @@ eval { $model->delete( $file, $name ) };
 
 $e = $EVAL_ERROR; $EVAL_ERROR = undef;
 
-like $e, qr{ element \s+ 'dummy' \s+ does \s+ not \s+ exist }msx,
-    'Detects non existance on delete';
+like $e, qr{ \Q'dummy' does not exist\E }msx, 'Detects non existance on delete';
 
 my @res = $model->search( $file, { acl => q(@support) } );
 

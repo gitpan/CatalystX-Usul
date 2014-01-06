@@ -5,7 +5,7 @@ package CatalystX::Usul::Constraints;
 use strict;
 use warnings;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Encode                      qw( find_encoding );
 use File::DataClass::IO;
@@ -92,7 +92,7 @@ CatalystX::Usul::Constraints - Defines Moose type constraints
 
 =head1 Version
 
-This document describes CatalystX::Usul::Constraints version v0.14.$Rev: 1 $
+This document describes CatalystX::Usul::Constraints version v0.15.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -166,7 +166,7 @@ Larry Wall - For the Perl programming language
 
 =head1 License and Copyright
 
-Copyright (c) 2013 Peter Flanigan. All rights reserved
+Copyright (c) 2014 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

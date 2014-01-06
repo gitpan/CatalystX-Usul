@@ -3,7 +3,7 @@
 package CatalystX::Usul::Model::Config::Fields;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.14.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 
@@ -37,7 +37,7 @@ CatalystX::Usul::Model::Config::Fields - Class definition for fields
 
 =head1 Version
 
-Describes v0.14.$Rev: 1 $
+Describes v0.15.$Rev: 1 $
 
 =head1 Synopsis
 
