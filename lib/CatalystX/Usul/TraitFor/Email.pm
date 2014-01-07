@@ -4,7 +4,7 @@ package CatalystX::Usul::TraitFor::Email;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moose::Role;
 use CatalystX::Usul::Constants;
@@ -130,7 +130,7 @@ CatalystX::Usul::TraitFor::Email - Role for sending emails
 
 =head1 Version
 
-Describes v0.15.$Rev: 1 $
+Describes v0.16.$Rev: 1 $
 
 =head1 Synopsis
 

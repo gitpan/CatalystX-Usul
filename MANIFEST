@@ -60,12 +60,10 @@ lib/CatalystX/Usul/Roles.pm
 lib/CatalystX/Usul/Roles/DBIC.pm
 lib/CatalystX/Usul/Roles/Simple.pm
 lib/CatalystX/Usul/Roles/Unix.pm
-lib/CatalystX/Usul/Schema.pm
 lib/CatalystX/Usul/Shells.pm
 lib/CatalystX/Usul/TapeBackup.pm
 lib/CatalystX/Usul/TraitFor/BuildingUsul.pm
 lib/CatalystX/Usul/TraitFor/Captcha.pm
-lib/CatalystX/Usul/TraitFor/ConnectInfo.pm
 lib/CatalystX/Usul/TraitFor/Controller/Cookies.pm
 lib/CatalystX/Usul/TraitFor/Controller/ModelHelper.pm
 lib/CatalystX/Usul/TraitFor/Controller/PersistentState.pm

@@ -4,7 +4,7 @@ package CatalystX::Usul::TraitFor::PostInstallConfig;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use Class::Usul::File;
@@ -64,7 +64,7 @@ CatalystX::Usul::Traitfor::PostInstallConfig - Reads and writes the post install
 
 =head1 Version
 
-Describes v0.15.$Rev: 1 $
+Describes v0.16.$Rev: 1 $
 
 =head1 Synopsis
 

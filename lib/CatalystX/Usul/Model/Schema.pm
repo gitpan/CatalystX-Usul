@@ -1,17 +1,17 @@
-# @(#)Ident: ;
+# @(#)Ident: Schema.pm 2014-01-06 22:02 pjf ;
 
 package CatalystX::Usul::Model::Schema;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
-use Scalar::Util qw(refaddr);
+use Scalar::Util qw( refaddr );
 
 extends qw(Catalyst::Model::DBIC::Schema CatalystX::Usul::Model);
-with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
-with    q(CatalystX::Usul::TraitFor::Model::StashHelper);
-with    q(CatalystX::Usul::TraitFor::ConnectInfo);
+with     q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
+with     q(CatalystX::Usul::TraitFor::Model::StashHelper);
+with     q(Class::Usul::TraitFor::ConnectInfo);
 
 around 'BUILDARGS' => sub {
    my ($next, $self, $app, @rest) = @_; my $attr = $self->$next( $app, @rest );
@@ -51,7 +51,7 @@ CatalystX::Usul::Model::Schema - Base class for database models
 
 =head1 Version
 
-Describes v0.15.$Rev: 1 $
+Describes v0.16.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -105,11 +105,11 @@ None
 
 =item L<CatalystX::Usul::Model>
 
-=item L<CatalystX::Usul::TraitFor::ConnectInfo>
-
 =item L<CatalystX::Usul::TraitFor::Model::QueryingRequest>
 
 =item L<CatalystX::Usul::TraitFor::Model::StashHelper>
+
+=item L<Class::Usul::TraitFor::ConnectInfo>
 
 =back
 

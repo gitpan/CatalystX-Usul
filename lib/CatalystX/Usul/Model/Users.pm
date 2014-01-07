@@ -3,7 +3,7 @@
 package CatalystX::Usul::Model::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.15.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
@@ -727,7 +727,7 @@ CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-Describes v0.15.$Rev: 1 $
+Describes v0.16.$Rev: 1 $
 
 =head1 Synopsis
 
