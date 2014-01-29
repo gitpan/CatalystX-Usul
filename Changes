@@ -1,5 +1,10 @@
 Revision history for CatalystX::Usul
 
+0.17.1    2014-01-15 17:31:35
+          - C:U:File::symlink class method replaced with a function
+          - C:U:File::io class method replaced with a function
+          - Apply trait for get_package_meta in ::CLI
+
 0.16.1    2014-01-07 08:42:28
           - Moved ::Schema and ::TraitFor::ConnectInfo to Class::Usul
 

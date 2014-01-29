@@ -1,22 +1,21 @@
-# @(#)Ident: ;
+# @(#)Ident: Imager.pm 2014-01-10 02:08 pjf ;
 
 package CatalystX::Usul::Model::Imager;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions   qw(create_token is_member
-                                    merge_attributes throw);
-use Class::Usul::File;
-use File::Basename               qw(basename);
-use CatalystX::Usul::Constraints qw(Directory Path);
-use File::Spec::Functions        qw(catdir catfile);
+use CatalystX::Usul::Functions   qw( create_token io is_member
+                                     merge_attributes throw );
+use File::Basename               qw( basename );
+use CatalystX::Usul::Constraints qw( Directory Path );
+use File::Spec::Functions        qw( catdir catfile );
 use Imager;
 use MIME::Types;
 
-extends qw(CatalystX::Usul::Model);
+extends q(CatalystX::Usul::Model);
 
 has 'cache_depth' => is => 'ro', isa => PositiveInt, default => 2;
 
@@ -24,8 +23,8 @@ has 'cache_root'  => is => 'ro', isa => Path, coerce => TRUE,
    required       => TRUE;
 
 has 'methods'     => is => 'ro', isa => ArrayRef[NonEmptySimpleStr],
-   default        => sub { [ qw(scale scaleX scaleY crop
-                                flip rotate convert map) ] };
+   default        => sub { [ qw( scale scaleX scaleY crop
+                                 flip rotate convert map ) ] };
 
 has 'root'        => is => 'ro', isa => Directory, coerce => TRUE,
    required       => TRUE;
@@ -33,18 +32,14 @@ has 'root'        => is => 'ro', isa => Directory, coerce => TRUE,
 has 'types'       => is => 'ro', isa => Object,
    default        => sub { MIME::Types->new( only_complete => 1 ) };
 
-has '_file' => is => 'lazy', isa => FileClass,
-   default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io status_for) ], init_arg => undef, reader => 'file';
-
 sub COMPONENT {
    my ($class, $app, $attr) = @_;
 
    my $ac = $app->config || {}; my $cc = $class->config || {};
 
-   $cc->{cache_root} ||= catdir( $ac->{tempdir}, q(imager_cache) );
+   $cc->{cache_root} ||= catdir( $ac->{tempdir}, 'imager_cache' );
 
-   merge_attributes $attr, $cc, $ac, [ qw(cache_root root) ];
+   merge_attributes $attr, $cc, $ac, [ qw( cache_root root ) ];
 
    return $class->next::method( $app, $attr );
 }
@@ -72,7 +67,7 @@ sub transform {
 
    -f $path or throw error => 'Path [_1] not found', args => [ $path ];
 
-   my $mtime = $stat ? $self->status_for( $path )->{mtime} : undef;
+   my $mtime = $stat ? io( $path )->stat->{mtime} : undef;
    my $type  = $self->types->mimeTypeOf( basename( $path ) )->type;
    my $data;
 
@@ -85,7 +80,6 @@ sub transform {
 }
 
 # Private methods
-
 sub _bucket {
    my ($self, $key, $depth) = @_; $depth ||= $self->cache_depth;
 
@@ -98,12 +92,12 @@ sub _bucket {
 sub _cache {
    my ($self, $mtime, $key, $data) = @_; $key or return;
 
-   my $path = $self->_bucket( $key );
+   my $path = io( $self->_bucket( $key ) );
 
-   if ($data) { $self->io( $path )->assert->lock->print( $data ) }
-   elsif (-f $path) {
-      if (not $mtime or $mtime <= $self->status_for( $path )->{mtime}) {
-         $data = $self->io( $path )->lock->all;
+   if ($data) { $path->assert->lock->print( $data ) }
+   elsif ($path->exists and $path->is_file) {
+      if (not $mtime or $mtime <= $path->stat->{mtime}) {
+         $data = $path->lock->all;
       }
    }
 
@@ -111,7 +105,6 @@ sub _cache {
 }
 
 # Private functions
-
 sub __get_image {
    my ($methods, $path, $query) = @_;
 
@@ -132,9 +125,9 @@ sub __get_image {
 sub __make_key {
    my ($methods, $path, $query) = @_;
 
-   return $methods.q(/).$path.q(?).(join  q(&),
-                                    map   { $_.q(=).$query->{ $_ } }
-                                    keys %{ $query });
+   return "${methods}/${path}?".(join  '&',
+                                 map   { "${_}=".$query->{ $_ } }
+                                 keys %{ $query });
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -151,7 +144,7 @@ CatalystX::Usul::Model::Imager - Manipulate images
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

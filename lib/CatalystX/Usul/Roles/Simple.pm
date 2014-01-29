@@ -1,18 +1,19 @@
-# @(#)Ident: ;
+# @(#)Ident: Simple.pm 2014-01-15 16:34 pjf ;
 
 package CatalystX::Usul::Roles::Simple;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions   qw(is_member throw);
-use CatalystX::Usul::Constraints qw(File);
+use CatalystX::Usul::Functions   qw( is_member io throw );
+use CatalystX::Usul::Constraints qw( File );
+use Unexpected::Functions        qw( PathNotFound Unspecified );
 
 extends q(CatalystX::Usul::Roles);
 
-has 'filename' => is => 'ro', isa => Str, default => q(roles-simple.json);
+has 'filename' => is => 'ro', isa => Str, default => 'roles-simple.json';
 
 has 'path'     => is => 'ro', isa => File, builder => '_build_path',
    lazy        => TRUE;
@@ -58,7 +59,7 @@ sub remove_user_from_role {
 
 sub _assert_role {
    my $self     = shift;
-   my $role     = shift or throw 'Role not specified';
+   my $role     = shift or throw class => Unspecified, args => [ 'role' ];
    my $role_obj = $self->_roles->find( { name => $role } )
       or throw error => 'Role [_1] unknown', args => [ $role ];
 
@@ -67,10 +68,10 @@ sub _assert_role {
 
 sub _build_path {
    my $self = shift;
-   my $path = $self->io( [ $self->config->ctrldir, $self->filename ] );
+   my $path = io [ $self->config->ctrldir, $self->filename ];
 
    $path->is_file or $path->touch;
-   $path->is_file or throw error => 'Path [_1] not found', args => [ $path ];
+   $path->is_file or throw class => PathNotFound, args => [ $path ];
    return $path;
 }
 
@@ -119,7 +120,7 @@ CatalystX::Usul::Roles::Simple - Role management file storage
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

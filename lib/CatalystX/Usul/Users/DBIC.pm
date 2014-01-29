@@ -1,12 +1,12 @@
-# @(#)Ident: ;
+# @(#)Ident: DBIC.pm 2014-01-10 21:25 pjf ;
 
 package CatalystX::Usul::Users::DBIC;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw( emit sub_name throw );
+use CatalystX::Usul::Functions qw( emit sub_name io throw );
 use CatalystX::Usul::Moose;
 use Class::Usul::Time;
 use TryCatch;
@@ -193,7 +193,7 @@ sub user_report {
    }
 
    unless ($fmt eq q(csv)) { emit @lines }
-   else { $self->io( $args->{path} )->println( join "\n", @lines  ) }
+   else { io( $args->{path} )->println( join "\n", @lines  ) }
 
    return 'Here ends the user report';
 }
@@ -274,7 +274,7 @@ CatalystX::Usul::Users::DBIC - Database user storage
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

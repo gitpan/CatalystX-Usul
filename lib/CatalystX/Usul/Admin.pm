@@ -1,15 +1,15 @@
-# @(#)$Ident: Admin.pm 2013-11-22 22:40 pjf ;
+# @(#)$Ident: Admin.pm 2014-01-15 14:46 pjf ;
 
 package CatalystX::Usul::Admin;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moo;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw( class2appdir logname emit throw
-                                   untaint_cmdline untaint_identifier );
+use CatalystX::Usul::Functions qw( class2appdir logname emit io symlink io
+                                   throw untaint_cmdline untaint_identifier );
 use Class::Null;
 use Class::Usul::Exception;
 use Class::Usul::Options;
@@ -26,7 +26,7 @@ use TryCatch;
 extends q(Class::Usul::Programs);
 with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
 
-Class::Usul::Exception->has_exception( 'PasswordExpired' );
+Class::Usul::Exception->add_exception( 'PasswordExpired' );
 
 # Public attributes
 option 'exec_setuid' => is => 'ro', isa => Bool, default => FALSE,
@@ -248,7 +248,7 @@ sub init_suid : method {
    # Restrict access for these files to root only
    chown 0, $gid, $secd; chmod oct q(02700), $secd;
 
-   for ($self->io( $secd )->filter( sub { m{ \.sub \z }mx } )->all_files) {
+   for (io( $secd )->filter( sub { m{ \.sub \z }mx } )->all_files) {
       chown 0, $gid, "$_"; chmod oct q(600), "$_";
    }
 
@@ -265,8 +265,8 @@ sub make_default : method { # Create the default version symlink
 
    my $verdir = $self->_unlink_default_link;
 
-   $self->info   ( $self->file->symlink( NUL, $verdir, q(default) ) );
-   $self->run_cmd( [ qw(chown -h), $picfg->{owner}, q(default) ] );
+   $self->info   ( symlink $verdir, 'default' );
+   $self->run_cmd( [ 'chown', '-h', $picfg->{owner}, 'default' ] );
    return OK;
 }
 
@@ -299,10 +299,10 @@ sub post_install : method {
 sub read_secure : method {
    my $self    = shift;
    my $file    = $self->extra_argv->[ 0 ] or return FAILED;
-   my $path    = $self->secsdir->catfile( basename( $file ) );
+   my $path    = $self->secsdir->catfile( basename( "${file}.key" ) );
    my $msg     = "Admin reading secure file ${file} for ".logname;
 
-   $self->_logger( $msg, q(auth.info), q(read_secure) );
+   $self->_logger( $msg, 'auth.info', 'read_secure' );
    emit $path->getlines;
    return OK;
 }
@@ -372,8 +372,7 @@ sub set_permissions : method { # Set permissions on all files in the app
          $base );
 
    # Make the shared directories group writable
-   for my $dir (grep { $_->is_dir }
-                map  { $self->file->absolute( $base, $_ ) }
+   for my $dir (grep { $_->is_dir } map { io( $_ )->absolute( $base ) }
                     @{ $picfg->{create_dirs} }) {
       $dir->chmod( 02770 );
    }
@@ -447,34 +446,34 @@ sub uninstall : method {
    $self->yorn( $self->add_leader( 'Are you sure?' ), FALSE, TRUE )
       or return OK;
 
-   if ($picfg->{deploy_server} eq q(plack)) {
-      $self->run_cmd( [ q(invoke-rc.d), $appdir, q(stop)   ],
+   if ($picfg->{deploy_server} eq 'plack') {
+      $self->run_cmd( [ 'invoke-rc.d', $appdir, 'stop' ],
                       { expected_rv => 100 } );
-      $self->io     ( [ NUL, qw(etc init.d), $appdir       ] )->unlink;
-      $self->run_cmd( [ q(update-rc.d), $appdir, q(remove) ] );
+      io( [ NUL, qw( etc init.d ), $appdir ] )->unlink;
+      $self->run_cmd( [ 'update-rc.d', $appdir, 'remove' ] );
    }
-   elsif ($picfg->{deploy_server} eq q(mod_perl)) {
+   elsif ($picfg->{deploy_server} eq 'mod_perl') {
       my $link = sprintf '%-3.3d-%s', $cfg->phase, $appdir;
 
-      $self->io( [ @{ $self->sites_enabled   }, $link   ] )->unlink;
-      $self->io( [ @{ $self->sites_available }, $appdir ] )->unlink;
+      io( [ @{ $self->sites_enabled   }, $link   ] )->unlink;
+      io( [ @{ $self->sites_available }, $appdir ] )->unlink;
       $self->run_cmd( [ q(invoke-rc.d), $appdir, q(restart) ] );
    }
 
-   my $io  = $self->io( [ NUL, qw(etc default), $appdir ] );
+   my $io  = io( [ NUL, qw( etc default ), $appdir ] );
 
    $io->exists and $io->unlink;
 
-   my $cmd = catfile( $cfg->binsdir, $cfg->prefix.q(_schema) );
+   my $cmd = catfile( $cfg->binsdir, $cfg->prefix.'_schema' );
 
-   $self->run_cmd( [ $cmd, $self->debug_flag, qw(-c drop_database) ],
-                   { err => q(stderr), out => q(stdout) } );
-   $self->run_cmd( $self->interpolate_cmd( $self->commands->{user_del_cmd},
-                                           $picfg->{owner} ) );
-   $self->run_cmd( $self->interpolate_cmd( $self->commands->{group_del_cmd},
-                                           $picfg->{group} ) );
-   $self->run_cmd( $self->interpolate_cmd( $self->commands->{group_del_cmd},
-                                           $picfg->{admin_role} ) );
+   $self->run_cmd( [ $cmd, $self->debug_flag, qw( -c drop_database ) ],
+                   { err => 'stderr', out => 'stdout' } );
+   $self->run_cmd( $self->interpolate_cmd
+                   ( $self->commands->{user_del_cmd }, $picfg->{owner} ) );
+   $self->run_cmd( $self->interpolate_cmd
+                   ( $self->commands->{group_del_cmd}, $picfg->{group} ) );
+   $self->run_cmd( $self->interpolate_cmd
+                   ( $self->commands->{group_del_cmd}, $picfg->{admin_role} ) );
 
    $self->_unlink_default_link;
    return OK;
@@ -522,7 +521,7 @@ sub update_password : method {
 sub update_progs : method {
    my $self    = shift;
    my $cfg     = $self->config;
-   my $path    = $self->io( [ $cfg->ctrldir, q(default).$cfg->extension ] );
+   my $path    = io( [ $cfg->ctrldir, q(default).$cfg->extension ] );
    my $globals = $self->file->dataclass_schema->load( $path )->{globals}
       or throw "No global config from ${path}";
    my $global  = $globals->{ssh_id} or throw "No SSH identity from ${path}";
@@ -549,22 +548,21 @@ sub _add_user_to_group {
 sub _call_post_install_method {
    my ($self, $picfg, $key, @args) = @_;
 
-   if ($key eq q(admin)) {
+   if ($key eq 'admin') {
       if ($picfg->{post_install}) {
          my $ref; $ref = $self->can( $args[ 0 ] ) and $self->$ref();
       }
       else { $self->info( 'Would call '.$args[ 0 ] ) }
    }
    else {
-      my $prog    = $self->config->prefix.q(_).$key;
-      my $cmd     = [ $prog, $self->debug_flag, q(-c), $args[ 0 ] ];
+      my $prog    = $self->config->prefix."_${key}";
+      my $cmd     = [ $prog, $self->debug_flag, '-c', $args[ 0 ] ];
       my $cmd_str = join SPC, @{ $cmd };
 
       if ($picfg->{post_install}) {
          $self->info( "Running ${cmd_str}" );
-         $cmd->[ 0 ] = $self->file->absolute( $self->config->binsdir,
-                                              $cmd->[ 0 ] );
-         $self->run_cmd( $cmd, { debug => $self->debug, out => q(stdout) } );
+         $cmd->[ 0 ] = io( $cmd->[ 0 ] )->absolute( $self->config->binsdir );
+         $self->run_cmd( $cmd, { debug => $self->debug, out => 'stdout' } );
       }
       else { $self->info( "Would run ${cmd_str}" ) }
    }
@@ -602,21 +600,20 @@ sub _create_app_user {
 sub _deploy_mod_perl_server {
    my $self = shift;
    my $cfg  = $self->config;
-   my $base = $cfg->appldir;
    my $file = class2appdir $cfg->appclass;
-   my $from = [ qw(var etc mod_perl.conf) ];
-   my $to   = [ @{ $self->sites_available }, $file ];
    my $link = sprintf '%-3.3d-%s', $cfg->phase, $file;
+   my $from = [ $cfg->appldir, qw( var etc mod_perl.conf ) ];
+   my $to   = [ @{ $self->sites_available }, $file ];
 
-   $self->info( $self->file->symlink( $base, $from, $to ) );
+   $self->info( symlink $from, $to );
 
    $from = [ @{ $self->sites_available }, $file ];
    $to   = [ @{ $self->sites_enabled   }, $link ];
-   $self->info( $self->file->symlink( $base, $from, $to ) );
+   $self->info( symlink $from, $to );
 
    $from = [ NUL, qw(etc apache2 mods-available expires.load) ];
    $to   = [ NUL, qw(etc apache2 mods-enabled   expires.load) ];
-   $self->info( $self->file->symlink( $base, $from, $to ) );
+   $self->info( symlink $from, $to );
    return OK;
 }
 
@@ -624,19 +621,21 @@ sub _deploy_plack_server {
    my $self = shift;
    my $cfg  = $self->config;
    my $file = class2appdir $cfg->appclass;
-   my $path = $self->io( [ NUL, qw(etc default) ] );
+   my $path = io( [ NUL, qw( etc default ) ] );
 
    $path->exists or $path->mkpath( 0755 );
 
-   $self->file->absolute( $cfg->appldir, [ qw(var etc etc_default) ] )
-              ->copy    ( [ NUL, qw(etc default), $file ] )
-              ->chmod   ( 0644 );
+   io( [ qw( var etc etc_default ) ] )
+      ->absolute( $cfg->appldir )
+      ->copy    ( [ NUL, qw( etc default ), $file ] )
+      ->chmod   ( 0644 );
 
-   $self->file->absolute( $cfg->appldir, [ qw(var etc psgi.sh) ] )
-              ->copy    ( [ NUL, qw(etc init.d), $file ] )
-              ->chmod   ( 0755 );
+   io( [ qw( var etc psgi.sh ) ] )
+      ->absolute( $cfg->appldir )
+      ->copy    ( [ NUL, qw( etc init.d ), $file ] )
+      ->chmod   ( 0755 );
 
-   $self->run_cmd ( [ q(update-rc.d), $file, qw(defaults 98 02) ] );
+   $self->run_cmd ( [ 'update-rc.d', $file, qw( defaults 98 02 ) ] );
    return OK;
 }
 
@@ -671,7 +670,7 @@ sub _is_setuid {
 
 sub _list_auth_sub_files {
    return grep { $_->is_file }
-          map  { $_[ 0 ]->io( [ $_[ 0 ]->secsdir, $_.q(.sub) ] ) }
+          map  { io( [ $_[ 0 ]->secsdir, $_.q(.sub) ] ) }
                  $_[ 0 ]->roles->get_roles( $_[ 1 ] );
 }
 
@@ -688,7 +687,7 @@ sub _logger {
 sub _unlink_default_link {
    my $base = $_[ 0 ]->config->appldir;
 
-   chdir dirname( $base ); -e q(default) and unlink q(default);
+   chdir dirname( $base ); -e 'default' and unlink 'default';
 
    return basename( $base );
 }
@@ -714,7 +713,7 @@ CatalystX::Usul::Admin - Subroutines that run as the super user
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

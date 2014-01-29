@@ -1,16 +1,16 @@
-# @(#)Ident: Config.pm 2013-09-29 00:53 pjf ;
+# @(#)Ident: Config.pm 2014-01-11 03:42 pjf ;
 
 package CatalystX::Usul::Model::Config;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
-use Class::Usul::File;
+use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
-use CatalystX::Usul::Functions   qw( dos2unix escape_TT is_arrayref is_hashref
-                                     throw unescape_TT );
-use CatalystX::Usul::Moose;
+use CatalystX::Usul::Functions   qw( dos2unix escape_TT io is_arrayref
+                                     is_hashref throw unescape_TT );
+use Class::Usul::File;
 use TryCatch;
 use Config;
 
@@ -62,7 +62,7 @@ has '_config_paths'  => is => 'lazy', isa => ArrayRef[Path], init_arg => undef;
 
 has '_file' => is => 'lazy', isa => FileClass,
    default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg => undef, reader => 'file';
 
 sub build_per_context_instance {
    my ($self, $c, @args) = @_; my $clone = $self->next::method( $c, @args );
@@ -302,7 +302,7 @@ sub _get_field_type {
 sub _get_path {
    my ($self, $name) = @_; $name or throw 'Config file name not specified';
 
-   return $self->io( [ $self->ctrldir, $name.$self->extension ] );
+   return io [ $self->ctrldir, $name.$self->extension ];
 }
 
 sub _get_table_object {
@@ -411,7 +411,7 @@ CatalystX::Usul::Model::Config - Read and write configuration files
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

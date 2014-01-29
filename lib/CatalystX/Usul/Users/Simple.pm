@@ -1,14 +1,15 @@
-# @(#)Ident: ;
+# @(#)Ident: Simple.pm 2014-01-15 16:34 pjf ;
 
 package CatalystX::Usul::Users::Simple;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions   qw(throw);
-use CatalystX::Usul::Constraints qw(File);
+use CatalystX::Usul::Functions   qw( io throw );
+use CatalystX::Usul::Constraints qw( File );
+use Unexpected::Functions        qw( PathNotFound Unspecified );
 
 extends q(CatalystX::Usul::Users);
 
@@ -41,7 +42,7 @@ sub activate_account {
 
 sub assert_user {
    my $self     = shift;
-   my $username = shift or throw 'User not specified';
+   my $username = shift or throw class => Unspecified, args => [ 'user' ];
    my $user = $self->_users->find( { name => $username } )
       or throw error => 'User [_1] unknown', args => [ $username ];
 
@@ -119,10 +120,10 @@ sub user_report {
 
 sub _build_path {
    my $self = shift;
-   my $path = $self->io( [ $self->config->ctrldir, $self->filename ] );
+   my $path = io [ $self->config->ctrldir, $self->filename ];
 
    $path->is_file or $path->touch;
-   $path->is_file or throw error => 'Path [_1] not found', args => [ $path ];
+   $path->is_file or throw class => PathNotFound, args => [ $path ];
    return $path;
 }
 
@@ -175,7 +176,7 @@ CatalystX::Usul::Users::Simple - User data store in local files
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

@@ -1,15 +1,15 @@
-# @(#)Ident: Templates.pm 2013-09-03 12:50 pjf ;
+# @(#)Ident: Templates.pm 2014-01-11 03:08 pjf ;
 
 package CatalystX::Usul::Model::Templates;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw(escape_TT unescape_TT throw);
+use CatalystX::Usul::Functions qw( escape_TT unescape_TT io throw );
 use Class::Usul::File;
-use File::Spec::Functions      qw(catdir);
+use File::Spec::Functions      qw( catdir );
 use TryCatch;
 
 extends q(CatalystX::Usul::Model);
@@ -19,7 +19,7 @@ with    q(CatalystX::Usul::TraitFor::Model::QueryingRequest);
 has 'blank_ns'     => is => 'ro', isa => NonEmptySimpleStr, default => 'none';
 
 has 'escape_chars' => is => 'ro', isa => ArrayRef[NonEmptySimpleStr],
-   default         => sub { [ qw({ }) ] };
+   default         => sub { [ '{ }' ] };
 
 has 'extension'    => is => 'ro', isa => NonEmptySimpleStr, default => '.tt';
 
@@ -30,7 +30,7 @@ has 'root_ns'      => is => 'ro', isa => NonEmptySimpleStr, default => 'root';
 
 has '_file' => is => 'lazy', isa => FileClass,
    default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg => undef, reader => 'file';
 
 sub create_or_update {
    my ($self, $ns) = @_;
@@ -48,7 +48,7 @@ sub create_or_update {
    }
 
    $name or throw 'Template name not specified';
-   $self->io( [ $self->_get_dir_for( $ns ), $name ] )->print( $content );
+   io( [ $self->_get_dir_for( $ns ), $name ] )->print( $content );
    $self->add_result_msg( $message, [ $ns, $name ] );
    return $name;
 }
@@ -59,7 +59,7 @@ sub delete {
    my $name = $self->query_value( q(template) )
       or throw 'Template name not specified';
 
-   $self->io( [ $self->_get_dir_for( $ns ), $name ] )->unlink;
+   io( [ $self->_get_dir_for( $ns ), $name ] )->unlink;
    $self->add_result_msg( 'Template [_1] / [_2] deleted', [ $ns, $name ] );
    return;
 }
@@ -115,7 +115,7 @@ sub _get_template_data {
 
    my $extn  = $self->extension;
    my $dir   = $self->_get_dir_for( $ns );
-   my $io    = $self->io( [ $dir, $name ] );
+   my $io    = io [ $dir, $name ];
    my $tt    = $io->is_file ? $io->all : NUL;
    my $fs    = $self->context->model( q(FileSystem) );
    my $args  = { dir => $dir, pattern => qr{ \Q$extn\E \z }mx };

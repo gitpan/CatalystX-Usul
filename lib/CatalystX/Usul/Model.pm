@@ -1,9 +1,9 @@
-# @(#)$Ident: Model.pm 2013-09-29 00:48 pjf ;
+# @(#)$Ident: Model.pm 2014-01-11 03:34 pjf ;
 
 package CatalystX::Usul::Model;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Functions qw( is_arrayref is_hashref throw );
@@ -30,7 +30,7 @@ has 'table_class'       => is => 'lazy', isa => LoadableClass, coerce => TRUE,
    default              => sub { 'Class::Usul::Response::Table' };
 
 has 'usul'              => is => 'lazy', isa => BaseClass,
-   handles              => [ qw(debug lock log) ];
+   handles              => [ qw( debug lock log ) ];
 
 sub ACCEPT_CONTEXT {
    my ($self, $c, @args) = @_;
@@ -81,7 +81,7 @@ CatalystX::Usul::Model - Interface model base class
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

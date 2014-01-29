@@ -1,19 +1,19 @@
-# @(#)Ident: TapeBackup.pm 2013-08-27 17:42 pjf ;
+# @(#)Ident: TapeBackup.pm 2014-01-12 01:03 pjf ;
 
 package CatalystX::Usul::TapeBackup;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions   qw(throw);
+use CatalystX::Usul::Constraints qw( Directory Lock Path );
+use CatalystX::Usul::Functions   qw( io throw );
 use Class::Usul::File;
 use Class::Usul::IPC;
-use Class::Usul::Time            qw(str2time time2str);
-use English                      qw(-no_match_vars);
-use CatalystX::Usul::Constraints qw(Directory Lock Path);
-use File::Spec::Functions        qw(catdir catfile rootdir);
+use Class::Usul::Time            qw( str2time time2str );
+use English                      qw( -no_match_vars );
+use File::Spec::Functions        qw( catdir catfile rootdir );
 use TryCatch;
 
 has 'dev_dir'      => is => 'lazy', isa => Directory, coerce => TRUE,
@@ -57,14 +57,14 @@ has 'tar_cmd'      => is => 'ro',   isa => NonEmptySimpleStr,
 
 has '_file' => is => 'lazy', isa => FileClass,
    default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg => undef, reader => 'file';
 
 has '_ipc'  => is => 'lazy', isa => IPCClass,
    default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(run_cmd) ], init_arg => undef, reader => 'ipc';
+   handles  => [ qw( run_cmd ) ], init_arg => undef, reader => 'ipc';
 
 has '_usul' => is => 'ro',   isa => BaseClass,
-   handles  => [ qw(config debug lock log) ], init_arg => 'builder',
+   handles  => [ qw( config debug lock log ) ], init_arg => 'builder',
    reader   => 'usul', required => TRUE, weak_ref => TRUE;
 
 sub eject {
@@ -89,7 +89,7 @@ sub get_status {
    my $volume = $args->{volume};
    my $form   = $self->form;
    my $pat    = $self->pattern;
-   my $io     = $self->io( $self->dev_dir )->filter( sub {
+   my $io     = io( $self->dev_dir )->filter( sub {
       return (-c $_->pathname) && ($_->filename =~ m{ \A $pat \z }mx) } );
 
    for my $device (map { $_->filename } $io->all_files) {
@@ -199,7 +199,7 @@ sub _get_last {
 
    -f $self->dump_dates or return (NUL, 0);
 
-   for my $line ($self->io( $self->dump_dates )->chomp->getlines) {
+   for my $line (io( $self->dump_dates )->chomp->getlines) {
       $line !~ m{ \A $volume \s+ (\d+) \s+ (.*) }mx and next;
 
       my $date = str2time( $2 );
@@ -287,7 +287,7 @@ CatalystX::Usul::TapeBackup - Provides tape device methods
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

@@ -1,9 +1,9 @@
-# @(#)Ident: Admin.pm 2013-10-19 17:50 pjf ;
+# @(#)Ident: Admin.pm 2014-01-09 00:43 pjf ;
 
 package CatalystX::Usul::Controller::Admin;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Moose;
@@ -14,7 +14,7 @@ BEGIN { extends q(CatalystX::Usul::Controller) }
 with q(CatalystX::Usul::TraitFor::Controller::ModelHelper);
 with q(CatalystX::Usul::TraitFor::Controller::PersistentState);
 with q(CatalystX::Usul::TraitFor::Controller::TokenValidation);
-with q(Class::Usul::TraitFor::LoadingClasses);
+with q(CatalystX::Usul::TraitFor::LoadingClasses);
 
 has 'default_action'   => is => 'ro', isa => NonEmptySimpleStr,
    default             => q(reception);
@@ -105,7 +105,7 @@ CatalystX::Usul::Controller::Admin - Administration controller methods
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 
@@ -155,7 +155,7 @@ specific data
 =head2 build_subcontrollers
 
 Exposes method of the same name in the role
-L<Class::Usul::TraitFor::LoadingClasses> which defines some
+L<CatalystX::Usul::TraitFor::LoadingClasses> which defines some
 sub-controllers at runtime
 
 =head2 check_field
@@ -223,7 +223,7 @@ None
 
 =item L<CatalystX::Usul::Moose>
 
-=item L<Class::Usul::TraitFor::LoadingClasses>
+=item L<CatalystX::Usul::TraitFor::LoadingClasses>
 
 =back
 

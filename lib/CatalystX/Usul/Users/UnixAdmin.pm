@@ -1,13 +1,13 @@
-# @(#)Ident: ;
+# @(#)Ident: UnixAdmin.pm 2014-01-10 21:27 pjf ;
 
 package CatalystX::Usul::Users::UnixAdmin;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Constraints qw( Path);
-use CatalystX::Usul::Functions   qw( throw untaint_path );
+use CatalystX::Usul::Constraints qw( Path );
+use CatalystX::Usul::Functions   qw( io throw untaint_path );
 use CatalystX::Usul::Moose;
 use Class::Usul::Time;
 use English                      qw( -no_match_vars );
@@ -119,7 +119,7 @@ sub populate_account {
       -d $home or mkdir $home;
       -d $home or throw error => 'Path [_1] cannot create', args => [ $home ];
 
-      my $s_flds = $self->io( $home )->stat;
+      my $s_flds = io( $home )->stat;
 
       chown $uid, $gid, $home if ($s_flds->{uid} <=> $uid
                                   or $s_flds->{gid} <=> $gid);
@@ -201,7 +201,7 @@ sub update_account {
    $self->_update_passwd( q(update), $fields );
 
    if ($params->{homedir} and -d $params->{homedir}) {
-      my $io = $self->io( [ $params->{homedir}, q(.project) ] );
+      my $io = io [ $params->{homedir}, q(.project) ];
 
       if ($params->{project}) {
          $io->println( $params->{project} )->chmod( 0644 );
@@ -318,7 +318,7 @@ sub user_report {
 
    if ($path eq q(-)) { $out = (join "\n", @lines)."\n" }
    else {
-      $self->io( $path )->perms( oct q(0640) )->println( join "\n", @lines  );
+      io( $path )->perms( oct q(0640) )->println( join "\n", @lines  );
       $out = "Report ${path} contains ${count} users";
    }
 
@@ -355,13 +355,13 @@ sub _backup {
    }
 
    if ($type eq q(link)) {
-      $self->symlink( NUL, $src, $path );
+      CORE::symlink( $src, $path );
       $self->run_cmd( [ qw(chown -h), $uid.q(:).$gid, $path ] );
       last TRY;
    }
 
    if ($type eq q(text)) {
-      $self->io( $path )->lock->print( $src );
+      io( $path )->lock->print( $src );
       chown $uid, $gid, $path;
       chmod $mode, $path;
       last TRY;
@@ -444,7 +444,7 @@ CatalystX::Usul::Users::UnixAdmin - Set uid root methods for account manipulatio
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

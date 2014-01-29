@@ -4,7 +4,7 @@ package CatalystX::Usul::TraitFor::LogRequest;
 
 use strict;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moose::Role;
 
@@ -51,7 +51,7 @@ CatalystX::Usul::TraitFor::LogRequest - Log request parameters with filtering
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

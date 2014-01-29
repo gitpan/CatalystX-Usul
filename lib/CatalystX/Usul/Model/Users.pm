@@ -1,9 +1,9 @@
-# @(#)Ident: Users.pm 2013-11-21 23:40 pjf ;
+# @(#)Ident: Users.pm 2014-01-11 03:09 pjf ;
 
 package CatalystX::Usul::Model::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
@@ -46,7 +46,7 @@ has 'user_model_classes' => is => 'ro',   isa => HashRef,
 
 has '_file'     => is => 'lazy', isa => FileClass,
    default      => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles      => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg     => undef, reader => 'file';
 
 has '_fs_model' => is => 'lazy', isa => Object,
    default      => sub { $_[ 0 ]->context->model( q(FileSystem) ) },
@@ -727,7 +727,7 @@ CatalystX::Usul::Model::Users - Catalyst user model
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

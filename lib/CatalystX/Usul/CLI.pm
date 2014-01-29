@@ -1,17 +1,18 @@
-# @(#)$Ident: CLI.pm 2013-11-22 22:40 pjf ;
+# @(#)$Ident: CLI.pm 2014-01-10 21:16 pjf ;
 
 package CatalystX::Usul::CLI;
 
 use strict;
 use namespace::sweep;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Moo;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions qw( bson64id bson64id_time emit );
+use CatalystX::Usul::Functions qw( bson64id bson64id_time emit io );
 use CatalystX::Usul::FileSystem;
 use CatalystX::Usul::ProjectDocs;
 use CatalystX::Usul::TapeBackup;
+use Class::Usul::Functions     uuid => { -prefix => 'my_' };
 use Class::Usul::Options;
 use Class::Usul::Time          qw( nap time2str );
 use English                    qw( -no_match_vars );
@@ -20,41 +21,45 @@ use File::Find                 qw( find );
 use File::Spec::Functions      qw( catdir catfile tmpdir );
 
 extends q(Class::Usul::Programs);
+with    q(Class::Usul::TraitFor::MetaData);
 with    q(CatalystX::Usul::TraitFor::PostInstallConfig);
 
 option 'delete_after' => is => 'ro', isa => Int, default => 35,
    documentation => 'Housekeeping deletes archive file after this many days';
 
-has '_filesys'  => is => 'lazy', isa => Object, reader => 'filesys';
+has '_filesys'  => is => 'lazy', isa => Object, builder => sub {
+   CatalystX::Usul::FileSystem->new( builder => $_[ 0 ] ) },
+   reader       => 'filesys';
 
-has '_intfdir'  => is => 'lazy', isa => Path,   coerce => Path->coercion,
-   default      => sub { [ $_[ 0 ]->config->vardir, 'transfer' ] },
-   reader       => 'intfdir';
+has '_intfdir'  => is => 'lazy', isa => Path,
+   builder      => sub { [ $_[ 0 ]->config->vardir, 'transfer' ] },
+   coerce       => Path->coercion, reader => 'intfdir';
 
-has '_tape_dev' => is => 'lazy', isa => Object, reader => 'tape_dev';
+has '_tape_dev' => is => 'lazy', isa => Object, builder => sub {
+   CatalystX::Usul::TapeBackup->new( builder => $_[ 0 ] ), },
+   reader       => 'tape_dev';
 
-has '_rprtdir'  => is => 'lazy', isa => Path,   coerce => Path->coercion,
-   default      => sub { [ $_[ 0 ]->config->root, 'reports' ] },
-   reader       => 'rprtdir';
+has '_rprtdir'  => is => 'lazy', isa => Path,
+   builder      => sub { [ $_[ 0 ]->config->root, 'reports' ] },
+   coerce       => Path->coercion, reader => 'rprtdir';
 
 # Public methods
 sub archive : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   $self->info( $self->filesys->archive( @args ) ); return OK;
+   $self->info( $self->filesys->archive( @args ) );
+   return OK;
 }
 
 sub bson64_id : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
    for (1 .. ($args[ 0 ] ? $args[ 0 ] : 1)) {
-      my $id = bson64id();
+      my $id = bson64id(); $self->quiet ? emit $id : $self->output( $id );
 
-      $self->quiet ? emit $id : $self->output( $id );
+      $args[ 1 ] and nap 0.07; $args[ 2 ] or next;
 
-      $args[ 1 ] and nap 0.07; # Seconds
-
-      $args[ 2 ] or next; my $time = time2str undef, bson64id_time( $id );
+      my $time = time2str undef, bson64id_time( $id );
 
       $self->quiet ? emit $time : $self->output( $time );
    }
@@ -63,7 +68,7 @@ sub bson64_id : method {
 }
 
 sub dump_meta : method {
-   $_[ 0 ]->dumper( $_[ 0 ]->get_meta ); return OK;
+   $_[ 0 ]->dumper( $_[ 0 ]->get_package_meta ); return OK;
 }
 
 sub house_keeping : method {
@@ -87,13 +92,12 @@ sub house_keeping : method {
       $self->info( "Deleting old files from ${dir}" );
       find( { no_chdir => 1, wanted => \&__match_dot_files }, $dir );
 
-      for my $entry ($self->io( $dir )->all_dirs( 1 )) {
+      for my $entry (io( $dir )->all_dirs( 1 )) {
          my $delete_after = $self->delete_after;
-         my $path         = catfile( $entry->pathname, q(.house) );
+         my $path         = catfile( $entry->pathname, '.house' );
 
          if (-f $path) {
-            for (grep { m{ \A mtime= }imsx }
-                 $self->io( $path )->chomp->getlines) {
+            for (grep { m{ \A mtime= }imsx } io( $path )->chomp->getlines) {
                $delete_after = (split m{ = }mx, $_)[ 1 ];
                last;
             }
@@ -111,10 +115,10 @@ sub house_keeping : method {
 sub pod2html : method {
    my $self    = shift;
    my $cfg     = $self->config;
-   my $libroot = $self->extra_argv->[ 0 ] || catdir( $cfg->appldir, q(lib) );
-   my $htmldir = catdir( $self->extra_argv->[ 1 ] || $cfg->root, q(html) );
-   my $css     = catfile( $cfg->ctrldir, q(podstyle.css) );
-   my $meta    = $self->get_meta;
+   my $libroot = $self->extra_argv->[ 0 ] || catdir( $cfg->appldir, 'lib' );
+   my $htmldir = catdir( $self->extra_argv->[ 1 ] || $cfg->root, 'html' );
+   my $css     = catfile( $cfg->ctrldir, 'podstyle.css' );
+   my $meta    = $self->get_package_meta;
 
    $self->info( 'Creating HTML from POD for '.$meta->name.SPC.$meta->version );
 
@@ -130,8 +134,8 @@ sub pod2html : method {
    my ($uid, $gid) = $self->get_owner( $self->read_post_install_config );
 
    if (defined $uid and defined $gid and -d $htmldir) {
-      $self->run_cmd( [ qw(chown -R), "${uid}:${gid}", $htmldir ],
-                      { err => q(null), expected_rv => 1 } );
+      $self->run_cmd( [ qw( chown -R ), "${uid}:${gid}", $htmldir ],
+                      { err => 'null', expected_rv => 1 } );
       chown $uid, $gid, $htmldir;
    }
 
@@ -141,28 +145,29 @@ sub pod2html : method {
 sub purge_tree : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   $self->info( $self->filesys->purge_tree( @args ) ); return OK;
+   $self->info( $self->filesys->purge_tree( @args ) );
+   return OK;
 }
 
 sub rotate_logs : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   $self->info( $self->filesys->rotate_logs( @args ) ); return OK;
+   $self->info( $self->filesys->rotate_logs( @args ) );
+   return OK;
 }
 
 sub tape_backup : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   $self->info( $self->tape_dev->process( $self->options, @args ) ); return OK;
+   $self->info( $self->tape_dev->process( $self->options, @args ) );
+   return OK;
 }
 
 sub translate : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   my $path = $self->io( $args[ 1 ] );
-
-   $self->options->{to  } = $path;
-   $self->options->{from} = $self->io( $args[ 0 ] );
+   $self->options->{from} = io $args[ 0 ];
+   $self->options->{to  } = my $path = io $args[ 1 ];
    $self->file->dataclass_schema->translate( $self->options );
    $self->info( "Path ${path} size ".$path->stat->{size}.' bytes' );
    return OK;
@@ -171,30 +176,22 @@ sub translate : method {
 sub unarchive : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   $self->info( $self->filesys->unarchive( @args ) ); return OK;
+   $self->info( $self->filesys->unarchive( @args ) );
+   return OK;
 }
 
 sub uuid : method {
-   my $self = shift; my $uuid = $self->file->uuid;
+   my $self = shift; my $uuid = my_uuid;
 
    $self->quiet ? emit $uuid : $self->output( $uuid );
-
    return OK;
 }
 
 sub wait_for : method {
    my ($self, @args) = @_; defined $args[ 0 ] or @args = @{ $self->extra_argv };
 
-   $self->info( $self->filesys->wait_for( $self->options, @args ) ); return OK;
-}
-
-# Private _methods
-sub _build__filesys {
-   return CatalystX::Usul::FileSystem->new( builder => $_[ 0 ] );
-}
-
-sub _build__tape_dev {
-   return CatalystX::Usul::TapeBackup->new( builder => $_[ 0 ] );
+   $self->info( $self->filesys->wait_for( $self->options, @args ) );
+   return OK;
 }
 
 # Private subroutines
@@ -202,7 +199,6 @@ sub __match_dot_files {
    my $now = time;
 
    -f $_ and $_ =~ m{ \A \.\w+ }msx and utime $now, $now, $_;
-
    return;
 }
 
@@ -218,7 +214,7 @@ CatalystX::Usul::CLI - Subroutines accessed from the command line
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

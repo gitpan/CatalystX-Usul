@@ -1,14 +1,15 @@
-# @(#)Ident: Users.pm 2013-11-21 23:40 pjf ;
+# @(#)Ident: Users.pm 2014-01-15 14:46 pjf ;
 
 package CatalystX::Usul::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Constants;
 use CatalystX::Usul::Constraints qw( Directory Path );
-use CatalystX::Usul::Functions   qw( create_token ensure_class_loaded exception
-                                     is_arrayref is_hashref is_member throw );
+use CatalystX::Usul::Functions   qw( create_token ensure_class_loaded
+                                     exception io is_arrayref is_hashref
+                                     is_member throw );
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Response::Users;
 use Class::Usul::Exception;
@@ -20,9 +21,9 @@ use TryCatch;
 
 with q(CatalystX::Usul::TraitFor::Email);
 
-Class::Usul::Exception->has_exception( 'AccountInactive'   );
-Class::Usul::Exception->has_exception( 'IncorrectPassword' );
-Class::Usul::Exception->has_exception( 'MaxLoginAttempts'  );
+Class::Usul::Exception->add_exception( 'AccountInactive'   );
+Class::Usul::Exception->add_exception( 'IncorrectPassword' );
+Class::Usul::Exception->add_exception( 'MaxLoginAttempts'  );
 
 has 'alias_class'       => is => 'lazy', isa => LoadableClass, coerce => TRUE,
    default              => sub { 'File::MailAlias' };
@@ -94,7 +95,7 @@ has 'userid_len'        => is => 'ro',   isa => PositiveInt, default => 3;
 
 has '_file' => is => 'lazy', isa => FileClass,
    default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg => undef, reader => 'file';
 
 has '_ipc'  => is => 'lazy', isa => IPCClass,
    default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
@@ -124,7 +125,7 @@ sub authenticate {
 
    my $stored   = $user->crypted_password || NUL;
    my $supplied = $self->_encrypt_password( $passwd, $stored );
-   my $path     = $self->io( [ $self->sessdir, $username ] );
+   my $path     = io( [ $self->sessdir, $username ] );
 
    $self->lock->set( k => $path );
 
@@ -145,7 +146,7 @@ sub change_password {
 }
 
 sub dequeue_activation_file {
-   my ($self, $file) = @_; my $path = $self->io( [ $self->sessdir, $file ] );
+   my ($self, $file) = @_; my $path = io( [ $self->sessdir, $file ] );
 
    $path->is_file or throw error => 'Path [_1] not found', args => [ $path ];
 
@@ -172,7 +173,7 @@ sub encrypt_password {
    }
 
    my $history   = substr create_token( "${username}_history" ), 0, 32;
-   my $io        = $self->io( [ $self->sessdir, $history ] )->chomp->lock;
+   my $io        = io( [ $self->sessdir, $history ] )->chomp->lock;
    my @passwords = ();
    my $enc_pass;
 
@@ -598,7 +599,7 @@ sub _register_dequeue {
    -f $path or throw error => 'File [_1] not found', args => [ $path ];
 
    my $fields = $self->file->dataclass_schema( { lock => TRUE } )->load( $path);
-   my $io     = $self->io( $self->register_queue_path )->chomp->lock;
+   my $io     = io( $self->register_queue_path )->chomp->lock;
 
    $io->println( grep { not m{ \A $path \z }mx } $io->getlines ); unlink $path;
 
@@ -612,7 +613,7 @@ sub _register_enqueue {
    my $fdcs = $self->file->dataclass_schema( { lock => TRUE } );
 
    $fdcs->dump( { data => $fields, path => $path } );
-   $self->io( $self->register_queue_path )->lock->appendln( $path );
+   io( $self->register_queue_path )->lock->appendln( $path );
    return $path;
 }
 
@@ -621,7 +622,7 @@ sub _register_verification_email {
 
    my $key = $args->{key} or return 'No activation key, no email sent';
 
-   $self->io( [ $self->sessdir, $key ] )->println( $fields->{username} );
+   io( [ $self->sessdir, $key ] )->println( $fields->{username} );
 
    $args->{post}->{to   } = $fields->{email_address};
    $args->{post}->{stash} = { %{ $fields }, %{ $args->{post}->{stash} } };
@@ -653,7 +654,7 @@ CatalystX::Usul::Users - User domain model
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

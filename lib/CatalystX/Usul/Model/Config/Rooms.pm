@@ -3,7 +3,7 @@
 package CatalystX::Usul::Model::Config::Rooms;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 
@@ -61,7 +61,7 @@ CatalystX::Usul::Model::Config::Rooms - Class definition for the action configur
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

@@ -1,9 +1,9 @@
-# @(#)Ident: ;
+# @(#)Ident: Roles.pm 2014-01-11 03:06 pjf ;
 
 package CatalystX::Usul::Roles;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
@@ -17,7 +17,7 @@ has 'users' => is => 'ro',   isa => Object, required => TRUE, weak_ref => TRUE;
 
 has '_file' => is => 'lazy', isa => FileClass,
    default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg => undef, reader => 'file';
 
 has '_ipc'  => is => 'lazy', isa => IPCClass,
    default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
@@ -139,7 +139,7 @@ CatalystX::Usul::Roles - Manage the roles and their members
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

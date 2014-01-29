@@ -1,32 +1,34 @@
-# @(#)Ident: ;
+# @(#)Ident: FileSystem.pm 2014-01-11 02:56 pjf ;
 
 package CatalystX::Usul::FileSystem;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions   qw(arg_list throw);
+use CatalystX::Usul::Functions   qw( arg_list io throw );
 use Class::Usul::File;
 use Class::Usul::IPC;
 use Class::Usul::Time;
-use Fcntl                        qw(:mode);
-use File::Basename               qw(basename dirname);
+use Fcntl                        qw( :mode );
+use File::Basename               qw( basename dirname );
 use File::Copy;
-use CatalystX::Usul::Constraints qw(Path);
+use CatalystX::Usul::Constraints qw( Path );
 use File::Find;
-use File::Spec::Functions        qw(catfile);
+use File::Spec::Functions        qw( catfile );
 
 has 'compress_logs'  => is => 'ro',   isa => Bool, default => TRUE;
 
 has 'config_path'    => is => 'lazy', isa => Path, coerce => TRUE,
-   default           => sub { [ $_[ 0 ]->config->ctrldir, q(misc.json) ] };
+   default           => sub { [ $_[ 0 ]->config->ctrldir, 'misc.json' ] };
 
-has 'ctldata'        => is => 'lazy', isa => HashRef;
+has 'ctldata'        => is => 'lazy', isa => HashRef, default => sub {
+   $_[ 0 ]->file->data_load( paths => [ $_[ 0 ]->config_path ] ) },
+   init_arg          => undef;
 
 has 'fcopy_format'   => is => 'ro',   isa => NonEmptySimpleStr,
-   default           => q(%{file}.%{copy});
+   default           => '%{file}.%{copy}';
 
 has 'fs_type'        => is => 'ro',   isa => NonEmptySimpleStr,
    default           => 'ext3';
@@ -42,24 +44,24 @@ has 'table_class'    => is => 'lazy', isa => LoadableClass, coerce => TRUE,
    default           => sub { 'Class::Usul::Response::Table' };
 
 has 'usul'           => is => 'ro',   isa => BaseClass,
-   handles           => [ qw(config debug lock log) ], init_arg => 'builder',
+   handles           => [ qw( config debug lock log ) ], init_arg => 'builder',
    required          => TRUE, weak_ref => TRUE;
 
 
 has '_file' => is => 'lazy', isa => FileClass,
    default  => sub { Class::Usul::File->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(io) ], init_arg => undef, reader => 'file';
+   init_arg => undef, reader => 'file';
 
 has '_ipc'  => is => 'lazy', isa => IPCClass,
    default  => sub { Class::Usul::IPC->new( builder => $_[ 0 ]->usul ) },
-   handles  => [ qw(run_cmd) ], init_arg => undef, reader => 'ipc';
+   handles  => [ qw( run_cmd ) ], init_arg => undef, reader => 'ipc';
 
 around 'BUILDARGS' => sub {
    my ($next, $self, @args) = @_; my $attr = $self->$next( @args );
 
    my $builder = $attr->{builder} or return $attr;
 
-   if ($builder->can( q(os) )) {
+   if ($builder->can( 'os' )) {
       my $os = $builder->os;
 
       defined $os->{fs_type} and $attr->{fs_type} //= $os->{fs_type}->{value};
@@ -137,14 +139,13 @@ sub get_perms {
 sub list_subdirectory {
    my ($self, $args) = @_;
 
-   my $io    = $self->io( $args->{dir} );
+   my $io    = io $args->{dir};
    my $match = $args->{pattern};
       $match and $io->filter( sub { $_->filename =~ $match } );
-   my @paths = $io->all;
    my @rows  = ();
    my $count = 0;
 
-   for my $path (@paths) {
+   for my $path ($io->all) {
       push @rows, $self->_directory_fields( $path, $args ); $count++;
    }
 
@@ -193,7 +194,7 @@ sub rotate {
                                   args  => [ $from, $to ];
 
       $self->compress_logs and $move->[ 0 ] > 0 and $to !~ m{ \.gz \z }msx
-         and $self->run_cmd( [ qw(gzip -f), $to ] );
+         and $self->run_cmd( [ qw( gzip -f ), $to ] );
    }
 
    return;
@@ -204,13 +205,13 @@ sub rotate_log {
 
    my $path = $args->{logfile} or return;
    my $pid  = $args->{pidfile}
-            ? $self->io( $args->{pidfile} )->chomp->lock->getline
+            ? io( $args->{pidfile} )->chomp->lock->getline
             : $args->{pid};
 
    $self->rotate( $path, $args->{copies} || 1 );
 
    unless ($args->{notouch}) {
-      $self->io( $path )->perms( $args->{mode} )->touch;
+      io( $path )->perms( $args->{mode} )->touch;
       defined $args->{owner} and defined $args->{group}
          and chown $args->{owner}, $args->{group}, $path;
    }
@@ -225,7 +226,7 @@ sub rotate_logs {
 
    $copies //= 7; $extn //= q(.log); $dir //= $self->config->logsdir;
 
-   my $io = $self->io( $dir ); my $fcopy = $self->_get_file_copy_regex;
+   my $io = io $dir; my $fcopy = $self->_get_file_copy_regex;
 
    my $match   = qr{ \Q$extn\E \z }msx;
    my $nomatch = qr{ $fcopy \Q$extn\E (\.gz)? \z }msx;
@@ -298,11 +299,6 @@ sub wait_for {
 }
 
 # Private methods
-
-sub _build_ctldata {
-   return $_[ 0 ]->file->data_load( paths => [ $_[ 0 ]->config_path ] );
-}
-
 sub _directory_fields {
    my ($self, $path, $args) = @_;
 
@@ -453,7 +449,7 @@ CatalystX::Usul::FileSystem - File system related methods
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

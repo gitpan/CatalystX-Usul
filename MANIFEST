@@ -72,6 +72,7 @@ lib/CatalystX/Usul/TraitFor/CreatingUsul.pm
 lib/CatalystX/Usul/TraitFor/Email.pm
 lib/CatalystX/Usul/TraitFor/Engine/DumpInfo.pm
 lib/CatalystX/Usul/TraitFor/ListSessions.pm
+lib/CatalystX/Usul/TraitFor/LoadingClasses.pm
 lib/CatalystX/Usul/TraitFor/LogRequest.pm
 lib/CatalystX/Usul/TraitFor/Model/NavigationLinks.pm
 lib/CatalystX/Usul/TraitFor/Model/QueryingRequest.pm
@@ -97,6 +98,7 @@ t/06yaml.t
 t/07podspelling.t
 t/10compile.t
 t/12schema.t
+t/13traits.t
 t/14config.t
 t/20controller.t
 t/critic.rc

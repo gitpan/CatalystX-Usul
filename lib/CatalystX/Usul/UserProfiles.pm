@@ -3,7 +3,7 @@
 package CatalystX::Usul::UserProfiles;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Functions qw(arg_list);
@@ -82,7 +82,7 @@ CatalystX::Usul::UserProfiles - CRUD methods for user account profiles
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

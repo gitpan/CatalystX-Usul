@@ -3,7 +3,7 @@
 package CatalystX::Usul::Controller;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use Class::Null;
 use CatalystX::Usul::Constants;
@@ -592,7 +592,7 @@ CatalystX::Usul::Controller - Application independent common controller methods
 
 =head1 Version
 
-This document describes CatalystX::Usul::Controller version v0.16.$Rev: 1 $
+This document describes CatalystX::Usul::Controller version v0.17.$Rev: 1 $
 
 =head1 Synopsis
 

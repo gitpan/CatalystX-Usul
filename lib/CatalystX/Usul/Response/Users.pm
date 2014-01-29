@@ -1,13 +1,13 @@
-# @(#)Ident: Users.pm 2013-08-19 19:16 pjf ;
+# @(#)Ident: Users.pm 2014-01-10 21:29 pjf ;
 
 package CatalystX::Usul::Response::Users;
 
 use strict;
-use version; our $VERSION = qv( sprintf '0.16.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.17.%d', q$Rev: 1 $ =~ /\d+/gmx );
 
 use CatalystX::Usul::Moose;
 use CatalystX::Usul::Constants;
-use CatalystX::Usul::Functions   qw( trim );
+use CatalystX::Usul::Functions   qw( io trim );
 use CatalystX::Usul::Constraints qw( Path );
 use File::Spec;
 
@@ -189,7 +189,7 @@ sub _get_password_expiry_date {
 sub __get_project {
    my ($builder, $home) = @_; $home or return NUL;
 
-   my $path = $builder->io( [ $home, q(.project) ] );
+   my $path = io [ $home, '.project' ];
 
    ($path->is_file and not $path->empty) or return NUL;
 
@@ -210,7 +210,7 @@ CatalystX::Usul::Response::Users - The actual user object
 
 =head1 Version
 
-Describes v0.16.$Rev: 1 $
+Describes v0.17.$Rev: 1 $
 
 =head1 Synopsis
 
